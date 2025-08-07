@@ -1,21 +1,22 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import NewPersona from './NewPersona.vue'
+import CyberpunkUI from '../CyberpunkUI.vue'
 
 const showNewPersona = ref(false)
 const currentIndex = ref(4) // Start at center (index 4 of 9 items)
 
 // Mock data for 9 personas
 const personas = ref([
-  { id: 1, name: 'Persona 1', image: '/src/assets/persona.png' },
-  { id: 2, name: 'Persona 2', image: '/src/assets/persona.png' },
-  { id: 3, name: 'Persona 3', image: '/src/assets/persona.png' },
-  { id: 4, name: 'Persona 4', image: '/src/assets/persona.png' },
-  { id: 5, name: 'Persona 5', image: '/src/assets/persona.png' },
-  { id: 6, name: 'Persona 6', image: '/src/assets/persona.png' },
-  { id: 7, name: 'Persona 7', image: '/src/assets/persona.png' },
-  { id: 8, name: 'Persona 8', image: '/src/assets/persona.png' },
-  { id: 9, name: 'Persona 9', image: '/src/assets/persona.png' }
+  { id: 1, name: 'Persona 1' },
+  { id: 2, name: 'Persona 2' },
+  { id: 3, name: 'Persona 3' },
+  { id: 4, name: 'Persona 4' },
+  { id: 5, name: 'Persona 5' },
+  { id: 6, name: 'Persona 6' },
+  { id: 7, name: 'Persona 7' },
+  { id: 8, name: 'Persona 8' },
+  { id: 9, name: 'Persona 9' }
 ])
 
 const getItemTransform = (index: number) => {
@@ -31,9 +32,9 @@ const getItemTransform = (index: number) => {
   const absDistance = Math.abs(distance)
   
   // Center item is much bigger (2.5x) for text legibility, others scale down more dramatically
-  const scale = absDistance === 0 ? 2.5 : Math.max(0.3, 1 - absDistance * 0.3)
-  const translateX = distance * 180
-  const translateZ = absDistance === 0 ? 100 : -absDistance * 50
+  const scale = absDistance === 0 ? 1.8 : Math.max(0.3, 1 - absDistance * 0.3)
+  const translateX = distance * 280
+  const translateZ = absDistance === 0 ? 0 : -absDistance * 50
   
   return {
     transform: `translateX(${translateX}px) translateZ(${translateZ}px) scale(${scale})`,
@@ -74,7 +75,7 @@ function nextPersona() {
               :style="getItemTransform(index)"
             >
               <div class="persona-card">
-                <img :src="persona.image" :alt="persona.name" />
+                <CyberpunkUI />
               </div>
             </div>
           </div>
@@ -168,7 +169,7 @@ h1 {
 .carousel-3d {
   position: relative;
   width: 100%;
-  height: 200px;
+  height: 400px;
   transform-style: preserve-3d;
   display: flex;
   align-items: center;
@@ -177,8 +178,8 @@ h1 {
 
 .carousel-item {
   position: absolute;
-  width: 120px;
-  height: 160px;
+  width: 200px;
+  height: 200px;
   transition: all 0.8s cubic-bezier(0.23, 1, 0.32, 1);
   transform-origin: center center;
   will-change: transform, opacity;

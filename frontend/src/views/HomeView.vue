@@ -3,7 +3,6 @@ import { ref } from 'vue'
 import MainChat from '../components/MainChat.vue'
 import DisplayArea from '../components/DisplayArea.vue'
 import ControlPanel from '../components/ControlPanel.vue'
-import ImageSection from '../components/ImageSection.vue'
 import Info from '../components/Info.vue'
 
 const selectedComponent = ref('Personas')
@@ -18,7 +17,6 @@ function handleComponentSelect(componentName: string) {
     <MainChat />
     <DisplayArea :selected-component="selectedComponent" />
     <ControlPanel @select-component="handleComponentSelect" />
-    <ImageSection />
     <Info />
   </div>
 </template>
@@ -32,8 +30,8 @@ function handleComponentSelect(componentName: string) {
   grid-template-rows: var(--col1) var(--col2) var(--col3) var(--col4);
   grid-template-areas:
     "A B B B"
-    "A E E C"
-    "A E E C"
-    "A D D C";
+    "A F F C"
+    "A F F C"
+    "A F F C";
 }
 </style>
