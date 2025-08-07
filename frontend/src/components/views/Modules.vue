@@ -63,27 +63,49 @@ h1 {
 }
 
 .create-btn {
-  background: #B12C00;
-  border: 1px solid var(--border);
+  background: linear-gradient(135deg, var(--accent) 0%, #e91e63 100%);
+  border: 1px solid var(--accent);
+  border-left: 3px solid white;
   color: white;
-  border-radius: 8px;
+  border-radius: 0;
   padding: 12px 16px;
   cursor: pointer;
   font-size: 1em;
-  font-weight: 600;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
   display: flex;
   align-items: center;
   gap: 8px;
   align-self: center;
-  transition: background-color 0.2s;
+  transition: all 0.3s ease;
+  box-shadow: 0 0 15px rgba(255, 0, 110, 0.3);
+  clip-path: polygon(0 0, 100% 0, 100% calc(100% - 12px), calc(100% - 12px) 100%, 0 100%);
+  position: relative;
 }
 
+.create-btn::before {
+  content: '';
+  position: absolute;
+  bottom: 9px;
+  right: 0;
+  width: 17px;
+  height: 1px;
+  background: var(--accent);
+  transform: rotate(-45deg);
+  transform-origin: right center;
+}
+
+
 .create-btn:hover {
-  background: #EB5B00;
+  background: linear-gradient(135deg, #e91e63 0%, var(--accent) 100%);
+  box-shadow: 0 0 20px rgba(255, 0, 110, 0.5);
+  transform: translateY(-2px);
 }
 
 .create-btn:active {
-  background: #9A2400;
+  transform: translateY(0);
+  box-shadow: 0 0 10px rgba(255, 0, 110, 0.3);
 }
 
 .create-btn i {

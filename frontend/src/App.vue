@@ -17,11 +17,14 @@ import { RouterView } from 'vue-router'
   --col3: 5.58%;
   --col4: 23.6%;
 
-  /* Theme colors */
-  --bg: #1e1e1e;
-  --fg: #e0e0e0;
-  --surface: #2e2e2e;
-  --border: #3c3c3c;
+  /* Cyberpunk theme colors */
+  --bg: #0a0a0a;
+  --fg: #00ffff;
+  --surface: #1a1a2e;
+  --border: #00d4ff;
+  --accent: #ff006e;
+  --secondary: #16213e;
+  --glow: rgba(0, 255, 255, 0.3);
 }
 
 *, *::before, *::after {
