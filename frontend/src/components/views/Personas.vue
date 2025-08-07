@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref } from 'vue'
 import NewPersona from './NewPersona.vue'
 
 const showNewPersona = ref(false)
@@ -121,6 +121,8 @@ function nextPersona() {
 </template>
 
 <style scoped>
+@import '@/assets/buttons.css';
+
 .view-container {
   width: 100%;
   height: 100%;
@@ -252,110 +254,4 @@ h1 {
   align-items: center;
   justify-content: center;
 }
-
-.action-btn {
-  border: 1px solid var(--border);
-  color: var(--fg);
-  border-radius: 0;
-  padding: 10px 14px;
-  cursor: pointer;
-  font-size: 0.9em;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  transition: all 0.3s ease;
-  clip-path: polygon(0 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%);
-  position: relative;
-}
-
-.action-btn::before {
-  content: '';
-  position: absolute;
-  bottom: 6px;
-  right: 0;
-  width: 11px;
-  height: 1px;
-  transform: rotate(-45deg);
-  transform-origin: right center;
-}
-
-.new-btn {
-  background: linear-gradient(135deg, var(--bg) 0%, var(--secondary) 100%);
-  border-color: var(--border);
-  border-left: 5px solid var(--accent);
-  box-shadow: inset 0 0 10px var(--glow);
-}
-
-.new-btn::before {
-  background: var(--border);
-}
-
-.new-btn:hover {
-  background: linear-gradient(135deg, var(--secondary) 0%, var(--surface) 100%);
-  border-color: var(--fg);
-  box-shadow: 0 0 10px var(--glow);
-  transform: translateY(-2px);
-}
-
-.delete-btn {
-  background: linear-gradient(135deg, var(--bg) 0%, var(--secondary) 100%);
-  border-color: var(--border);
-  border-left: 5px solid #dc143c;
-  box-shadow: inset 0 0 10px var(--glow);
-}
-
-.delete-btn::before {
-  background: var(--border);
-}
-
-.delete-btn:hover {
-  background: linear-gradient(135deg, var(--secondary) 0%, var(--surface) 100%);
-  border-color: var(--fg);
-  box-shadow: 0 0 10px var(--glow);
-  transform: translateY(-2px);
-}
-
-.edit-btn {
-  background: linear-gradient(135deg, var(--bg) 0%, var(--secondary) 100%);
-  border-color: var(--border);
-  border-left: 5px solid #00ffff;
-  box-shadow: inset 0 0 10px var(--glow);
-}
-
-.edit-btn::before {
-  background: var(--border);
-}
-
-.edit-btn:hover {
-  background: linear-gradient(135deg, var(--secondary) 0%, var(--surface) 100%);
-  border-color: var(--fg);
-  box-shadow: 0 0 10px var(--glow);
-  transform: translateY(-2px);
-}
-
-.connect-btn {
-  background: linear-gradient(135deg, var(--bg) 0%, var(--secondary) 100%);
-  border-color: var(--border);
-  border-left: 5px solid #2196f3;
-  box-shadow: inset 0 0 10px var(--glow);
-}
-
-.connect-btn::before {
-  background: var(--border);
-}
-
-.connect-btn:hover {
-  background: linear-gradient(135deg, var(--secondary) 0%, var(--surface) 100%);
-  border-color: var(--fg);
-  box-shadow: 0 0 10px var(--glow);
-  transform: translateY(-2px);
-}
-
-.action-btn i {
-  font-size: 1em;
-}
-
 </style>

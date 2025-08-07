@@ -81,7 +81,7 @@ function browseFiles() {
 <template>
   <div class="new-persona-container">
     <div class="header">
-      <button class="back-btn" @click="goBack">
+      <button class="action-btn back-btn" @click="goBack">
         <i class="fa-solid fa-arrow-left"></i>
         Back
       </button>
@@ -204,8 +204,8 @@ function browseFiles() {
 
         <!-- Form Actions -->
         <div class="form-actions">
-          <button type="button" class="cancel-btn" @click="goBack">Cancel</button>
-          <button type="submit" class="save-btn">Save Persona</button>
+          <button type="button" class="action-btn cancel-btn" @click="goBack">Cancel</button>
+          <button type="submit" class="action-btn save-btn">Save Persona</button>
         </div>
       </form>
     </div>
@@ -213,6 +213,8 @@ function browseFiles() {
 </template>
 
 <style scoped>
+@import '@/assets/buttons.css';
+
 .new-persona-container {
   width: 100%;
   height: 100%;
@@ -231,44 +233,8 @@ function browseFiles() {
 }
 
 .back-btn {
-  background: linear-gradient(135deg, var(--bg) 0%, var(--secondary) 100%);
-  border: 1px solid var(--border);
-  color: var(--fg);
-  border-radius: 0;
-  padding: 8px 12px;
-  cursor: pointer;
-  font-size: 0.9em;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  transition: all 0.3s ease;
   position: absolute;
   left: 0;
-  box-shadow: inset 0 0 10px var(--glow);
-  clip-path: polygon(0 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%);
-}
-
-.back-btn::before {
-  content: '';
-  position: absolute;
-  bottom: 6px;
-  right: 0;
-  width: 11px;
-  height: 1px;
-  background: var(--border);
-  transform: rotate(-45deg);
-  transform-origin: right center;
-}
-
-
-.back-btn:hover {
-  background: linear-gradient(135deg, var(--secondary) 0%, var(--surface) 100%);
-  border-color: var(--fg);
-  box-shadow: 0 0 10px var(--glow);
-  transform: translateY(-1px);
 }
 
 h1 {
@@ -436,82 +402,5 @@ select option {
   margin-top: 20px;
   padding-top: 20px;
   border-top: 1px solid var(--border);
-}
-
-.cancel-btn {
-  background: linear-gradient(135deg, var(--bg) 0%, var(--secondary) 100%);
-  border: 1px solid var(--border);
-  color: var(--fg);
-  border-radius: 0;
-  padding: 12px 20px;
-  cursor: pointer;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  transition: all 0.3s ease;
-  box-shadow: inset 0 0 10px rgba(0, 212, 255, 0.1);
-  clip-path: polygon(0 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0 100%);
-  position: relative;
-}
-
-.cancel-btn::before {
-  content: '';
-  position: absolute;
-  bottom: 7px;
-  right: 0;
-  width: 14px;
-  height: 1px;
-  background: var(--border);
-  transform: rotate(-45deg);
-  transform-origin: right center;
-}
-
-
-.cancel-btn:hover {
-  background: linear-gradient(135deg, var(--secondary) 0%, var(--surface) 100%);
-  border-color: var(--fg);
-  box-shadow: 0 0 10px var(--glow);
-  transform: translateY(-1px);
-}
-
-.save-btn {
-  background: linear-gradient(135deg, var(--accent) 0%, #e91e63 100%);
-  border: 1px solid var(--accent);
-  border-left: 3px solid white;
-  color: white;
-  border-radius: 0;
-  padding: 12px 20px;
-  cursor: pointer;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  transition: all 0.3s ease;
-  box-shadow: 0 0 15px rgba(255, 0, 110, 0.3);
-  clip-path: polygon(0 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0 100%);
-  position: relative;
-}
-
-.save-btn::before {
-  content: '';
-  position: absolute;
-  bottom: 7px;
-  right: 0;
-  width: 14px;
-  height: 1px;
-  background: var(--accent);
-  transform: rotate(-45deg);
-  transform-origin: right center;
-}
-
-
-.save-btn:hover {
-  background: linear-gradient(135deg, #e91e63 0%, var(--accent) 100%);
-  box-shadow: 0 0 20px rgba(255, 0, 110, 0.5);
-  transform: translateY(-1px);
-}
-
-.save-btn:active {
-  transform: translateY(0);
-  box-shadow: 0 0 10px rgba(255, 0, 110, 0.3);
 }
 </style>
