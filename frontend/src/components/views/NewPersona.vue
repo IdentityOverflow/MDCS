@@ -76,6 +76,21 @@ function browseFiles() {
   fileInput.value?.click()
 }
 
+function savePersona() {
+  // Create a serializable version of the form data
+  const formDataForLogging = {
+    ...formData.value,
+    image: formData.value.image ? {
+      name: formData.value.image.name,
+      size: formData.value.image.size,
+      type: formData.value.image.type,
+      lastModified: formData.value.image.lastModified
+    } : null
+  }
+  
+  console.log('Persona form data:', JSON.stringify(formDataForLogging, null, 2))
+}
+
 </script>
 
 <template>
@@ -205,7 +220,7 @@ function browseFiles() {
         <!-- Form Actions -->
         <div class="form-actions">
           <button type="button" class="action-btn cancel-btn" @click="goBack">Cancel</button>
-          <button type="submit" class="action-btn save-btn">Save Persona</button>
+          <button type="button" class="action-btn save-btn" @click="savePersona">Save Persona</button>
         </div>
       </form>
     </div>

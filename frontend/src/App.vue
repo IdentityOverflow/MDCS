@@ -45,4 +45,36 @@ html, body {
   width: 100%;
   height: 100%;
 }
+
+/* Custom scrollbar styling */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) var(--bg);
+}
+
+/* Webkit browsers (Chrome, Safari, Edge) */
+*::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+*::-webkit-scrollbar-track {
+  background: var(--bg);
+  border: 1px solid var(--surface);
+}
+
+*::-webkit-scrollbar-thumb {
+  background: linear-gradient(135deg, var(--border) 0%, var(--secondary) 100%);
+  border: 1px solid var(--border);
+  transition: background 0.3s ease;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(135deg, var(--fg) 0%, var(--border) 100%);
+  box-shadow: 0 0 5px var(--glow);
+}
+
+*::-webkit-scrollbar-corner {
+  background: var(--bg);
+}
 </style>

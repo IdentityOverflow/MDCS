@@ -9,6 +9,7 @@ const emit = defineEmits<{
 const formData = ref({
   id: '',
   name: '',
+  description: '',
   content: '',
   type: 'simple' as 'simple' | 'advanced',
   trigger_pattern: '',
@@ -27,6 +28,10 @@ function generateUniqueId(): string {
 
 function goBack() {
   emit('back')
+}
+
+function saveModule() {
+  console.log('Module form data:', JSON.stringify(formData.value, null, 2))
 }
 </script>
 
@@ -60,6 +65,16 @@ function goBack() {
             v-model="formData.name"
             placeholder="Enter module name"
           >
+        </div>
+
+        <!-- Description -->
+        <div class="form-group">
+          <label>Description</label>
+          <textarea 
+            v-model="formData.description"
+            placeholder="Enter module description"
+            rows="3"
+          ></textarea>
         </div>
 
         <!-- Content -->
@@ -117,7 +132,7 @@ function goBack() {
         <!-- Form Actions -->
         <div class="form-actions">
           <button type="button" class="action-btn cancel-btn" @click="goBack">Cancel</button>
-          <button type="submit" class="action-btn save-btn">Save Module</button>
+          <button type="button" class="action-btn save-btn" @click="saveModule">Save Module</button>
         </div>
       </form>
     </div>

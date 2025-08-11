@@ -11,6 +11,10 @@ const props = defineProps<{
   selectedComponent: string
 }>()
 
+const emit = defineEmits<{
+  selectPersona: [persona: any]
+}>()
+
 const currentComponent = computed(() => {
   switch (props.selectedComponent) {
     case 'Personas': return Personas
@@ -26,7 +30,7 @@ const currentComponent = computed(() => {
 
 <template>
   <div class="display-area">
-    <component :is="currentComponent" />
+    <component :is="currentComponent" @select-persona="emit('selectPersona', $event)" />
   </div>
 </template>
 

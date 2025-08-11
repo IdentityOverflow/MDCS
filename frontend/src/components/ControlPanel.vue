@@ -45,6 +45,8 @@ const emit = defineEmits<{
   border-radius: 2px;
   grid-area: C;
   padding: 8px;
+  overflow: hidden;
+  box-sizing: border-box;
 }
 
 .button-grid {
@@ -53,6 +55,8 @@ const emit = defineEmits<{
   grid-template-rows: repeat(3, 1fr);
   gap: 6px;
   height: 100%;
+  box-sizing: border-box;
+  overflow: hidden;
 }
 
 .control-btn {
@@ -74,8 +78,9 @@ const emit = defineEmits<{
   padding: 6px;
   box-shadow: inset 0 0 10px rgba(0, 212, 255, 0.1);
   position: relative;
-  overflow: visible;
+  overflow: hidden;
   clip-path: polygon(0 0, 100% 0, 100% calc(100% - 12px), calc(100% - 12px) 100%, 0 100%);
+  box-sizing: border-box;
 }
 
 .control-btn::before {
@@ -117,7 +122,7 @@ const emit = defineEmits<{
   background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
   border-color: #00ffff;
   color: #ffffff;
-  box-shadow: 0 0 15px rgba(0, 255, 255, 0.5), inset 0 0 15px rgba(0, 212, 255, 0.2);
+  box-shadow: inset 0 0 15px rgba(0, 212, 255, 0.4), inset 0 0 5px rgba(0, 255, 255, 0.6);
   transform: translateY(-1px);
 }
 

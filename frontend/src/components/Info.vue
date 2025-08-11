@@ -1,14 +1,69 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
+
+interface Persona {
+  id: string
+  name: string
+  description: string
+  model: string
+  template: string
+  mode: 'autonomous' | 'reactive'
+  loop_frequency?: number
+  first_message?: string
+  image: string
+}
+
+const props = defineProps<{
+  selectedPersona: Persona | null
+}>()
 
 const secondaryScreenText = ref('STATUS OK')
+const showImage = ref(false)
 const secondaryMessages = ['ALERT', 'SCAN', 'READY', 'LINK']
 let secondaryIndex = 0
 
+const displayText = computed(() => {
+  if (props.selectedPersona) {
+    const componentCount = countComponents(props.selectedPersona.template)
+    let text = `NAME: ${props.selectedPersona.name}\n`
+    text += `MODEL: ${props.selectedPersona.model}\n`
+    text += `MODE: ${props.selectedPersona.mode.toUpperCase()}\n`
+    if (props.selectedPersona.mode === 'autonomous' && props.selectedPersona.loop_frequency) {
+      text += `FREQ: ${props.selectedPersona.loop_frequency}HZ\n`
+    }
+    text += `COMPONENTS: ${componentCount}\n\n`
+    text += `DESCRIPTION:\n${props.selectedPersona.description}`
+    return text
+  }
+  return secondaryScreenText.value
+})
+
+function countComponents(template: string): number {
+  const matches = template.match(/\{[^}]*_module\}/g) || template.match(/\{[^}]*module[^}]*\}/g)
+  return matches ? matches.length : 0
+}
+
+function toggleView() {
+  showImage.value = !showImage.value
+}
+
+function getPersonaImage(imagePath: string): string {
+  return imagePath || '/src/assets/persona.png'
+}
+
+function handleImageError(event: Event) {
+  const img = event.target as HTMLImageElement
+  if (img.src !== '/src/assets/persona.png') {
+    img.src = '/src/assets/persona.png'
+  }
+}
+
 onMounted(() => {
   setInterval(() => {
-    secondaryIndex = (secondaryIndex + 1) % secondaryMessages.length
-    secondaryScreenText.value = secondaryMessages[secondaryIndex]
+    if (!props.selectedPersona) {
+      secondaryIndex = (secondaryIndex + 1) % secondaryMessages.length
+      secondaryScreenText.value = secondaryMessages[secondaryIndex]
+    }
   }, 4000)
 })
 </script>
@@ -18,7 +73,26 @@ onMounted(() => {
     <div class="screen-secondary">
       <div class="grid-overlay"></div>
       <div class="scan-line"></div>
-      <div class="screen-secondary-content">{{ secondaryScreenText }}</div>
+      
+      <!-- Toggle button (only visible when persona is selected) -->
+      <button 
+        v-if="selectedPersona" 
+        class="toggle-btn" 
+        @click="toggleView"
+        :title="showImage ? 'Show Info' : 'Show Image'"
+      >
+        <i :class="showImage ? 'fa-solid fa-info' : 'fa-solid fa-image'"></i>
+      </button>
+      
+      <!-- Content display -->
+      <div v-if="!selectedPersona || !showImage" class="screen-secondary-content" :class="{ 'multi-line': selectedPersona }">
+        {{ displayText }}
+      </div>
+      
+      <!-- Image display -->
+      <div v-else class="image-display">
+        <img :src="getPersonaImage(selectedPersona.image)" :alt="selectedPersona.name" @error="handleImageError" />
+      </div>
     </div>
   </div>
 </template>
@@ -46,6 +120,48 @@ onMounted(() => {
   box-shadow: 
       0 0 30px rgba(0, 255, 65, 0.4),
       inset 0 0 20px rgba(0, 255, 65, 0.1);
+}
+
+.toggle-btn {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 24px;
+  height: 24px;
+  background: rgba(0, 255, 65, 0.2);
+  border: 1px solid #00ff41;
+  color: #00ff41;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  transition: all 0.2s ease;
+  z-index: 10;
+}
+
+.toggle-btn:hover {
+  background: rgba(0, 255, 65, 0.3);
+  box-shadow: 0 0 8px rgba(0, 255, 65, 0.5);
+}
+
+.image-display {
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  box-sizing: border-box;
+}
+
+.image-display img {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  filter: drop-shadow(0 0 10px rgba(0, 255, 65, 0.4));
+  border: 1px solid rgba(0, 255, 65, 0.3);
 }
 
 .screen-secondary .scan-line {
@@ -80,6 +196,19 @@ onMounted(() => {
   color: #00ff41;
   text-shadow: 0 0 10px rgba(0, 255, 65, 0.8);
   animation: flicker 3s infinite;
+  padding: 8px;
+  box-sizing: border-box;
+}
+
+.screen-secondary-content.multi-line {
+  font-size: 10px;
+  line-height: 1.4;
+  white-space: pre-line;
+  text-align: left;
+  align-items: flex-start;
+  padding-top: 12px;
+  overflow-y: auto;
+  justify-content: flex-start;
 }
 
 @keyframes scan {
