@@ -85,7 +85,7 @@ function autoResize() {
               v-model="message"
               @keydown="handleKeydown"
               @input="autoResize"
-              placeholder="Message Claude..."
+              placeholder="Use Shift+Enter for multi-line..."
               class="chat-input"
               ref="textareaRef"
               rows="1"

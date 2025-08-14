@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, onMounted } from 'vue'
+import { useLocalStorage, useNotification } from '@/composables/storage'
 
-// Chat controls form data based on connections.md spec
-const chatControls = ref({
+// Default chat controls based on connections.md spec
+const defaultChatControls = {
   system_or_instructions: '',
   temperature: 0.7,
   top_p: 1.0,
@@ -25,6 +26,23 @@ const chatControls = ref({
   // OpenAI reasoning model controls
   reasoning_effort: 'low',
   verbosity: 'medium'
+}
+
+// Storage management
+const { data: chatControls, save: saveToStorage, load: loadFromStorage } = useLocalStorage({
+  key: 'chat-controls',
+  defaultValue: defaultChatControls,
+  validate: (value) => {
+    return value && typeof value.temperature === 'number' && typeof value.top_p === 'number'
+  }
+})
+
+// Notification system
+const notification = useNotification()
+
+// Load data on component mount
+onMounted(() => {
+  loadFromStorage()
 })
 
 // State for managing stop sequences input
@@ -42,31 +60,17 @@ function removeStopSequence(index: number) {
 }
 
 function saveControls() {
-  console.log('Saving Chat controls:', chatControls.value)
-  // TODO: Send to backend
+  const success = saveToStorage()
+  if (success) {
+    notification.showSuccess('Chat controls saved successfully')
+  } else {
+    notification.showError('Failed to save chat controls')
+  }
 }
 
 function resetToDefaults() {
-  chatControls.value = {
-    system_or_instructions: '',
-    temperature: 0.7,
-    top_p: 1.0,
-    max_tokens: 1024,
-    presence_penalty: 0.0,
-    frequency_penalty: 0.0,
-    seed: null,
-    stop: [],
-    json_mode: 'off',
-    tools: [],
-    tool_choice: 'auto',
-    stream: true,
-    ollama_top_k: 40,
-    ollama_repeat_penalty: 1.1,
-    ollama_mirostat: 0,
-    ollama_num_ctx: 8192,
-    reasoning_effort: 'low',
-    verbosity: 'medium'
-  }
+  Object.assign(chatControls.value, structuredClone(defaultChatControls))
+  notification.showSuccess('Reset to default values')
 }
 </script>
 
@@ -316,7 +320,7 @@ function resetToDefaults() {
           />
           <span class="slider-value">{{ chatControls.ollama_num_ctx }}</span>
         </div>
-        <small class="form-hint">Maximum context length in tokens (default: 2048)</small>
+        <small class="form-hint">Maximum context length in tokens (default: 8192)</small>
       </div>
     </div>
 
@@ -360,6 +364,12 @@ function resetToDefaults() {
       </button>
     </div>
   </form>
+  
+  <!-- Notification Toast -->
+  <div v-if="notification.isVisible.value" class="notification-toast" :class="notification.type.value">
+    <i :class="notification.type.value === 'success' ? 'fa-solid fa-check' : 'fa-solid fa-exclamation-triangle'"></i>
+    {{ notification.message.value }}
+  </div>
 </template>
 
 <style scoped>
@@ -463,5 +473,43 @@ function resetToDefaults() {
   text-transform: uppercase;
   letter-spacing: 0.5px;
   margin: 0 0 16px 0;
+}
+
+.notification-toast {
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  padding: 12px 16px;
+  border-radius: 4px;
+  color: white;
+  font-weight: 600;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 250px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  animation: slideIn 0.3s ease;
+}
+
+.notification-toast.success {
+  background: linear-gradient(135deg, #10b981, #059669);
+  border: 1px solid #047857;
+}
+
+.notification-toast.error {
+  background: linear-gradient(135deg, #ef4444, #dc2626);
+  border: 1px solid #b91c1c;
+}
+
+@keyframes slideIn {
+  from {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
 }
 </style>

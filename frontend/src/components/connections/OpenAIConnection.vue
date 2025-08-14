@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { onMounted } from 'vue'
+import { useLocalStorage, useNotification } from '@/composables/storage'
 
-// OpenAI API connection form data
-const openaiConnection = ref({
+// Default OpenAI connection settings
+const defaultOpenAIConnection = {
   base_url: 'https://api.openai.com/v1',
   api_key: '',
   organization: '',
@@ -15,16 +16,48 @@ const openaiConnection = ref({
   stream: true,
   timeout_ms: 60000,
   extra_headers: {}
+}
+
+// Storage management
+const { data: openaiConnection, save: saveToStorage, load: loadFromStorage } = useLocalStorage({
+  key: 'openai-connection',
+  defaultValue: defaultOpenAIConnection,
+  validate: (value) => {
+    return value && typeof value.base_url === 'string' && typeof value.api_key === 'string'
+  }
+})
+
+// Notification system
+const notification = useNotification()
+
+// Load data on component mount
+onMounted(() => {
+  loadFromStorage()
 })
 
 function saveConnection() {
-  console.log('Saving OpenAI connection:', openaiConnection.value)
-  // TODO: Send to backend
+  if (!openaiConnection.value.api_key.trim()) {
+    notification.showError('API Key is required')
+    return
+  }
+  
+  if (!openaiConnection.value.default_model.trim()) {
+    notification.showError('Default Model is required')
+    return
+  }
+
+  const success = saveToStorage()
+  if (success) {
+    notification.showSuccess('OpenAI connection saved successfully')
+  } else {
+    notification.showError('Failed to save connection')
+  }
 }
 
 function testConnection() {
-  console.log('Testing OpenAI connection...')
-  // TODO: Test connection
+  console.log('Testing OpenAI connection...', openaiConnection.value)
+  // TODO: Implement actual connection test
+  notification.showSuccess('Connection test feature coming soon')
 }
 </script>
 
@@ -146,9 +179,53 @@ function testConnection() {
         </button>
       </div>
   </form>
+  
+  <!-- Notification Toast -->
+  <div v-if="notification.isVisible.value" class="notification-toast" :class="notification.type.value">
+    <i :class="notification.type.value === 'success' ? 'fa-solid fa-check' : 'fa-solid fa-exclamation-triangle'"></i>
+    {{ notification.message.value }}
+  </div>
 </template>
 
 <style scoped>
 @import '@/assets/buttons.css';
 @import '@/assets/form.css';
+
+.notification-toast {
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  padding: 12px 16px;
+  border-radius: 4px;
+  color: white;
+  font-weight: 600;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 250px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  animation: slideIn 0.3s ease;
+}
+
+.notification-toast.success {
+  background: linear-gradient(135deg, #10b981, #059669);
+  border: 1px solid #047857;
+}
+
+.notification-toast.error {
+  background: linear-gradient(135deg, #ef4444, #dc2626);
+  border: 1px solid #b91c1c;
+}
+
+@keyframes slideIn {
+  from {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
 </style>

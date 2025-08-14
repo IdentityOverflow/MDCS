@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { onMounted } from 'vue'
+import { useLocalStorage, useNotification } from '@/composables/storage'
 
-// Ollama connection form data
-const ollamaConnection = ref({
+// Default Ollama connection settings
+const defaultOllamaConnection = {
   host: 'http://localhost:11434',
   route: '/api/chat',
   model: '',
@@ -25,16 +26,43 @@ const ollamaConnection = ref({
     mirostat_eta: 0.1,
     stop: []
   }
+}
+
+// Storage management
+const { data: ollamaConnection, save: saveToStorage, load: loadFromStorage } = useLocalStorage({
+  key: 'ollama-connection',
+  defaultValue: defaultOllamaConnection,
+  validate: (value) => {
+    return value && typeof value.host === 'string' && typeof value.model === 'string'
+  }
+})
+
+// Notification system
+const notification = useNotification()
+
+// Load data on component mount
+onMounted(() => {
+  loadFromStorage()
 })
 
 function saveConnection() {
-  console.log('Saving Ollama connection:', ollamaConnection.value)
-  // TODO: Send to backend
+  if (!ollamaConnection.value.model.trim()) {
+    notification.showError('Model is required')
+    return
+  }
+
+  const success = saveToStorage()
+  if (success) {
+    notification.showSuccess('Ollama connection saved successfully')
+  } else {
+    notification.showError('Failed to save connection')
+  }
 }
 
 function testConnection() {
-  console.log('Testing Ollama connection...')
-  // TODO: Test connection
+  console.log('Testing Ollama connection...', ollamaConnection.value)
+  // TODO: Implement actual connection test
+  notification.showSuccess('Connection test feature coming soon')
 }
 </script>
 
@@ -118,9 +146,53 @@ function testConnection() {
         </button>
       </div>
   </form>
+  
+  <!-- Notification Toast -->
+  <div v-if="notification.isVisible.value" class="notification-toast" :class="notification.type.value">
+    <i :class="notification.type.value === 'success' ? 'fa-solid fa-check' : 'fa-solid fa-exclamation-triangle'"></i>
+    {{ notification.message.value }}
+  </div>
 </template>
 
 <style scoped>
 @import '@/assets/buttons.css';
 @import '@/assets/form.css';
+
+.notification-toast {
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  padding: 12px 16px;
+  border-radius: 4px;
+  color: white;
+  font-weight: 600;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 250px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  animation: slideIn 0.3s ease;
+}
+
+.notification-toast.success {
+  background: linear-gradient(135deg, #10b981, #059669);
+  border: 1px solid #047857;
+}
+
+.notification-toast.error {
+  background: linear-gradient(135deg, #ef4444, #dc2626);
+  border: 1px solid #b91c1c;
+}
+
+@keyframes slideIn {
+  from {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
 </style>
