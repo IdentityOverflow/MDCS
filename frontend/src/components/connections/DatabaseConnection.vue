@@ -1,198 +1,91 @@
 <script setup lang="ts">
-import { onMounted } from 'vue'
-import { useLocalStorage, useNotification } from '@/composables/storage'
-
-// Default PostgreSQL database connection settings
-const defaultDatabaseConnection = {
-  host: 'localhost',
-  port: 5432,
-  database: '',
-  username: '',
-  password: '',
-  ssl_mode: 'prefer',
-  connection_timeout: 30,
-  max_connections: 10,
-  idle_timeout: 300
-}
-
-// Storage management
-const { data: databaseConnection, save: saveToStorage, load: loadFromStorage } = useLocalStorage({
-  key: 'database-connection',
-  defaultValue: defaultDatabaseConnection,
-  validate: (value) => {
-    return value && typeof value.host === 'string' && typeof value.database === 'string'
-  }
-})
+import { useNotification } from '@/composables/storage'
 
 // Notification system
 const notification = useNotification()
 
-// Load data on component mount
-onMounted(() => {
-  loadFromStorage()
-})
-
-function saveConnection() {
-  if (!databaseConnection.value.database.trim()) {
-    notification.showError('Database name is required')
-    return
-  }
+async function testConnection() {
+  console.log('Testing Database connection via backend...')
   
-  if (!databaseConnection.value.username.trim()) {
-    notification.showError('Username is required')
-    return
+  try {
+    const response = await fetch('http://localhost:8000/api/database/test', {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    })
+    
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`)
+    }
+    
+    const result = await response.json()
+    
+    if (result.status === 'success') {
+      notification.showSuccess(`Database connected successfully! Database: ${result.database}, Version: ${result.version}`)
+    } else {
+      notification.showError(`Database connection failed: ${result.message}`)
+    }
+    
+  } catch (error) {
+    console.error('Database test failed:', error)
+    notification.showError(`Connection test failed: ${error instanceof Error ? error.message : 'Unknown error'}`)
   }
-  
-  if (!databaseConnection.value.password.trim()) {
-    notification.showError('Password is required')
-    return
-  }
-
-  const success = saveToStorage()
-  if (success) {
-    notification.showSuccess('Database connection saved successfully')
-  } else {
-    notification.showError('Failed to save connection')
-  }
-}
-
-function testConnection() {
-  console.log('Testing Database connection...', databaseConnection.value)
-  // TODO: Implement actual connection test
-  notification.showSuccess('Connection test feature coming soon')
 }
 </script>
 
 <template>
-  <form class="form" @submit.prevent="saveConnection">
-      <div class="form-group">
-        <label for="db-host">Host</label>
-        <input 
-          id="db-host"
-          v-model="databaseConnection.host" 
-          type="text" 
-          class="form-input"
-          placeholder="localhost"
-        />
-        <small class="form-hint">Database server hostname or IP address</small>
+  <div class="form">
+      <!-- Database Configuration Info -->
+      <div class="info-section">
+        <div class="info-header">
+          <i class="fa-solid fa-info-circle"></i>
+          <h3>Database Configuration</h3>
+        </div>
+        <div class="info-content">
+          <p>The database connection is configured via environment variables on the backend server. 
+          To set up the database connection, create or update the <code>.env</code> file in the backend directory with the following variables:</p>
+        </div>
       </div>
 
+      <!-- .env Example -->
       <div class="form-group">
-        <label for="db-port">Port</label>
-        <input 
-          id="db-port"
-          v-model.number="databaseConnection.port" 
-          type="number" 
-          class="form-input"
-          min="1"
-          max="65535"
-          placeholder="5432"
-        />
-        <small class="form-hint">Database server port (default: 5432)</small>
+        <label>Required Environment Variables</label>
+        <div class="code-block">
+          <pre><code># Database connection settings
+DB_HOST=localhost
+DB_PORT=5432
+DB_NAME=postgres
+DB_USER=postgres
+DB_PASSWORD=yourStrongPasswordHere
+
+# Optional: connection URL format
+DATABASE_URL=postgresql://postgres:yourStrongPasswordHere@localhost:5432/postgres</code></pre>
+        </div>
+        <small class="form-hint">Copy this template and update with your PostgreSQL database credentials</small>
       </div>
 
-      <div class="form-group">
-        <label for="db-database">Database *</label>
-        <input 
-          id="db-database"
-          v-model="databaseConnection.database" 
-          type="text" 
-          class="form-input"
-          placeholder="project2501"
-          required
-        />
-        <small class="form-hint">Name of the database to connect to</small>
-      </div>
-
-      <div class="form-group">
-        <label for="db-username">Username *</label>
-        <input 
-          id="db-username"
-          v-model="databaseConnection.username" 
-          type="text" 
-          class="form-input"
-          placeholder="postgres"
-          required
-        />
-        <small class="form-hint">Database username</small>
-      </div>
-
-      <div class="form-group">
-        <label for="db-password">Password *</label>
-        <input 
-          id="db-password"
-          v-model="databaseConnection.password" 
-          type="password" 
-          class="form-input"
-          placeholder="••••••••"
-          required
-        />
-        <small class="form-hint">Database password</small>
-      </div>
-
-      <div class="form-group">
-        <label for="db-ssl-mode">SSL Mode</label>
-        <select id="db-ssl-mode" v-model="databaseConnection.ssl_mode" class="form-select">
-          <option value="disable">Disable</option>
-          <option value="allow">Allow</option>
-          <option value="prefer">Prefer</option>
-          <option value="require">Require</option>
-          <option value="verify-ca">Verify CA</option>
-          <option value="verify-full">Verify Full</option>
-        </select>
-        <small class="form-hint">SSL connection mode for secure connections</small>
-      </div>
-
-      <div class="form-group">
-        <label for="db-connection-timeout">Connection Timeout (seconds)</label>
-        <input 
-          id="db-connection-timeout"
-          v-model.number="databaseConnection.connection_timeout" 
-          type="number" 
-          class="form-input"
-          min="1"
-          max="300"
-        />
-        <small class="form-hint">Maximum time to wait for connection</small>
-      </div>
-
-      <div class="form-group">
-        <label for="db-max-connections">Max Connections</label>
-        <input 
-          id="db-max-connections"
-          v-model.number="databaseConnection.max_connections" 
-          type="number" 
-          class="form-input"
-          min="1"
-          max="100"
-        />
-        <small class="form-hint">Maximum number of concurrent connections</small>
-      </div>
-
-      <div class="form-group">
-        <label for="db-idle-timeout">Idle Timeout (seconds)</label>
-        <input 
-          id="db-idle-timeout"
-          v-model.number="databaseConnection.idle_timeout" 
-          type="number" 
-          class="form-input"
-          min="1"
-          max="3600"
-        />
-        <small class="form-hint">Time before idle connections are closed</small>
+      <!-- Setup Instructions -->
+      <div class="info-section">
+        <div class="info-content">
+          <h4>Setup Instructions:</h4>
+          <ol>
+            <li>Create a <code>.env</code> file in the backend directory</li>
+            <li>Copy the environment variables above into the file</li>
+            <li>Update the values with your actual database credentials</li>
+            <li>Restart the backend server to apply changes</li>
+            <li>Use the "Test Connection" button below to verify the connection</li>
+          </ol>
+        </div>
       </div>
 
       <div class="form-actions">
-        <button type="button" @click="testConnection" class="action-btn cancel-btn">
+        <button type="button" @click="testConnection" class="action-btn save-btn">
           <i class="fa-solid fa-plug"></i>
           Test Connection
         </button>
-        <button type="submit" class="action-btn save-btn">
-          <i class="fa-solid fa-save"></i>
-          Save Configuration
-        </button>
       </div>
-  </form>
+  </div>
   
   <!-- Notification Toast -->
   <div v-if="notification.isVisible.value" class="notification-toast" :class="notification.type.value">
@@ -204,6 +97,93 @@ function testConnection() {
 <style scoped>
 @import '@/assets/buttons.css';
 @import '@/assets/form.css';
+
+.info-section {
+  margin-bottom: 24px;
+  padding: 16px;
+  background: rgba(0, 212, 255, 0.05);
+  border: 1px solid rgba(0, 212, 255, 0.2);
+  border-radius: 0;
+  clip-path: polygon(0 0, calc(100% - 8px) 0, 100% 8px, 100% 100%, 0 100%);
+}
+
+.info-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.info-header i {
+  color: var(--accent);
+  font-size: 1.2em;
+}
+
+.info-header h3 {
+  color: var(--fg);
+  font-size: 1em;
+  font-weight: 600;
+  margin: 0;
+}
+
+.info-content {
+  color: var(--fg);
+  line-height: 1.5;
+}
+
+.info-content p {
+  margin: 0 0 12px 0;
+  opacity: 0.9;
+}
+
+.info-content h4 {
+  color: var(--accent);
+  font-size: 0.9em;
+  font-weight: 600;
+  margin: 0 0 8px 0;
+}
+
+.info-content ol {
+  margin: 0;
+  padding-left: 20px;
+  opacity: 0.9;
+}
+
+.info-content ol li {
+  margin-bottom: 4px;
+}
+
+.info-content code {
+  background: rgba(0, 255, 255, 0.1);
+  color: var(--accent);
+  padding: 2px 6px;
+  border-radius: 2px;
+  font-family: monospace;
+  font-size: 0.9em;
+}
+
+.code-block {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 0;
+  padding: 16px;
+  margin: 8px 0;
+  overflow-x: auto;
+}
+
+.code-block pre {
+  margin: 0;
+  color: var(--fg);
+  font-family: monospace;
+  font-size: 0.85em;
+  line-height: 1.4;
+}
+
+.code-block code {
+  background: none;
+  color: inherit;
+  padding: 0;
+}
 
 .notification-toast {
   position: fixed;
