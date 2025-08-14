@@ -1,0 +1,134 @@
+/* Card Component Styles - Shared across PersonaCard and ModuleCard */
+
+.card-base {
+  background: linear-gradient(135deg, var(--bg) 0%, var(--secondary) 100%);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--border);
+  border-radius: 0;
+  padding: 16px;
+  transition: all 0.3s ease;
+  box-shadow: inset 0 0 10px rgba(0, 212, 255, 0.1);
+  position: relative;
+  clip-path: polygon(0 0, 108% 0, 100% calc(100% - 12px), calc(100% - 12px) 100%, 0 100%);
+}
+
+.card-base::before {
+  content: '';
+  position: absolute;
+  bottom: 8px;
+  right: 0;
+  width: 16px;
+  height: 1px;
+  background: var(--border);
+  transform: rotate(-45deg);
+  transform-origin: right center;
+  transition: all 0.3s ease;
+}
+
+.card-base:hover {
+  border-color: var(--fg);
+  border-left-color: var(--fg);
+  box-shadow: 0 0 15px var(--glow);
+  background: linear-gradient(135deg, var(--secondary) 0%, var(--surface) 100%);
+}
+
+.card-base:hover::before {
+  background: var(--fg);
+}
+
+.card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 12px;
+}
+
+.card-actions {
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.card-icon-btn {
+  width: 28px;
+  height: 28px;
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--fg);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+  font-size: 0.8em;
+}
+
+.card-icon-btn:hover {
+  background: var(--surface);
+  border-color: var(--fg);
+  box-shadow: 0 0 5px var(--glow);
+}
+
+.card-icon-btn.edit-btn:hover {
+  color: var(--border);
+}
+
+.card-icon-btn.delete-btn:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+.card-title {
+  color: var(--fg);
+  font-size: 1.1em;
+  font-weight: 600;
+  margin: 0 0 4px 0;
+  word-wrap: break-word;
+}
+
+.card-description {
+  color: var(--fg);
+  font-size: 0.9em;
+  line-height: 1.4;
+  margin: 0;
+  opacity: 0.8;
+}
+
+.card-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  font-size: 0.7em;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  border-radius: 0;
+  border: 1px solid;
+}
+
+.card-badge.primary {
+  color: var(--fg);
+  border-color: var(--border);
+  background: rgba(0, 255, 255, 0.1);
+}
+
+.card-badge.accent {
+  color: var(--accent);
+  border-color: var(--accent);
+  background: rgba(255, 0, 110, 0.1);
+}
+
+/* Clickable card variant */
+.card-base.clickable {
+  cursor: pointer;
+  min-height: 120px;
+}
+
+.card-base.clickable .card-header {
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.card-base.clickable .card-title {
+  flex: 1;
+}

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, nextTick } from 'vue'
+import ChatControls from './connections/ChatControls.vue'
 
 const message = ref('')
 const showSliders = ref(false)
@@ -53,17 +54,16 @@ function autoResize() {
     <!-- Floating input container -->
     <div class="floating-input-container">
       <div class="input-card">
-        <!-- Sliders panel (appears above input when active) -->
-        <div v-if="showSliders" class="sliders-panel">
-          <div class="slider-group">
-            <label>Temperature</label>
-            <input type="range" min="0" max="2" step="0.1" value="0.7" class="slider" />
-            <span class="slider-value">0.7</span>
+        <!-- Chat Controls panel (appears above input when active) -->
+        <div v-if="showSliders" class="chat-controls-panel">
+          <div class="controls-header">
+            <h3>Chat Controls</h3>
+            <button class="close-btn" @click="toggleSliders">
+              <i class="fa-solid fa-times"></i>
+            </button>
           </div>
-          <div class="slider-group">
-            <label>Max Tokens</label>
-            <input type="range" min="1" max="4000" step="50" value="1000" class="slider" />
-            <span class="slider-value">1000</span>
+          <div class="controls-content">
+            <ChatControls />
           </div>
         </div>
         
@@ -176,64 +176,54 @@ function autoResize() {
   transform-origin: right center;
 }
 
-/* Sliders panel */
-.sliders-panel {
+/* Chat Controls panel */
+.chat-controls-panel {
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+  max-height: 60vh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.controls-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
   padding: 16px;
   border-bottom: 1px solid var(--border);
   background: var(--bg);
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
 }
 
-.slider-group {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
-.slider-group label {
+.controls-header h3 {
   color: var(--fg);
-  font-size: 0.75em;
+  font-size: 1em;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.5px;
-  min-width: 70px;
-  opacity: 0.8;
+  margin: 0;
 }
 
-.slider {
-  flex: 1;
-  height: 3px;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  outline: none;
-  cursor: pointer;
-  appearance: none;
-}
-
-.slider::-webkit-slider-thumb {
-  appearance: none;
-  width: 14px;
-  height: 14px;
-  background: linear-gradient(135deg, var(--border) 0%, var(--fg) 100%);
-  border: 1px solid var(--fg);
-  cursor: pointer;
-  clip-path: polygon(0 0, calc(100% - 3px) 0, 100% 3px, 100% 100%, 0 100%);
-}
-
-.slider::-webkit-slider-thumb:hover {
-  background: linear-gradient(135deg, var(--fg) 0%, var(--accent) 100%);
-  box-shadow: 0 0 6px var(--glow);
-}
-
-.slider-value {
+.close-btn {
+  background: none;
+  border: none;
   color: var(--fg);
-  font-size: 0.75em;
-  font-weight: 500;
-  min-width: 40px;
-  text-align: right;
+  cursor: pointer;
+  font-size: 1.2em;
   opacity: 0.7;
+  transition: opacity 0.2s ease;
+  padding: 4px;
+}
+
+.close-btn:hover {
+  opacity: 1;
+  color: var(--accent);
+}
+
+.controls-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px;
 }
 
 /* Input row */

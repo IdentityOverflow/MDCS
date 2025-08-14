@@ -1,0 +1,154 @@
+<script setup lang="ts">
+import { ref } from 'vue'
+
+// OpenAI API connection form data
+const openaiConnection = ref({
+  base_url: 'https://api.openai.com/v1',
+  api_key: '',
+  organization: '',
+  project: '',
+  api_type: 'openai',
+  api_version: '',
+  deployment: '',
+  default_model: '',
+  compatibility_mode: 'responses',
+  stream: true,
+  timeout_ms: 60000,
+  extra_headers: {}
+})
+
+function saveConnection() {
+  console.log('Saving OpenAI connection:', openaiConnection.value)
+  // TODO: Send to backend
+}
+
+function testConnection() {
+  console.log('Testing OpenAI connection...')
+  // TODO: Test connection
+}
+</script>
+
+<template>
+  <form class="form" @submit.prevent="saveConnection">
+      <div class="form-group">
+        <label for="openai-base-url">Base URL</label>
+        <input 
+          id="openai-base-url"
+          v-model="openaiConnection.base_url" 
+          type="text" 
+          class="form-input"
+          placeholder="https://api.openai.com/v1"
+        />
+        <small class="form-hint">Root API URL. For Azure/OpenAI-compatible vendors, set their base endpoint</small>
+      </div>
+
+      <div class="form-group">
+        <label for="openai-api-key">API Key *</label>
+        <input 
+          id="openai-api-key"
+          v-model="openaiConnection.api_key" 
+          type="password" 
+          class="form-input"
+          placeholder="sk-..."
+          required
+        />
+        <small class="form-hint">Bearer token used for Authorization header</small>
+      </div>
+
+      <div class="form-group">
+        <label for="openai-model">Default Model *</label>
+        <input 
+          id="openai-model"
+          v-model="openaiConnection.default_model" 
+          type="text" 
+          class="form-input"
+          placeholder="gpt-4o"
+          required
+        />
+        <small class="form-hint">Model ID (e.g., gpt-4.1, gpt-4o, etc.) or Azure deployment name</small>
+      </div>
+
+      <div class="form-group">
+        <label for="openai-organization">Organization</label>
+        <input 
+          id="openai-organization"
+          v-model="openaiConnection.organization" 
+          type="text" 
+          class="form-input"
+          placeholder="org-..."
+        />
+        <small class="form-hint">Optional OpenAI org header (OpenAI-Organization)</small>
+      </div>
+
+      <div class="form-group">
+        <label for="openai-project">Project</label>
+        <input 
+          id="openai-project"
+          v-model="openaiConnection.project" 
+          type="text" 
+          class="form-input"
+          placeholder="proj_..."
+        />
+        <small class="form-hint">Optional OpenAI project header (OpenAI-Project)</small>
+      </div>
+
+      <div class="form-group">
+        <label for="openai-api-type">API Type</label>
+        <select id="openai-api-type" v-model="openaiConnection.api_type" class="form-select">
+          <option value="openai">OpenAI</option>
+          <option value="other">Other</option>
+        </select>
+        <small class="form-hint">Needed to shape paths/headers</small>
+      </div>
+
+      <div class="form-group">
+        <label for="openai-compatibility-mode">Compatibility Mode</label>
+        <select id="openai-compatibility-mode" v-model="openaiConnection.compatibility_mode" class="form-select">
+          <option value="responses">Responses API</option>
+          <option value="chat_completions">Chat Completions</option>
+        </select>
+        <small class="form-hint">Prefer Responses API for new builds; fall back to Chat Completions when required</small>
+      </div>
+
+      <div class="form-group">
+        <label for="openai-timeout">Timeout (ms)</label>
+        <input 
+          id="openai-timeout"
+          v-model.number="openaiConnection.timeout_ms" 
+          type="number" 
+          class="form-input"
+          min="1000"
+          max="300000"
+        />
+        <small class="form-hint">Client request timeout</small>
+      </div>
+
+      <div class="form-group">
+        <label class="form-checkbox-label">
+          <input 
+            v-model="openaiConnection.stream" 
+            type="checkbox" 
+            class="form-checkbox"
+          />
+          <span class="form-checkbox-custom"></span>
+          Enable SSE streaming
+        </label>
+      </div>
+
+      <div class="form-actions">
+        <button type="button" @click="testConnection" class="action-btn cancel-btn">
+          <i class="fa-solid fa-plug"></i>
+          Test Connection
+        </button>
+        <button type="submit" class="action-btn save-btn">
+          <i class="fa-solid fa-save"></i>
+          Save Configuration
+        </button>
+      </div>
+  </form>
+</template>
+
+<style scoped>
+@import '@/assets/buttons.css';
+@import '@/assets/form.css';
+</style>

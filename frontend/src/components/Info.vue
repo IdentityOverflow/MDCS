@@ -1,17 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
-
-interface Persona {
-  id: string
-  name: string
-  description: string
-  model: string
-  template: string
-  mode: 'autonomous' | 'reactive'
-  loop_frequency?: number
-  first_message?: string
-  image: string
-}
+import type { Persona } from '@/types'
+import { getPersonaImage, handleImageError, countComponents } from '@/composables/utils'
 
 const props = defineProps<{
   selectedPersona: Persona | null
@@ -38,25 +28,11 @@ const displayText = computed(() => {
   return secondaryScreenText.value
 })
 
-function countComponents(template: string): number {
-  const matches = template.match(/\{[^}]*_module\}/g) || template.match(/\{[^}]*module[^}]*\}/g)
-  return matches ? matches.length : 0
-}
 
 function toggleView() {
   showImage.value = !showImage.value
 }
 
-function getPersonaImage(imagePath: string): string {
-  return imagePath || '/src/assets/persona.png'
-}
-
-function handleImageError(event: Event) {
-  const img = event.target as HTMLImageElement
-  if (img.src !== '/src/assets/persona.png') {
-    img.src = '/src/assets/persona.png'
-  }
-}
 
 onMounted(() => {
   setInterval(() => {
