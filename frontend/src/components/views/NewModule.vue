@@ -1,6 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
-import { generateUniqueId } from '@/composables/utils'
+import { ref } from 'vue'
 
 const emit = defineEmits<{
   back: []
@@ -8,7 +7,6 @@ const emit = defineEmits<{
 
 // Form data
 const formData = ref({
-  id: '',
   name: '',
   description: '',
   content: '',
@@ -18,10 +16,6 @@ const formData = ref({
   timing: 'before' as 'before' | 'after' | 'custom'
 })
 
-// Generate unique ID on mount
-onMounted(() => {
-  formData.value.id = generateUniqueId('module')
-})
 
 
 function goBack() {
@@ -44,17 +38,6 @@ function saveModule() {
     </div>
     <div class="form-content-area">
       <form class="form" @submit.prevent>
-        <!-- ID -->
-        <div class="form-group">
-          <label>ID</label>
-          <input 
-            type="text" 
-            :value="formData.id" 
-            readonly 
-            class="form-input readonly"
-          >
-        </div>
-
         <!-- Name -->
         <div class="form-group">
           <label>Name</label>
@@ -127,7 +110,7 @@ function saveModule() {
             <select v-model="formData.timing" class="form-select">
               <option value="before">Before</option>
               <option value="after">After</option>
-              <option value="custom">Custom</option>
+              <option value="custom">On demand</option>
             </select>
           </div>
         </div>

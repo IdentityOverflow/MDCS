@@ -1,6 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
-import { generateUniqueId } from '@/composables/utils'
+import { ref } from 'vue'
 
 const emit = defineEmits<{
   back: []
@@ -8,7 +7,6 @@ const emit = defineEmits<{
 
 // Form data
 const formData = ref({
-  id: '',
   name: '',
   description: '',
   model: '',
@@ -23,10 +21,6 @@ const imagePreview = ref('')
 const dragOver = ref(false)
 const fileInput = ref<HTMLInputElement>()
 
-// Generate unique ID on mount
-onMounted(() => {
-  formData.value.id = generateUniqueId('persona')
-})
 
 
 function goBack() {
@@ -129,17 +123,6 @@ function savePersona() {
               <small>Supports: PNG, JPG, GIF</small>
             </div>
           </div>
-        </div>
-
-        <!-- ID -->
-        <div class="form-group">
-          <label>ID</label>
-          <input 
-            type="text" 
-            :value="formData.id" 
-            readonly 
-            class="form-input readonly"
-          >
         </div>
 
         <!-- Name -->

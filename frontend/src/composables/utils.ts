@@ -1,13 +1,6 @@
 // Shared utility functions
 
 /**
- * Generates a unique ID with a prefix
- */
-export function generateUniqueId(prefix: string = 'item'): string {
-  return `${prefix}_${Math.random().toString(36).substring(2, 11)}_${Date.now().toString(36)}`
-}
-
-/**
  * Truncates a description to a specified length
  */
 export function truncateDescription(description: string, maxLength: number = 100): string {
