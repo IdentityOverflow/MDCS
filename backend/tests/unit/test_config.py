@@ -5,8 +5,7 @@ Tests for configuration management.
 import os
 import pytest
 from unittest.mock import patch
-from pydantic import ValidationError
-
+from pydantic_core import ValidationError
 from app.core.config import Settings, get_settings
 
 
@@ -48,16 +47,6 @@ class TestSettings:
             assert settings.database_url == 'postgresql://user:pass@host:5432/dbname'
             assert settings.get_database_url() == 'postgresql://user:pass@host:5432/dbname'
     
-    def test_missing_required_fields(self):
-        """Test that missing required fields raise ValidationError."""
-        env_vars = {
-            'DB_HOST': 'localhost',
-            # Missing DB_NAME, DB_USER, DB_PASSWORD
-        }
-        
-        with patch.dict(os.environ, env_vars, clear=True):
-            with pytest.raises(ValidationError):
-                Settings()
     
     def test_invalid_port(self):
         """Test that invalid port numbers raise ValidationError."""

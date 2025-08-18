@@ -11,8 +11,8 @@
 
 ### The Problem
 Traditional LLM interactions use static system prompts that get buried or lost as conversations grow, leading to:
-- **Context rot**: Important instructions disappear when context windows fill
-- **Memory loss**: AI forgets crucial information from earlier in conversations
+- **Context rot**: This is a subtle yet critical phenomenon in large language models (LLMs), where the model's performance begins to deteriorate as the amount of input increases.
+- **Memory loss**: AI forgets crucial information or instructions from earlier in conversation.
 - **Inflexibility**: Cannot adapt behavior dynamically based on conversation state
 - **Limited persistence**: Each session starts from scratch
 
@@ -28,12 +28,12 @@ We create:
 ```
 
 ### Module System
-- **Simple Modules**: Static text templates (personalities, instructions, tools)
-- **Advanced Modules**: Python scripts that update dynamically (memory, context, time, custom logic)
-- **Self-Modifying**: AI can update its own modules, creating evolving **personas**
+- **Simple Modules**: Static text templates (personalities, instructions, tools, etc.)
+- **Advanced Modules**: Python scripts that update dynamically (memory, context, time, custom logic, etc.)
+- **Self-Modifying**: AI can update some of its own modules, creating evolving **personas**
 
 ### Key Innovation
-This enables **infinite conversations with perfect memory**, **composable AI personas**, and **self-evolving cognitive architectures** - essentially creating a framework for building any type of AI agent or interactive system imaginable.
+This enables **infinite conversations with adaptive memory**, **composable AI personas**, and **self-evolving cognitive architectures** - essentially creating a framework for building any type of AI agent or interactive system imaginable.
 
 ### Vision
 A model-agnostic platform where users can design, share, and evolve sophisticated AI personas through an intuitive web interface, powered by a modular Python backend.
@@ -47,7 +47,7 @@ A model-agnostic platform where users can design, share, and evolve sophisticate
 **Data Layer**
 - **Database**: PostgreSQL with pgvector extension
   - **Relational data**: personas, modules, templates, conversations
-  - **Vector storage**: Future AI embeddings, semantic search capabilities
+  - **Vector storage**: Future AI embeddings, semantic search capabilities (future plans)
   - **ACID compliance** for data integrity
   - **Excellent Python ecosystem support**
 
@@ -65,7 +65,6 @@ A model-agnostic platform where users can design, share, and evolve sophisticate
 - **Golden Ratio Layout**: Responsive viewport management
 - **Persona Management**: Visual editing interface for personas/modules/templates
 - **State Management**: Pinia for complex application state
-- **UI Framework**: [To be decided - Vuetify, Quasar, or custom?]
 
 ### Core System Modules
 
@@ -102,7 +101,7 @@ A model-agnostic platform where users can design, share, and evolve sophisticate
 ---
 
 ## 🧩 Module System Design
-*Based on previous implementation insights*
+*Based on previous prototypes implementation insights*
 
 ### Module Types
 
@@ -119,13 +118,13 @@ A model-agnostic platform where users can design, share, and evolve sophisticate
   - Before AI Response  
   - On demand
 - Access to conversation state, history, and helper functions
-- Use case: Memory management, dynamic context, self-modifying behavior
+- Use case examples: Memory management, dynamic context, self-modifying behavior
 
 ### Template System
 - Uses placeholder syntax: `{module_name}`
 - Template defines how modules are arranged in final prompt
 - Modules are resolved at runtime before sending to AI
-- Available modules shown as insertable buttons
+- Available modules shown as a list of drag-and-drop insetable items
 - Support for saved/loaded template presets
 
 ### Module Features Observed
@@ -307,7 +306,7 @@ Previous implementation suffered from **AI context loss during development** - e
 13. **Documentation Tools**: Auto-generation tools for Python (Sphinx?) vs manual architectural docs?
 14. **Testing Framework**: Unit testing approach for AI-dependent modules?
 15. **CI/CD Pipeline**: Automated testing and deployment strategy?
-16. **Code Organization**: Monorepo vs separate repos for frontend/backend?
+16. **Code Organization**: Separate repos for frontend/backend? ✓
 
 ### Technical Improvements
 17. **Performance**: Strategies for handling many concurrent advanced modules?

@@ -6,32 +6,35 @@ Loads environment variables from .env file and provides validated configuration.
 import os
 from typing import Optional
 from pydantic_settings import BaseSettings
-from pydantic import Field, validator
+from pydantic import Field, field_validator, ConfigDict
 
 
 class Settings(BaseSettings):
     """Application settings loaded from environment variables."""
     
     # Database configuration
-    db_host: str = Field(..., env='DB_HOST', description="Database host")
-    db_port: int = Field(5432, env='DB_PORT', description="Database port")
-    db_name: str = Field(..., env='DB_NAME', description="Database name")
-    db_user: str = Field(..., env='DB_USER', description="Database user")
-    db_password: str = Field(..., env='DB_PASSWORD', description="Database password")
+    db_host: str = Field(..., description="Database host")
+    db_port: int = Field(5432, description="Database port")
+    db_name: str = Field(..., description="Database name")
+    db_user: str = Field(..., description="Database user")
+    db_password: str = Field(..., description="Database password")
     
     # Optional database URL (if provided, overrides individual settings)
-    database_url: Optional[str] = Field(None, env='DATABASE_URL', description="Complete database URL")
+    database_url: Optional[str] = Field(None, description="Complete database URL")
     
     # Application settings
     app_name: str = Field("Project 2501 Backend", description="Application name")
-    debug: bool = Field(False, env='DEBUG', description="Debug mode")
+    debug: bool = Field(False, description="Debug mode")
     
-    class Config:
-        env_file = ".env"
-        env_file_encoding = "utf-8"
-        case_sensitive = False
+    model_config = ConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        case_sensitive=False,
+        env_prefix=""
+    )
     
-    @validator('db_port')
+    @field_validator('db_port')
+    @classmethod
     def validate_port(cls, v):
         if not (1 <= v <= 65535):
             raise ValueError('Port must be between 1 and 65535')

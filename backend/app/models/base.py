@@ -6,7 +6,7 @@ from datetime import datetime
 from typing import Any
 
 from sqlalchemy import Column, Integer, DateTime, String
-from sqlalchemy.ext.declarative import declarative_base, declared_attr
+from sqlalchemy.orm import declarative_base, declared_attr
 from sqlalchemy.sql import func
 
 

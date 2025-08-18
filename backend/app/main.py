@@ -84,28 +84,27 @@ def create_app() -> FastAPI:
     # Include routers
     app.include_router(database_router, prefix="/api", tags=["database"])
     
+    # Add main routes
+    @app.get("/")
+    async def root():
+        """Root endpoint."""
+        settings = get_settings()
+        return {
+            "message": f"Welcome to {settings.app_name}",
+            "version": "0.1.0",
+            "status": "running"
+        }
+
+    @app.get("/health")
+    async def health_check():
+        """Health check endpoint."""
+        return {"status": "healthy", "service": "project2501-backend"}
+    
     return app
 
 
 # Create the application instance
 app = create_app()
-
-
-@app.get("/")
-async def root():
-    """Root endpoint."""
-    settings = get_settings()
-    return {
-        "message": f"Welcome to {settings.app_name}",
-        "version": "0.1.0",
-        "status": "running"
-    }
-
-
-@app.get("/health")
-async def health_check():
-    """Health check endpoint."""
-    return {"status": "healthy", "service": "project2501-backend"}
 
 
 if __name__ == "__main__":

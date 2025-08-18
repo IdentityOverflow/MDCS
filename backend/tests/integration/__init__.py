@@ -1,0 +1,1 @@
+"""Integration tests for Project 2501 backend."""

@@ -1,18 +1,29 @@
 <script setup lang="ts">
 import { useNotification } from '@/composables/storage'
+import { useApiConfig } from '@/composables/apiConfig'
 
-// Notification system
+// Configuration and notification systems
 const notification = useNotification()
+const apiConfig = useApiConfig()
+
+// Save API configuration
+function saveApiConfig() {
+  apiConfig.saveConfig()
+  notification.showSuccess('API configuration saved successfully!')
+}
+
+// Reset API configuration to defaults
+function resetApiConfig() {
+  apiConfig.resetToDefaults()
+  notification.showSuccess('API configuration reset to defaults')
+}
 
 async function testConnection() {
-  console.log('Testing Database connection via backend...')
+  console.log(`Testing Database connection via ${apiConfig.baseURL.value}...`)
   
   try {
-    const response = await fetch('http://localhost:8000/api/database/test', {
-      method: 'GET',
-      headers: {
-        'Content-Type': 'application/json',
-      },
+    const response = await apiConfig.apiRequest('/api/database/test', {
+      method: 'GET'
     })
     
     if (!response.ok) {
@@ -22,7 +33,7 @@ async function testConnection() {
     const result = await response.json()
     
     if (result.status === 'success') {
-      notification.showSuccess(`Database connected successfully! Database: ${result.database}, Version: ${result.version}`)
+      notification.showSuccess(`Database connected successfully! Database: ${result.database}`)
     } else {
       notification.showError(`Database connection failed: ${result.message}`)
     }
@@ -36,15 +47,80 @@ async function testConnection() {
 
 <template>
   <div class="form">
-      <!-- Database Configuration Info -->
+      <!-- Backend Setup Info -->
       <div class="info-section">
         <div class="info-header">
           <i class="fa-solid fa-info-circle"></i>
-          <h3>Database Configuration</h3>
+          <h3>Backend Setup</h3>
         </div>
         <div class="info-content">
-          <p>The database connection is configured via environment variables on the backend server. 
-          To set up the database connection, create or update the <code>.env</code> file in the backend directory with the following variables:</p>
+          <p>Configure your backend connection and database. Create a <code>.env</code> file in the backend directory with database credentials.</p>
+        </div>
+      </div>
+
+      <!-- Backend Connection Configuration -->
+      <div class="connection-config">
+        <h4 class="config-title">
+          <i class="fa-solid fa-server"></i>
+          Backend Connection
+        </h4>
+        
+        <div class="form-row">
+          <div class="form-group">
+            <label for="api-protocol">Protocol</label>
+            <select id="api-protocol" v-model="apiConfig.protocol.value" class="form-select">
+              <option value="http">HTTP</option>
+              <option value="https">HTTPS</option>
+            </select>
+          </div>
+
+          <div class="form-group">
+            <label for="api-host">Host</label>
+            <input 
+              id="api-host"
+              type="text" 
+              v-model="apiConfig.host.value" 
+              class="form-input" 
+              placeholder="localhost"
+            />
+          </div>
+
+          <div class="form-group">
+            <label for="api-port">Port</label>
+            <input 
+              id="api-port"
+              type="number" 
+              v-model.number="apiConfig.port.value" 
+              class="form-input" 
+              min="1" 
+              max="65535"
+              placeholder="8000"
+            />
+          </div>
+        </div>
+
+        <!-- Current URL Display -->
+        <div class="form-group">
+          <label>API Base URL</label>
+          <div class="url-display">
+            <code>{{ apiConfig.baseURL.value }}</code>
+          </div>
+        </div>
+
+        <!-- Actions -->
+        <div class="form-actions inline-actions">
+          <button type="button" @click="saveApiConfig" class="action-btn save-btn">
+            <i class="fa-solid fa-save"></i>
+            Save
+          </button>
+          <button type="button" @click="resetApiConfig" class="action-btn secondary-btn">
+            <i class="fa-solid fa-undo"></i>
+            Reset
+          </button>
+          <button type="button" @click="testConnection" class="action-btn save-btn">
+            <i class="fa-solid fa-plug"></i>
+            Test Connection
+          </button>
         </div>
       </div>
 
@@ -79,12 +155,6 @@ DATABASE_URL=postgresql://postgres:yourStrongPasswordHere@localhost:5432/postgre
         </div>
       </div>
 
-      <div class="form-actions">
-        <button type="button" @click="testConnection" class="action-btn save-btn">
-          <i class="fa-solid fa-plug"></i>
-          Test Connection
-        </button>
-      </div>
   </div>
   
   <!-- Notification Toast -->
@@ -221,5 +291,79 @@ DATABASE_URL=postgresql://postgres:yourStrongPasswordHere@localhost:5432/postgre
     transform: translateX(0);
     opacity: 1;
   }
+}
+
+/* Connection Configuration Section */
+.connection-config {
+  background: rgba(0, 212, 255, 0.03);
+  border: 1px solid rgba(0, 212, 255, 0.15);
+  border-radius: 0;
+  padding: 20px;
+  margin: 16px 0;
+  clip-path: polygon(0 0, calc(100% - 8px) 0, 100% 8px, 100% 100%, 0 100%);
+}
+
+.config-title {
+  color: var(--accent);
+  font-size: 1em;
+  font-weight: 600;
+  margin: 0 0 16px 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Form Row Layout */
+.form-row {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 16px;
+  align-items: end;
+  margin-bottom: 16px;
+}
+
+.form-row .form-group {
+  margin: 0;
+}
+
+/* Override form-actions default justify-content for inline layout */
+.form-actions.inline-actions {
+  justify-content: flex-start;
+}
+
+/* URL Display */
+.url-display {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 0;
+  padding: 12px;
+  margin: 8px 0;
+  display: flex;
+  align-items: center;
+}
+
+.url-display code {
+  background: none;
+  color: var(--accent);
+  font-family: monospace;
+  font-size: 0.9em;
+  font-weight: 600;
+  padding: 0;
+}
+
+/* Secondary Button */
+.secondary-btn {
+  background: var(--surface);
+  color: var(--fg);
+  border: 1px solid var(--border);
+}
+
+.secondary-btn:hover {
+  background: rgba(0, 212, 255, 0.1);
+  border-color: var(--accent);
+}
+
+.secondary-btn:active {
+  background: rgba(0, 212, 255, 0.2);
 }
 </style>

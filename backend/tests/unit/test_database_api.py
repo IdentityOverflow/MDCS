@@ -107,7 +107,7 @@ class TestDatabaseInfoEndpoint:
         })
         mock_get_db_manager.return_value = mock_db_manager
         
-        with patch('app.api.database.Base') as mock_base:
+        with patch('app.models.Base') as mock_base:
             mock_base.metadata.tables.keys.return_value = ["conversations", "messages", "personas"]
             
             response = client.get("/api/database/info")
@@ -155,7 +155,7 @@ class TestDatabaseInfoEndpoint:
         })
         mock_get_db_manager.return_value = mock_db_manager
         
-        with patch('app.api.database.Base') as mock_base:
+        with patch('app.models.Base') as mock_base:
             mock_base.metadata.tables.keys.side_effect = Exception("Table access error")
             
             response = client.get("/api/database/info")

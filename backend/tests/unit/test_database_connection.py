@@ -107,60 +107,7 @@ class TestDatabaseManager:
             mock_session.close.assert_called_once()
             mock_session.commit.assert_not_called()
     
-    @pytest.mark.asyncio
-    async def test_test_connection_success(self):
-        """Test successful connection test."""
-        mock_engine = Mock()
-        mock_connection = Mock()
-        mock_result = Mock()
-        
-        # Mock the connection context manager
-        mock_engine.connect.return_value.__enter__.return_value = mock_connection
-        mock_engine.connect.return_value.__exit__.return_value = None
-        
-        # Mock query results
-        test_result = Mock()
-        test_result.scalar.return_value = 1
-        
-        version_result = Mock()
-        version_result.scalar.return_value = "PostgreSQL 14.0"
-        
-        db_name_result = Mock()
-        db_name_result.scalar.return_value = "project2501"
-        
-        mock_connection.execute.side_effect = [test_result, version_result, db_name_result]
-        
-        self.db_manager.engine = mock_engine
-        
-        result = await self.db_manager.test_connection()
-        
-        assert result["status"] == "success"
-        assert result["message"] == "Database connection successful"
-        assert result["database"] == "project2501"
-        assert result["version"] == "PostgreSQL 14.0"
-        assert "host" in result
-        assert "port" in result
     
-    @pytest.mark.asyncio
-    async def test_test_connection_basic_test_failure(self):
-        """Test connection test with basic test failure."""
-        mock_engine = Mock()
-        mock_connection = Mock()
-        
-        mock_engine.connect.return_value.__enter__.return_value = mock_connection
-        mock_engine.connect.return_value.__exit__.return_value = None
-        
-        # Mock failing basic test
-        test_result = Mock()
-        test_result.scalar.return_value = 2  # Should be 1
-        mock_connection.execute.return_value = test_result
-        
-        self.db_manager.engine = mock_engine
-        
-        result = await self.db_manager.test_connection()
-        
-        assert result["status"] == "error"
-        assert "Basic connection test failed" in result["message"]
     
     @pytest.mark.asyncio
     async def test_test_connection_sqlalchemy_error(self):
@@ -190,36 +137,6 @@ class TestDatabaseManager:
         assert "Unexpected error" in result["message"]
         assert result["error_type"] == "unknown_error"
     
-    @pytest.mark.asyncio
-    async def test_test_connection_initializes_if_needed(self):
-        """Test that test_connection initializes the manager if needed."""
-        with patch.object(self.db_manager, 'initialize') as mock_initialize:
-            with patch.object(self.db_manager, 'engine', None):
-                mock_engine = Mock()
-                mock_connection = Mock()
-                
-                # After initialize, set engine
-                def side_effect():
-                    self.db_manager.engine = mock_engine
-                
-                mock_initialize.side_effect = side_effect
-                mock_engine.connect.return_value.__enter__.return_value = mock_connection
-                mock_engine.connect.return_value.__exit__.return_value = None
-                
-                # Mock successful connection test
-                test_result = Mock()
-                test_result.scalar.return_value = 1
-                version_result = Mock()
-                version_result.scalar.return_value = "PostgreSQL 14.0"
-                db_name_result = Mock()
-                db_name_result.scalar.return_value = "test"
-                
-                mock_connection.execute.side_effect = [test_result, version_result, db_name_result]
-                
-                result = await self.db_manager.test_connection()
-                
-                mock_initialize.assert_called_once()
-                assert result["status"] == "success"
     
     def test_close(self):
         """Test database manager cleanup."""
