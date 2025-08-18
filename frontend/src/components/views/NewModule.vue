@@ -1,29 +1,148 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, onMounted } from 'vue'
+import { useModules } from '@/composables/useModules'
+import { useNotification } from '@/composables/storage'
+import type { ModuleCreateRequest, ModuleUpdateRequest, Module } from '@/types'
+
+const props = defineProps<{
+  editingModuleId?: string | null
+}>()
 
 const emit = defineEmits<{
   back: []
 }>()
 
 // Form data
-const formData = ref({
+const formData = ref<ModuleCreateRequest>({
   name: '',
   description: '',
   content: '',
-  type: 'simple' as 'simple' | 'advanced',
+  type: 'simple',
   trigger_pattern: '',
   script: '',
-  timing: 'before' as 'before' | 'after' | 'custom'
+  timing: 'custom'
 })
 
+const loading = ref(false)
+const isEditing = ref(false)
+const moduleMetadata = ref<{
+  created_at?: string
+  updated_at?: string
+} | null>(null)
 
+// Use the modules composable
+const {
+  getModule,
+  createModule,
+  updateModule,
+  error,
+  clearError
+} = useModules()
+
+// Notification system
+const notification = useNotification()
+
+// Load module data if editing
+onMounted(async () => {
+  if (props.editingModuleId) {
+    isEditing.value = true
+    await loadModuleForEditing(props.editingModuleId)
+  }
+})
+
+async function loadModuleForEditing(id: string) {
+  loading.value = true
+  
+  try {
+    const module = await getModule(id)
+    
+    if (module) {
+      formData.value = {
+        name: module.name,
+        description: module.description || '',
+        content: module.content,
+        type: module.type,
+        trigger_pattern: module.trigger_pattern || '',
+        script: module.script || '',
+        timing: module.timing || 'custom'
+      }
+      
+      moduleMetadata.value = {
+        created_at: module.created_at,
+        updated_at: module.updated_at
+      }
+    } else {
+      notification.showError('Module not found')
+      emit('back')
+    }
+  } catch (err) {
+    notification.showError('Failed to load module for editing')
+    emit('back')
+  } finally {
+    loading.value = false
+  }
+}
 
 function goBack() {
   emit('back')
 }
 
-function saveModule() {
-  console.log('Module form data:', JSON.stringify(formData.value, null, 2))
+async function saveModule() {
+  if (!validateForm()) {
+    return
+  }
+  
+  loading.value = true
+  clearError()
+  
+  try {
+    let result: Module | null = null
+    
+    if (isEditing.value && props.editingModuleId) {
+      // Update existing module
+      const updateData: ModuleUpdateRequest = { ...formData.value }
+      result = await updateModule(props.editingModuleId, updateData)
+    } else {
+      // Create new module
+      result = await createModule(formData.value)
+    }
+    
+    if (result) {
+      const action = isEditing.value ? 'updated' : 'created'
+      notification.showSuccess(`Module ${action} successfully!`)
+      emit('back')
+    } else if (error.value) {
+      notification.showError(`Failed to ${isEditing.value ? 'update' : 'create'} module: ${error.value}`)
+    }
+    
+  } catch (err) {
+    notification.showError(`Unexpected error: ${err instanceof Error ? err.message : 'Unknown error'}`)
+  } finally {
+    loading.value = false
+  }
+}
+
+function validateForm(): boolean {
+  if (!formData.value.name.trim()) {
+    notification.showError('Module name is required')
+    return false
+  }
+  
+  if (!formData.value.content.trim()) {
+    notification.showError('Module content is required')
+    return false
+  }
+  
+  return true
+}
+
+function formatDateTime(dateString: string): string {
+  try {
+    const date = new Date(dateString)
+    return date.toLocaleString()
+  } catch {
+    return dateString
+  }
 }
 </script>
 
@@ -34,10 +153,22 @@ function saveModule() {
         <i class="fa-solid fa-arrow-left"></i>
         Back
       </button>
-      <h1 class="form-title">New Module</h1>
+      <h1 class="form-title">{{ isEditing ? 'Edit Module' : 'New Module' }}</h1>
     </div>
     <div class="form-content-area">
       <form class="form" @submit.prevent>
+        <!-- UUID (only shown when editing) -->
+        <div v-if="isEditing && props.editingModuleId" class="form-group">
+          <label>ID</label>
+          <input 
+            type="text" 
+            :value="props.editingModuleId" 
+            readonly 
+            class="form-input readonly"
+            title="Database-generated UUID (read-only)"
+          >
+        </div>
+
         <!-- Name -->
         <div class="form-group">
           <label>Name</label>
@@ -115,10 +246,31 @@ function saveModule() {
           </div>
         </div>
 
+        <!-- Module Metadata (only shown when editing) -->
+        <div v-if="isEditing && moduleMetadata" class="form-group metadata-section">
+          <label>Module Information</label>
+          <div class="metadata-grid">
+            <div class="metadata-item">
+              <span class="metadata-label">Created:</span>
+              <span class="metadata-value">{{ formatDateTime(moduleMetadata.created_at || '') }}</span>
+            </div>
+            <div class="metadata-item">
+              <span class="metadata-label">Last Updated:</span>
+              <span class="metadata-value">{{ formatDateTime(moduleMetadata.updated_at || '') }}</span>
+            </div>
+          </div>
+        </div>
+
         <!-- Form Actions -->
         <div class="form-actions">
-          <button type="button" class="action-btn cancel-btn" @click="goBack">Cancel</button>
-          <button type="button" class="action-btn save-btn" @click="saveModule">Save Module</button>
+          <button type="button" class="action-btn cancel-btn" @click="goBack" :disabled="loading">
+            Cancel
+          </button>
+          <button type="button" class="action-btn save-btn" @click="saveModule" :disabled="loading">
+            <i v-if="loading" class="fa-solid fa-spinner fa-spin"></i>
+            <i v-else class="fa-solid fa-save"></i>
+            {{ loading ? 'Saving...' : (isEditing ? 'Update Module' : 'Save Module') }}
+          </button>
         </div>
       </form>
     </div>
@@ -128,4 +280,72 @@ function saveModule() {
 <style scoped>
 @import '@/assets/buttons.css';
 @import '@/assets/form.css';
+
+/* Module Metadata Section */
+.metadata-section {
+  background: rgba(0, 212, 255, 0.03);
+  border: 1px solid rgba(0, 212, 255, 0.15);
+  border-radius: 0;
+  padding: 16px;
+  margin-top: 20px;
+  clip-path: polygon(0 0, calc(100% - 8px) 0, 100% 8px, 100% 100%, 0 100%);
+}
+
+.metadata-section label {
+  color: var(--accent);
+  font-size: 0.85em;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 12px;
+  display: block;
+}
+
+.metadata-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.metadata-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.metadata-label {
+  color: var(--fg);
+  font-size: 0.8em;
+  font-weight: 600;
+  opacity: 0.7;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
+.metadata-value {
+  color: var(--fg);
+  font-size: 0.85em;
+  font-weight: 500;
+  opacity: 0.9;
+  font-family: monospace;
+  background: rgba(0, 0, 0, 0.2);
+  padding: 4px 8px;
+  border-radius: 2px;
+  border: 1px solid rgba(0, 212, 255, 0.1);
+}
+
+/* Enhanced readonly input styling */
+.form-input.readonly {
+  background: var(--surface);
+  color: var(--accent);
+  opacity: 0.8;
+  cursor: not-allowed;
+  font-family: monospace;
+  font-size: 0.9em;
+  border: 1px solid rgba(0, 212, 255, 0.2);
+}
+
+.form-input.readonly::selection {
+  background: rgba(0, 212, 255, 0.3);
+}
 </style>

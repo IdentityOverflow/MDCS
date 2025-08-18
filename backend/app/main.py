@@ -12,6 +12,7 @@ from app.core.config import get_settings
 from app.database.connection import get_db_manager
 from app.models import Base
 from app.api.database import router as database_router
+from app.api.modules import router as modules_router
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -83,6 +84,7 @@ def create_app() -> FastAPI:
     
     # Include routers
     app.include_router(database_router, prefix="/api", tags=["database"])
+    app.include_router(modules_router, prefix="/api", tags=["modules"])
     
     # Add main routes
     @app.get("/")

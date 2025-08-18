@@ -130,13 +130,40 @@ cd backend && python app/main.py
 
 **Testing**:
 ```bash
+# IMPORTANT: Use the full conda path since project2501 environment is in miniforge3
+source /home/q/miniforge3/etc/profile.d/conda.sh
 conda activate project2501
 cd backend
-pytest                    # Run all tests (55 tests)
+
+# Run all tests
+pytest                    # Run all tests (55+ tests)
+pytest -v                # Verbose output
+
+# Run specific test categories
 pytest tests/unit/        # Unit tests only
 pytest tests/integration/ # Integration tests only
-pytest -v                # Verbose output
+
+# Run specific test files or methods
+pytest tests/unit/test_modules_api.py -v                    # Specific file
+pytest tests/unit/test_modules_api.py::TestModulesCreateEndpoint -v  # Specific class
+pytest tests/unit/test_modules_api.py::TestModulesCreateEndpoint::test_create_simple_module_success -v  # Specific test
+
+# Test with coverage (if installed)
+pytest --cov=app tests/
+
+# Integration tests require PostgreSQL running
+pytest tests/integration/ -v
 ```
+
+**Test Structure**:
+- **Unit Tests**: Fast, isolated tests for individual functions (no database)
+- **Integration Tests**: Full HTTP API tests using `project2501_test` database with proper cleanup
+- **TDD Approach**: Write failing tests first, then implement to make them pass
+
+**Database Isolation**:
+- **Frontend**: Connects to main database (`project2501` via backend server)
+- **Tests**: Use separate test database (`project2501_test`) with automatic cleanup
+- **No Cross-Contamination**: Tests never pollute the main database
 
 **Database**:
 - Main DB: `project2501` 

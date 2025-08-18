@@ -45,7 +45,7 @@ class Module(Base):
     # Advanced module configuration (only for advanced modules)
     trigger_pattern = Column(String(500), nullable=True)  # Regex or keyword pattern for activation
     script = Column(Text, nullable=True)  # Python script content for advanced modules
-    timing = Column(SQLEnum(ExecutionTiming), nullable=True, default=ExecutionTiming.AFTER)
+    timing = Column(SQLEnum(ExecutionTiming), nullable=True, default=ExecutionTiming.CUSTOM)  # Default: "custom" (on demand)
     
     # Additional metadata and configuration (renamed to avoid SQLAlchemy reserved keyword)
     extra_data = Column(JSON, nullable=True)  # For storing additional module data

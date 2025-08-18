@@ -1,128 +1,142 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, onMounted } from 'vue'
+import { useModules } from '@/composables/useModules'
+import { useNotification } from '@/composables/storage'
 import NewModule from './NewModule.vue'
 import ModuleCard from '../ModuleCard.vue'
 
-interface Module {
-  id: string
-  name: string
-  description: string
-  content: string
-  type: 'simple' | 'advanced'
-  trigger_pattern?: string
-  script?: string
-  timing?: 'before' | 'after' | 'custom'
-}
-
 const showNewModule = ref(false)
+const editingModule = ref<string | null>(null)
 
-// Dummy modules for testing
-const modules = ref<Module[]>([
-  {
-    id: 'module_1',
-    name: 'Data Validator',
-    description: 'Validates incoming data structures and ensures data integrity before processing.',
-    content: 'Advanced validation logic here...',
-    type: 'advanced',
-    trigger_pattern: '/validate/*',
-    timing: 'before'
-  },
-  {
-    id: 'module_2',
-    name: 'Logger',
-    description: 'Simple logging utility for tracking system events and debugging information.',
-    content: 'console.log implementation...',
-    type: 'simple'
-  },
-  {
-    id: 'module_3',
-    name: 'Authentication Handler',
-    description: 'Manages user authentication and session validation with advanced security features.',
-    content: 'JWT token validation and user session management...',
-    type: 'advanced',
-    trigger_pattern: '/auth/*',
-    timing: 'before'
-  },
-  {
-    id: 'module_4',
-    name: 'Cache Manager',
-    description: 'Handles data caching to improve performance and reduce database load.',
-    content: 'Redis cache implementation...',
-    type: 'simple'
-  },
-  {
-    id: 'module_5',
-    name: 'Error Handler',
-    description: 'Global error handling system with custom error reporting and recovery mechanisms.',
-    content: 'try-catch wrapper with custom error types...',
-    type: 'advanced',
-    trigger_pattern: 'error.*',
-    timing: 'after'
-  },
-  {
-    id: 'module_6',
-    name: 'Notification Service',
-    description: 'Sends notifications to users via email, SMS, and push notifications.',
-    content: 'Multi-channel notification system...',
-    type: 'simple'
-  },
-  {
-    id: 'module_7',
-    name: 'Rate Limiter',
-    description: 'Controls API request rates to prevent abuse and ensure fair usage across all users.',
-    content: 'Token bucket algorithm implementation...',
-    type: 'advanced',
-    trigger_pattern: '/api/*',
-    timing: 'before'
-  },
-  {
-    id: 'module_8',
-    name: 'File Processor',
-    description: 'Processes uploaded files and converts them to various formats.',
-    content: 'File upload and conversion logic...',
-    type: 'simple'
+// Use the modules composable for API integration
+const {
+  modules,
+  loading,
+  error,
+  fetchModules,
+  deleteModule: deleteModuleAPI,
+  clearError
+} = useModules()
+
+// Notification system
+const notification = useNotification()
+
+// Load modules on component mount
+onMounted(async () => {
+  await loadModules()
+})
+
+async function loadModules() {
+  await fetchModules()
+  
+  if (error.value) {
+    notification.showError(`Failed to load modules: ${error.value}`)
   }
-])
+}
 
 function createNewModule() {
   showNewModule.value = true
+  editingModule.value = null
 }
 
 function goBackToModules() {
   showNewModule.value = false
+  editingModule.value = null
+  // Refresh modules list in case something was created/updated
+  loadModules()
 }
 
 function editModule(id: string) {
-  console.log('Edit module:', id)
+  editingModule.value = id
+  showNewModule.value = true
 }
 
-function deleteModule(id: string) {
-  console.log('Delete module:', id)
+async function handleDeleteModule(id: string) {
+  if (!confirm('Are you sure you want to delete this module?')) {
+    return
+  }
+  
+  const success = await deleteModuleAPI(id)
+  
+  if (success) {
+    notification.showSuccess('Module deleted successfully!')
+  } else if (error.value) {
+    notification.showError(`Failed to delete module: ${error.value}`)
+    clearError()
+  }
 }
 </script>
 
 <template>
   <div class="view-container">
-    <NewModule v-if="showNewModule" @back="goBackToModules" />
+    <NewModule 
+      v-if="showNewModule" 
+      :editing-module-id="editingModule"
+      @back="goBackToModules" 
+    />
     <div v-else class="modules-content">
       <div class="header">
         <h1>Modules</h1>
-        <button class="action-btn new-btn" @click="createNewModule">
+        <button 
+          class="action-btn new-btn" 
+          @click="createNewModule"
+          :disabled="loading"
+        >
           <i class="fa-solid fa-plus"></i>
           New
         </button>
       </div>
       <div class="content-area">
-        <div class="modules-grid">
+        <!-- Loading state -->
+        <div v-if="loading" class="loading-container">
+          <div class="loading-text">
+            <i class="fa-solid fa-spinner fa-spin"></i>
+            Loading modules...
+          </div>
+        </div>
+        
+        <!-- Error state -->
+        <div v-else-if="error" class="error-container">
+          <div class="error-text">
+            <i class="fa-solid fa-exclamation-triangle"></i>
+            {{ error }}
+          </div>
+          <button class="action-btn retry-btn" @click="loadModules">
+            <i class="fa-solid fa-refresh"></i>
+            Retry
+          </button>
+        </div>
+        
+        <!-- Empty state -->
+        <div v-else-if="modules.length === 0" class="empty-container">
+          <div class="empty-text">
+            <i class="fa-solid fa-puzzle-piece"></i>
+            <h3>No modules found</h3>
+            <p>Create your first module to get started</p>
+          </div>
+          <button class="action-btn create-btn" @click="createNewModule">
+            <i class="fa-solid fa-plus"></i>
+            Create Module
+          </button>
+        </div>
+        
+        <!-- Modules grid -->
+        <div v-else class="modules-grid">
           <ModuleCard
             v-for="module in modules"
             :key="module.id"
             :module="module"
             @edit="editModule"
-            @delete="deleteModule"
+            @delete="handleDeleteModule"
           />
         </div>
       </div>
+    </div>
+    
+    <!-- Notification Toast -->
+    <div v-if="notification.isVisible.value" class="notification-toast" :class="notification.type.value">
+      <i :class="notification.type.value === 'success' ? 'fa-solid fa-check' : 'fa-solid fa-exclamation-triangle'"></i>
+      {{ notification.message.value }}
     </div>
   </div>
 </template>
@@ -176,6 +190,144 @@ h1 {
   grid-template-columns: 1fr 1fr;
   gap: 16px;
   padding: 0 4px;
+}
+
+/* Loading state */
+.loading-container {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 200px;
+}
+
+.loading-text {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: var(--fg);
+  font-size: 1.1em;
+  opacity: 0.8;
+}
+
+.loading-text i {
+  color: var(--accent);
+  font-size: 1.2em;
+}
+
+/* Error state */
+.error-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  min-height: 200px;
+  justify-content: center;
+}
+
+.error-text {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: #ef4444;
+  font-size: 1.1em;
+  text-align: center;
+}
+
+.error-text i {
+  font-size: 1.2em;
+}
+
+.retry-btn {
+  background: rgba(239, 68, 68, 0.1);
+  border: 1px solid #ef4444;
+  color: #ef4444;
+}
+
+.retry-btn:hover {
+  background: rgba(239, 68, 68, 0.2);
+}
+
+/* Empty state */
+.empty-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 20px;
+  min-height: 300px;
+  justify-content: center;
+}
+
+.empty-text {
+  text-align: center;
+  color: var(--fg);
+  opacity: 0.7;
+}
+
+.empty-text i {
+  font-size: 3em;
+  color: var(--accent);
+  margin-bottom: 16px;
+  opacity: 0.5;
+}
+
+.empty-text h3 {
+  font-size: 1.4em;
+  margin: 0 0 8px 0;
+  font-weight: 600;
+}
+
+.empty-text p {
+  margin: 0;
+  opacity: 0.8;
+}
+
+.create-btn {
+  background: rgba(0, 212, 255, 0.1);
+  border: 1px solid var(--accent);
+  color: var(--accent);
+}
+
+.create-btn:hover {
+  background: rgba(0, 212, 255, 0.2);
+}
+
+/* Notification toast */
+.notification-toast {
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  padding: 12px 16px;
+  border-radius: 4px;
+  color: white;
+  font-weight: 600;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 250px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  animation: slideIn 0.3s ease;
+}
+
+.notification-toast.success {
+  background: linear-gradient(135deg, #10b981, #059669);
+  border: 1px solid #047857;
+}
+
+.notification-toast.error {
+  background: linear-gradient(135deg, #ef4444, #dc2626);
+  border: 1px solid #b91c1c;
+}
+
+@keyframes slideIn {
+  from {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
 }
 
 </style>

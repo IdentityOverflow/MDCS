@@ -305,7 +305,7 @@ class TestModuleModel:
         clean_db.commit()
         
         assert module.type == ModuleType.SIMPLE
-        assert module.timing == ExecutionTiming.AFTER
+        assert module.timing == ExecutionTiming.CUSTOM
         assert module.is_active is True
     
     def test_module_repr(self, clean_db):

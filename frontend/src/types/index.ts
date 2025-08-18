@@ -15,9 +15,32 @@ export interface Persona {
 export interface Module {
   id: string
   name: string
-  description: string
+  description: string | null
   content: string
   type: 'simple' | 'advanced'
+  trigger_pattern: string | null
+  script: string | null
+  timing: 'before' | 'after' | 'custom' | null
+  is_active: boolean
+  created_at: string
+  updated_at: string
+}
+
+export interface ModuleCreateRequest {
+  name: string
+  description?: string
+  content: string
+  type: 'simple' | 'advanced'
+  trigger_pattern?: string
+  script?: string
+  timing?: 'before' | 'after' | 'custom'
+}
+
+export interface ModuleUpdateRequest {
+  name?: string
+  description?: string
+  content?: string
+  type?: 'simple' | 'advanced'
   trigger_pattern?: string
   script?: string
   timing?: 'before' | 'after' | 'custom'
