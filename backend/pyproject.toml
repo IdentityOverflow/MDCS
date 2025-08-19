@@ -24,4 +24,3 @@ minversion = "6.0"
 addopts = "-ra -q --strict-markers"
 testpaths = ["tests"]
 pythonpath = [".", "app"]
-asyncio_mode = "auto"

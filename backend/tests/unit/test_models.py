@@ -186,7 +186,6 @@ class TestPersonaModel:
         persona = Persona(
             name="Test Persona",
             description="A test persona",
-            model="gpt-4",
             template="You are {name}, a helpful assistant.",
             mode="reactive",
             first_message="Hello! I'm here to help.",
@@ -201,7 +200,6 @@ class TestPersonaModel:
         assert isinstance(persona.id, uuid.UUID)
         assert persona.name == "Test Persona"
         assert persona.description == "A test persona"
-        assert persona.model == "gpt-4"
         assert persona.template == "You are {name}, a helpful assistant."
         assert persona.mode == "reactive"
         assert persona.first_message == "Hello! I'm here to help."
@@ -213,7 +211,6 @@ class TestPersonaModel:
         """Test persona default values."""
         persona = Persona(
             name="Minimal Persona",
-            model="gpt-3.5-turbo",
             template="You are a helpful assistant."
         )
         
@@ -229,7 +226,6 @@ class TestPersonaModel:
         """Test persona string representation."""
         persona = Persona(
             name="Test Persona",
-            model="gpt-4",
             template="Test template"
         )
         clean_db.add(persona)
@@ -238,7 +234,6 @@ class TestPersonaModel:
         repr_str = repr(persona)
         assert "Persona" in repr_str
         assert "Test Persona" in repr_str
-        assert "gpt-4" in repr_str
 
 
 class TestModuleModel:

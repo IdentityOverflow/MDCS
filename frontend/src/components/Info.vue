@@ -16,7 +16,6 @@ const displayText = computed(() => {
   if (props.selectedPersona) {
     const componentCount = countComponents(props.selectedPersona.template)
     let text = `NAME: ${props.selectedPersona.name}\n`
-    text += `MODEL: ${props.selectedPersona.model}\n`
     text += `MODE: ${props.selectedPersona.mode.toUpperCase()}\n`
     if (props.selectedPersona.mode === 'autonomous' && props.selectedPersona.loop_frequency) {
       text += `FREQ: ${props.selectedPersona.loop_frequency}HZ\n`
@@ -67,7 +66,7 @@ onMounted(() => {
       
       <!-- Image display -->
       <div v-else class="image-display">
-        <img :src="getPersonaImage(selectedPersona.image)" :alt="selectedPersona.name" @error="handleImageError" />
+        <img :src="getPersonaImage(selectedPersona.image_path)" :alt="selectedPersona.name" @error="handleImageError" />
       </div>
     </div>
   </div>

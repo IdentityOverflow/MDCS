@@ -3,13 +3,15 @@
 export interface Persona {
   id: string
   name: string
-  description: string
-  model: string
+  description: string | null
   template: string
   mode: 'autonomous' | 'reactive'
-  loop_frequency?: number
-  first_message?: string
-  image: string
+  loop_frequency: string | null
+  first_message: string | null
+  image_path: string | null
+  is_active: boolean
+  created_at: string
+  updated_at: string
 }
 
 export interface Module {
@@ -44,4 +46,24 @@ export interface ModuleUpdateRequest {
   trigger_pattern?: string
   script?: string
   timing?: 'before' | 'after' | 'custom'
+}
+
+export interface PersonaCreateRequest {
+  name: string
+  description?: string
+  template: string
+  mode: 'autonomous' | 'reactive'
+  loop_frequency?: string
+  first_message?: string
+  image_path?: string
+}
+
+export interface PersonaUpdateRequest {
+  name?: string
+  description?: string
+  template?: string
+  mode?: 'autonomous' | 'reactive'
+  loop_frequency?: string
+  first_message?: string
+  image_path?: string
 }

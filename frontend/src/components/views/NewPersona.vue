@@ -1,27 +1,104 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, onMounted, computed, watch } from 'vue'
+import { usePersonas } from '@/composables/usePersonas'
+import type { PersonaCreateRequest, PersonaUpdateRequest } from '@/types'
+
+const props = defineProps<{
+  editingPersonaId?: string | null
+}>()
 
 const emit = defineEmits<{
   back: []
 }>()
 
+// Use personas composable
+const {
+  createPersona,
+  updatePersona,
+  fetchPersonaById,
+  uploadPersonaImage,
+  loading,
+  error,
+  clearError
+} = usePersonas()
+
 // Form data
 const formData = ref({
   name: '',
   description: '',
-  model: '',
   template: '',
   mode: 'reactive' as 'autonomous' | 'reactive',
   loop_frequency: 5.0,
   first_message: '',
-  image: null as File | null
+  image_path: '' as string
 })
 
 const imagePreview = ref('')
 const dragOver = ref(false)
 const fileInput = ref<HTMLInputElement>()
+const saving = ref(false)
+const loadingPersona = ref(false)
 
+// Computed values
+const isEditing = computed(() => !!props.editingPersonaId)
+const formTitle = computed(() => isEditing.value ? 'Edit Persona' : 'New Persona')
+const saveButtonText = computed(() => saving.value ? 'Saving...' : (isEditing.value ? 'Update Persona' : 'Save Persona'))
 
+// Reset form
+const resetForm = () => {
+  formData.value = {
+    name: '',
+    description: '',
+    template: '',
+    mode: 'reactive',
+    loop_frequency: 5.0,
+    first_message: '',
+    image_path: ''
+  }
+  imagePreview.value = ''
+  clearError()
+}
+
+// Load persona for editing
+const loadPersonaForEditing = async (personaId: string) => {
+  loadingPersona.value = true
+  try {
+    const persona = await fetchPersonaById(personaId)
+    
+    formData.value = {
+      name: persona.name,
+      description: persona.description || '',
+      template: persona.template,
+      mode: persona.mode,
+      loop_frequency: persona.loop_frequency ? parseFloat(persona.loop_frequency) : 5.0,
+      first_message: persona.first_message || '',
+      image_path: persona.image_path || ''
+    }
+    
+    // Set image preview if persona has image
+    if (persona.image_path) {
+      imagePreview.value = persona.image_path.startsWith('/static/') 
+        ? `http://localhost:8000${persona.image_path}` 
+        : persona.image_path
+    }
+    
+  } catch (err) {
+    console.error('Failed to load persona for editing:', err)
+    alert('Failed to load persona data. Please try again.')
+    emit('back')
+  } finally {
+    loadingPersona.value = false
+  }
+}
+
+// Watch for editing mode
+watch(() => props.editingPersonaId, async (personaId) => {
+  if (personaId) {
+    await loadPersonaForEditing(personaId)
+  } else {
+    resetForm()
+  }
+}, { immediate: true })
 
 function goBack() {
   emit('back')
@@ -53,14 +130,31 @@ function handleFileInput(e: Event) {
   }
 }
 
-function handleFileSelect(file: File) {
+async function handleFileSelect(file: File) {
   if (file.type.startsWith('image/')) {
-    formData.value.image = file
-    const reader = new FileReader()
-    reader.onload = (e) => {
-      imagePreview.value = e.target?.result as string
+    try {
+      // Show immediate preview
+      const reader = new FileReader()
+      reader.onload = (e) => {
+        imagePreview.value = e.target?.result as string
+      }
+      reader.readAsDataURL(file)
+
+      // Upload to server
+      const imagePath = await uploadPersonaImage(file)
+      formData.value.image_path = imagePath
+      
+      // Update preview to use server URL
+      imagePreview.value = `http://localhost:8000${imagePath}`
+      
+      console.log('Image uploaded successfully:', imagePath)
+    } catch (err) {
+      console.error('Failed to upload image:', err)
+      alert('Failed to upload image. Please try again.')
+      // Reset image if upload failed
+      imagePreview.value = ''
+      formData.value.image_path = ''
     }
-    reader.readAsDataURL(file)
   }
 }
 
@@ -68,19 +162,52 @@ function browseFiles() {
   fileInput.value?.click()
 }
 
-function savePersona() {
-  // Create a serializable version of the form data
-  const formDataForLogging = {
-    ...formData.value,
-    image: formData.value.image ? {
-      name: formData.value.image.name,
-      size: formData.value.image.size,
-      type: formData.value.image.type,
-      lastModified: formData.value.image.lastModified
-    } : null
+async function savePersona() {
+  if (!formData.value.name.trim()) {
+    alert('Please enter a persona name')
+    return
   }
   
-  console.log('Persona form data:', JSON.stringify(formDataForLogging, null, 2))
+  if (!formData.value.template.trim()) {
+    alert('Please enter a persona template')
+    return
+  }
+  
+  saving.value = true
+  clearError()
+  
+  try {
+    // Prepare data for API 
+    const personaData = {
+      name: formData.value.name.trim(),
+      description: formData.value.description.trim() || undefined,
+      template: formData.value.template.trim(),
+      mode: formData.value.mode,
+      loop_frequency: formData.value.mode === 'autonomous' ? formData.value.loop_frequency.toString() : undefined,
+      first_message: formData.value.first_message.trim() || undefined,
+      image_path: formData.value.image_path || undefined
+    }
+    
+    if (isEditing.value && props.editingPersonaId) {
+      // Update existing persona
+      await updatePersona(props.editingPersonaId, personaData as PersonaUpdateRequest)
+      console.log('Persona updated successfully')
+    } else {
+      // Create new persona
+      await createPersona(personaData as PersonaCreateRequest)
+      console.log('Persona created successfully')
+    }
+    
+    // Success - go back to list
+    emit('back')
+    
+  } catch (err) {
+    console.error('Error saving persona:', err)
+    const errorMessage = err instanceof Error ? err.message : 'Unknown error occurred'
+    alert(`Failed to save persona: ${errorMessage}`)
+  } finally {
+    saving.value = false
+  }
 }
 
 </script>
@@ -92,10 +219,22 @@ function savePersona() {
         <i class="fa-solid fa-arrow-left"></i>
         Back
       </button>
-      <h1 class="form-title">New Persona</h1>
+      <h1 class="form-title">{{ formTitle }}</h1>
     </div>
     <div class="form-content-area">
-      <form class="form" @submit.prevent>
+      <!-- Loading State -->
+      <div v-if="loadingPersona" class="loading-state">
+        <i class="fa-solid fa-spinner fa-spin"></i>
+        <p>Loading persona data...</p>
+      </div>
+      
+      <form v-else class="form" @submit.prevent>
+        <!-- UUID Display (Edit Mode Only) -->
+        <div v-if="isEditing && editingPersonaId" class="form-group">
+          <label>ID</label>
+          <input type="text" :value="editingPersonaId" readonly class="form-input readonly">
+        </div>
+
         <!-- Image Upload -->
         <div class="form-group">
           <label>Image</label>
@@ -147,17 +286,6 @@ function savePersona() {
           ></textarea>
         </div>
 
-        <!-- Model -->
-        <div class="form-group">
-          <label>Model</label>
-          <input 
-            type="text" 
-            v-model="formData.model"
-            placeholder="Enter AI model (e.g. gpt-4, claude-3-sonnet)"
-            class="form-input"
-          >
-        </div>
-
         <!-- Template -->
         <div class="form-group">
           <label>Template</label>
@@ -207,7 +335,15 @@ function savePersona() {
         <!-- Form Actions -->
         <div class="form-actions">
           <button type="button" class="action-btn cancel-btn" @click="goBack">Cancel</button>
-          <button type="button" class="action-btn save-btn" @click="savePersona">Save Persona</button>
+          <button 
+            type="button" 
+            class="action-btn save-btn" 
+            @click="savePersona"
+            :disabled="saving || loadingPersona"
+          >
+            <i v-if="saving" class="fa-solid fa-spinner fa-spin"></i>
+            {{ saveButtonText }}
+          </button>
         </div>
       </form>
     </div>
@@ -217,4 +353,29 @@ function savePersona() {
 <style scoped>
 @import '@/assets/buttons.css';
 @import '@/assets/form.css';
+
+/* Loading State */
+.loading-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 200px;
+  color: var(--fg-muted);
+  text-align: center;
+}
+
+.loading-state i {
+  font-size: 2em;
+  margin-bottom: 16px;
+  color: var(--accent);
+}
+
+/* Readonly Input */
+.form-input.readonly {
+  background-color: var(--bg-2);
+  color: var(--fg-muted);
+  cursor: not-allowed;
+}
+
 </style>

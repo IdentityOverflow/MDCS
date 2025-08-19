@@ -44,7 +44,7 @@ function handleDelete(event: Event) {
     <div class="card-body">
       <div class="image-section">
         <div class="card-image">
-          <img :src="getPersonaImage(persona.image)" :alt="persona.name" @error="handleImageError" />
+          <img :src="getPersonaImage(persona.image_path)" :alt="persona.name" @error="handleImageError" />
         </div>
         <span class="card-badge" :class="persona.mode === 'autonomous' ? 'accent' : 'primary'">{{ persona.mode }}</span>
       </div>

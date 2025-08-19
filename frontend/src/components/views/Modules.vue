@@ -143,6 +143,7 @@ async function handleDeleteModule(id: string) {
 
 <style scoped>
 @import '@/assets/buttons.css';
+@import '@/assets/empty-states.css';
 
 .view-container {
   width: 100%;
@@ -237,59 +238,8 @@ h1 {
   font-size: 1.2em;
 }
 
-.retry-btn {
-  background: rgba(239, 68, 68, 0.1);
-  border: 1px solid #ef4444;
-  color: #ef4444;
-}
 
-.retry-btn:hover {
-  background: rgba(239, 68, 68, 0.2);
-}
 
-/* Empty state */
-.empty-container {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 20px;
-  min-height: 300px;
-  justify-content: center;
-}
-
-.empty-text {
-  text-align: center;
-  color: var(--fg);
-  opacity: 0.7;
-}
-
-.empty-text i {
-  font-size: 3em;
-  color: var(--accent);
-  margin-bottom: 16px;
-  opacity: 0.5;
-}
-
-.empty-text h3 {
-  font-size: 1.4em;
-  margin: 0 0 8px 0;
-  font-weight: 600;
-}
-
-.empty-text p {
-  margin: 0;
-  opacity: 0.8;
-}
-
-.create-btn {
-  background: rgba(0, 212, 255, 0.1);
-  border: 1px solid var(--accent);
-  color: var(--accent);
-}
-
-.create-btn:hover {
-  background: rgba(0, 212, 255, 0.2);
-}
 
 /* Notification toast */
 .notification-toast {

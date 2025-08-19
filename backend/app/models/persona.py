@@ -22,8 +22,6 @@ class Persona(Base):
     name = Column(String(255), nullable=False, index=True)
     description = Column(Text, nullable=True)
     
-    # AI model configuration
-    model = Column(String(100), nullable=False)  # e.g., "gpt-4", "llama3:8b"
     
     # Template and configuration
     template = Column(Text, nullable=False)  # The persona template with module placeholders
@@ -45,4 +43,4 @@ class Persona(Base):
     is_active = Column(Boolean, default=True, nullable=False)
     
     def __repr__(self) -> str:
-        return f"<Persona(id={self.id}, name='{self.name}', model='{self.model}')>"
+        return f"<Persona(id={self.id}, name='{self.name}', mode='{self.mode}')>"

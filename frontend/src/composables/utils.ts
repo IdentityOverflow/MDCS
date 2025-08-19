@@ -11,9 +11,12 @@ export function truncateDescription(description: string, maxLength: number = 100
 }
 
 /**
- * Gets persona image path with fallback
+ * Gets persona image URL with fallback
  */
-export function getPersonaImage(imagePath: string): string {
+export function getPersonaImage(imagePath: string | null | undefined): string {
+  if (imagePath && imagePath.startsWith('/static/')) {
+    return `http://localhost:8000${imagePath}`
+  }
   return imagePath || '/src/assets/persona.png'
 }
 

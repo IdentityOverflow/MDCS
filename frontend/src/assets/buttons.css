@@ -60,3 +60,26 @@
 .action-btn i {
   font-size: 1.1em;
 }
+
+/* Button states */
+.action-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.action-btn i.fa-spinner {
+  margin-right: 8px;
+}
+
+/* Button variants */
+.retry-btn {
+  border-left-color: var(--accent);
+}
+
+.dismiss-btn {
+  border-left-color: var(--border);
+}
+
+.create-btn {
+  border-left-color: var(--accent);
+}

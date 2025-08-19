@@ -4,15 +4,18 @@ FastAPI application entry point for Project 2501 backend.
 
 import logging
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 
 from app.core.config import get_settings
 from app.database.connection import get_db_manager
 from app.models import Base
 from app.api.database import router as database_router
 from app.api.modules import router as modules_router
+from app.api.personas import router as personas_router
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -85,6 +88,12 @@ def create_app() -> FastAPI:
     # Include routers
     app.include_router(database_router, prefix="/api", tags=["database"])
     app.include_router(modules_router, prefix="/api", tags=["modules"])
+    app.include_router(personas_router, prefix="/api", tags=["personas"])
+    
+    # Mount static files for serving images
+    static_dir = Path(__file__).parent.parent / "static"
+    static_dir.mkdir(parents=True, exist_ok=True)
+    app.mount("/static", StaticFiles(directory=static_dir), name="static")
     
     # Add main routes
     @app.get("/")

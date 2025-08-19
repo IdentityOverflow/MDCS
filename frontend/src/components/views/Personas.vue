@@ -1,94 +1,52 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, onMounted, computed } from 'vue'
 import NewPersona from './NewPersona.vue'
 import PersonaCard from '../PersonaCard.vue'
-
-interface Persona {
-  id: string
-  name: string
-  description: string
-  model: string
-  template: string
-  mode: 'autonomous' | 'reactive'
-  loop_frequency?: number
-  first_message?: string
-  image: string
-}
+import { usePersonas } from '@/composables/usePersonas'
+import type { Persona } from '@/types'
 
 const showNewPersona = ref(false)
+const editingPersonaId = ref<string | null>(null)
 
 const emit = defineEmits<{
   selectPersona: [persona: Persona]
 }>()
 
-// Dummy personas for testing
-const personas = ref<Persona[]>([
-  {
-    id: 'persona_1',
-    name: 'Data Analyst',
-    description: 'Specialized in analyzing complex datasets and providing insights through statistical analysis and data visualization.Specialized in analyzing complex datasets and providing insights through statistical analysis and data visualization.Specialized in analyzing complex datasets and providing insights through statistical analysis and data visualization.Specialized in analyzing complex datasets and providing insights through statistical analysis and data visualization.Specialized in analyzing complex datasets and providing insights through statistical analysis and data visualization.Specialized in analyzing complex datasets and providing insights through statistical analysis and data visualization.Specialized in analyzing complex datasets and providing insights through statistical analysis and data visualization.',
-    model: 'claude-3-sonnet',
-    template: 'You are an expert data analyst with advanced skills in statistics, data mining, and visualization. Use {data_validator_module} and {chart_generator_module} for your analysis.',
-    mode: 'reactive',
-    image: '/src/assets/tux.png'
-  },
-  {
-    id: 'persona_2',
-    name: 'Code Reviewer',
-    description: 'Autonomous code quality inspector that continuously monitors repositories for best practices and security issues.',
-    model: 'gpt-4',
-    template: 'You are a senior software engineer focused on code quality, security, and best practices. Utilize {lint_module}, {security_scanner_module}, and {code_formatter_module} for comprehensive reviews.',
-    mode: 'autonomous',
-    loop_frequency: 2.5,
-    image: '/src/assets/RPG.png'
-  },
-  {
-    id: 'persona_3',
-    name: 'Creative Writer Assistant',
-    description: 'Helps generate creative content including stories, marketing copy, and engaging social media posts.',
-    model: 'claude-3-opus',
-    template: 'You are a creative writer with expertise in storytelling, marketing, and content creation.',
-    mode: 'reactive',
-    first_message: 'Hello! I\'m ready to help you create amazing content.',
-    image: '/src/assets/its-fine-im-fine.gif'
-  },
-  {
-    id: 'persona_4',
-    name: 'System Monitor',
-    description: 'Continuously monitors system performance, resource usage, and alerts administrators of potential issues.',
-    model: 'gpt-3.5-turbo',
-    template: 'You are a system administrator with deep knowledge of server monitoring and performance optimization.',
-    mode: 'autonomous',
-    loop_frequency: 10.0,
-    image: '/src/assets/persona.png'
-  },
-  {
-    id: 'persona_5',
-    name: 'Research Assistant',
-    description: 'Conducts thorough research on various topics and summarizes findings in clear, actionable reports.',
-    model: 'claude-3-sonnet',
-    template: 'You are a research assistant with excellent analytical and summarization skills.',
-    mode: 'reactive',
-    image: '/src/assets/tuxs.png'
-  },
-  {
-    id: 'persona_6',
-    name: 'Chat Moderator',
-    description: 'Autonomous moderator that maintains community guidelines and ensures positive interactions in chat channels.',
-    model: 'gpt-4',
-    template: 'You are a community moderator focused on maintaining positive and respectful communication.',
-    mode: 'autonomous',
-    loop_frequency: 1.0,
-    image: '/src/assets/tux.png'
-  }
-])
+// Use personas composable
+const {
+  personas,
+  loading,
+  error,
+  fetchPersonas,
+  deletePersona: deletePersonaAPI,
+  clearError
+} = usePersonas()
 
+// Computed values for UI state
+const hasPersonas = computed(() => personas.value.length > 0)
+const showEmpty = computed(() => !loading.value && !hasPersonas.value && !error.value)
+const showError = computed(() => !loading.value && error.value)
+
+// Lifecycle
+onMounted(async () => {
+  try {
+    await fetchPersonas()
+  } catch (err) {
+    console.error('Failed to load personas:', err)
+  }
+})
+
+// Event handlers
 function createNewPersona() {
+  editingPersonaId.value = null
   showNewPersona.value = true
 }
 
 function goBackToPersonas() {
   showNewPersona.value = false
+  editingPersonaId.value = null
+  // Refresh personas when returning from form
+  fetchPersonas()
 }
 
 function handlePersonaSelect(persona: Persona) {
@@ -96,44 +54,96 @@ function handlePersonaSelect(persona: Persona) {
 }
 
 function editPersona(id: string) {
-  console.log('Edit persona:', id)
+  editingPersonaId.value = id
+  showNewPersona.value = true
 }
 
-function deletePersona(id: string) {
-  console.log('Delete persona:', id)
+async function handleDeletePersona(id: string) {
+  if (!confirm('Are you sure you want to delete this persona?')) {
+    return
+  }
+  
+  try {
+    await deletePersonaAPI(id)
+    console.log('Persona deleted successfully')
+  } catch (err) {
+    console.error('Failed to delete persona:', err)
+    alert('Failed to delete persona. Please try again.')
+  }
+}
+
+function handleErrorDismiss() {
+  clearError()
 }
 </script>
 
 <template>
   <div class="view-container">
-    <NewPersona v-if="showNewPersona" @back="goBackToPersonas" />
+    <NewPersona 
+      v-if="showNewPersona" 
+      :editing-persona-id="editingPersonaId"
+      @back="goBackToPersonas" 
+    />
     <div v-else class="personas-content">
       <div class="header">
         <h1>Personas</h1>
-        <button class="action-btn new-btn" @click="createNewPersona">
+        <button class="action-btn new-btn" @click="createNewPersona" :disabled="loading">
           <i class="fa-solid fa-plus"></i>
           New
         </button>
       </div>
       <div class="content-area">
-        <div class="personas-grid">
+        <!-- Loading State -->
+        <div v-if="loading" class="loading-state">
+          <i class="fa-solid fa-spinner fa-spin"></i>
+          <p>Loading personas...</p>
+        </div>
+        
+        <!-- Error State -->
+        <div v-else-if="showError" class="error-state">
+          <i class="fa-solid fa-exclamation-triangle"></i>
+          <p>{{ error }}</p>
+          <button class="action-btn retry-btn" @click="fetchPersonas">
+            <i class="fa-solid fa-redo"></i>
+            Retry
+          </button>
+          <button class="action-btn dismiss-btn" @click="handleErrorDismiss">
+            Dismiss
+          </button>
+        </div>
+        
+        <!-- Empty State -->
+        <div v-else-if="showEmpty" class="empty-container">
+          <div class="empty-text">
+            <i class="fa-solid fa-user-plus"></i>
+            <h3>No personas found</h3>
+            <p>Create your first AI persona to get started</p>
+          </div>
+          <button class="action-btn create-btn" @click="createNewPersona">
+            <i class="fa-solid fa-plus"></i>
+            Create Persona
+          </button>
+        </div>
+        
+        <!-- Personas Grid -->
+        <div v-else class="personas-grid">
           <PersonaCard
             v-for="persona in personas"
             :key="persona.id"
             :persona="persona"
             @select="handlePersonaSelect"
             @edit="editPersona"
-            @delete="deletePersona"
+            @delete="handleDeletePersona"
           />
         </div>
       </div>
-      
     </div>
   </div>
 </template>
 
 <style scoped>
 @import '@/assets/buttons.css';
+@import '@/assets/empty-states.css';
 
 .view-container {
   width: 100%;
@@ -181,6 +191,39 @@ h1 {
   grid-template-columns: 1fr 1fr;
   gap: 16px;
   padding: 0 4px;
+}
+
+/* State styles */
+.loading-state,
+.error-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 300px;
+  text-align: center;
+  color: var(--fg-muted);
+}
+
+.loading-state i {
+  font-size: 2em;
+  margin-bottom: 16px;
+  color: var(--accent);
+}
+
+.error-state i {
+  font-size: 2em;
+  margin-bottom: 16px;
+  color: var(--error);
+}
+
+.error-state p {
+  margin: 8px 0;
+  font-size: 1.1em;
+}
+
+.error-state .action-btn {
+  margin: 4px 8px;
 }
 
 </style>
