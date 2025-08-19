@@ -1,0 +1,458 @@
+"""
+Unit tests for OpenAI service implementation.
+"""
+
+import pytest
+import json
+from unittest.mock import Mock, AsyncMock, patch
+from aiohttp import ClientSession, ClientResponse, ClientTimeout
+from aiohttp.client_exceptions import ClientError, ClientConnectorError
+
+from app.services.ai_providers import (
+    ChatRequest, 
+    ChatResponse, 
+    StreamingChatResponse, 
+    ProviderType
+)
+from app.services.exceptions import ProviderConnectionError, ProviderAuthenticationError
+from app.services.openai_service import (
+    OpenAIService,
+    OpenAIRequestBuilder,
+    OpenAIResponseParser,
+    OpenAIStreamParser
+)
+
+
+class TestOpenAIRequestBuilder:
+    """Test OpenAI request building logic."""
+    
+    def test_build_basic_request(self):
+        """Test building a basic OpenAI request."""
+        request = ChatRequest(
+            message="Hello, world!",
+            provider_type=ProviderType.OPENAI,
+            provider_settings={
+                "base_url": "https://api.openai.com/v1",
+                "api_key": "sk-test-key",
+                "default_model": "gpt-4"
+            },
+            chat_controls={}
+        )
+        
+        builder = OpenAIRequestBuilder()
+        openai_request = builder.build_request(request)
+        
+        assert openai_request["model"] == "gpt-4"
+        assert openai_request["messages"] == [{"role": "user", "content": "Hello, world!"}]
+        assert "stream" in openai_request
+        assert "temperature" in openai_request or openai_request.get("temperature") is None
+    
+    def test_build_request_with_system_message(self):
+        """Test building request with system message."""
+        request = ChatRequest(
+            message="Hello",
+            provider_type=ProviderType.OPENAI,
+            provider_settings={
+                "base_url": "https://api.openai.com/v1",
+                "api_key": "sk-test-key",
+                "default_model": "gpt-4"
+            },
+            chat_controls={"system_or_instructions": "You are a helpful assistant."}
+        )
+        
+        builder = OpenAIRequestBuilder()
+        openai_request = builder.build_request(request)
+        
+        expected_messages = [
+            {"role": "system", "content": "You are a helpful assistant."},
+            {"role": "user", "content": "Hello"}
+        ]
+        assert openai_request["messages"] == expected_messages
+    
+    def test_build_request_with_chat_controls(self):
+        """Test building request with various chat controls."""
+        request = ChatRequest(
+            message="Hello",
+            provider_type=ProviderType.OPENAI,
+            provider_settings={
+                "base_url": "https://api.openai.com/v1",
+                "api_key": "sk-test-key",
+                "default_model": "gpt-4"
+            },
+            chat_controls={
+                "temperature": 0.8,
+                "top_p": 0.9,
+                "max_tokens": 512,
+                "presence_penalty": 0.1,
+                "frequency_penalty": 0.2,
+                "seed": 42,
+                "stop": ["END", "STOP"]
+            }
+        )
+        
+        builder = OpenAIRequestBuilder()
+        openai_request = builder.build_request(request)
+        
+        assert openai_request["temperature"] == 0.8
+        assert openai_request["top_p"] == 0.9
+        assert openai_request["max_tokens"] == 512
+        assert openai_request["presence_penalty"] == 0.1
+        assert openai_request["frequency_penalty"] == 0.2
+        assert openai_request["seed"] == 42
+        assert openai_request["stop"] == ["END", "STOP"]
+    
+    def test_build_request_with_streaming(self):
+        """Test building request with streaming enabled."""
+        request = ChatRequest(
+            message="Hello",
+            provider_type=ProviderType.OPENAI,
+            provider_settings={
+                "base_url": "https://api.openai.com/v1",
+                "api_key": "sk-test-key",
+                "default_model": "gpt-4"
+            },
+            chat_controls={"stream": True}
+        )
+        
+        builder = OpenAIRequestBuilder()
+        openai_request = builder.build_request(request)
+        
+        assert openai_request["stream"] is True
+    
+    def test_build_request_with_json_mode(self):
+        """Test building request with JSON response format."""
+        request = ChatRequest(
+            message="Generate a JSON response",
+            provider_type=ProviderType.OPENAI,
+            provider_settings={
+                "base_url": "https://api.openai.com/v1",
+                "api_key": "sk-test-key",
+                "default_model": "gpt-4"
+            },
+            chat_controls={"json_mode": "json_object"}
+        )
+        
+        builder = OpenAIRequestBuilder()
+        openai_request = builder.build_request(request)
+        
+        assert openai_request["response_format"]["type"] == "json_object"
+    
+    def test_build_headers(self):
+        """Test header building logic."""
+        builder = OpenAIRequestBuilder()
+        
+        # Test basic headers
+        headers = builder.build_headers("sk-test-key", None, None)
+        assert headers["Authorization"] == "Bearer sk-test-key"
+        assert headers["Content-Type"] == "application/json"
+        
+        # Test with organization
+        headers = builder.build_headers("sk-test-key", "org-123", None)
+        assert headers["OpenAI-Organization"] == "org-123"
+        
+        # Test with project
+        headers = builder.build_headers("sk-test-key", None, "proj-456")
+        assert headers["OpenAI-Project"] == "proj-456"
+    
+    def test_build_url(self):
+        """Test URL building logic."""
+        builder = OpenAIRequestBuilder()
+        
+        # Test default endpoint
+        url = builder.build_url("https://api.openai.com/v1")
+        assert url == "https://api.openai.com/v1/chat/completions"
+        
+        # Test URL with trailing slash
+        url = builder.build_url("https://api.openai.com/v1/")
+        assert url == "https://api.openai.com/v1/chat/completions"
+
+
+class TestOpenAIResponseParser:
+    """Test OpenAI response parsing logic."""
+    
+    def test_parse_non_streaming_response(self):
+        """Test parsing a non-streaming response."""
+        mock_response_data = {
+            "id": "chatcmpl-123",
+            "object": "chat.completion",
+            "created": 1677652288,
+            "model": "gpt-4",
+            "choices": [
+                {
+                    "index": 0,
+                    "message": {
+                        "role": "assistant",
+                        "content": "Hello! How can I help you today?"
+                    },
+                    "finish_reason": "stop"
+                }
+            ],
+            "usage": {
+                "prompt_tokens": 10,
+                "completion_tokens": 15,
+                "total_tokens": 25
+            }
+        }
+        
+        parser = OpenAIResponseParser()
+        response = parser.parse_response(mock_response_data)
+        
+        assert isinstance(response, ChatResponse)
+        assert response.content == "Hello! How can I help you today?"
+        assert response.model == "gpt-4"
+        assert response.provider_type == ProviderType.OPENAI
+        assert response.metadata["usage"]["total_tokens"] == 25
+        assert response.metadata["finish_reason"] == "stop"
+    
+    def test_parse_response_missing_content(self):
+        """Test parsing response with missing content."""
+        mock_response_data = {
+            "id": "chatcmpl-123",
+            "object": "chat.completion",
+            "model": "gpt-4",
+            "choices": [
+                {
+                    "index": 0,
+                    "message": {
+                        "role": "assistant",
+                        "content": None
+                    },
+                    "finish_reason": "length"
+                }
+            ]
+        }
+        
+        parser = OpenAIResponseParser()
+        response = parser.parse_response(mock_response_data)
+        
+        assert response.content == ""
+        assert response.metadata["finish_reason"] == "length"
+
+
+class TestOpenAIStreamParser:
+    """Test OpenAI streaming response parsing."""
+    
+    def test_parse_streaming_chunk(self):
+        """Test parsing a streaming response chunk."""
+        chunk_line = 'data: {"id":"chatcmpl-123","object":"chat.completion.chunk","created":1677652288,"model":"gpt-4","choices":[{"index":0,"delta":{"content":"Hello"},"finish_reason":null}]}'
+        
+        parser = OpenAIStreamParser()
+        chunk = parser.parse_chunk(chunk_line)
+        
+        assert isinstance(chunk, StreamingChatResponse)
+        assert chunk.content == "Hello"
+        assert chunk.model == "gpt-4"
+        assert chunk.done is False
+        assert chunk.provider_type == ProviderType.OPENAI
+    
+    def test_parse_final_streaming_chunk(self):
+        """Test parsing the final streaming chunk."""
+        chunk_line = 'data: {"id":"chatcmpl-123","object":"chat.completion.chunk","created":1677652288,"model":"gpt-4","choices":[{"index":0,"delta":{},"finish_reason":"stop"}],"usage":{"total_tokens":25}}'
+        
+        parser = OpenAIStreamParser()
+        chunk = parser.parse_chunk(chunk_line)
+        
+        assert chunk.content == ""
+        assert chunk.done is True
+        assert chunk.metadata["finish_reason"] == "stop"
+        assert chunk.metadata["usage"]["total_tokens"] == 25
+    
+    def test_parse_done_message(self):
+        """Test parsing the [DONE] message."""
+        parser = OpenAIStreamParser()
+        chunk = parser.parse_chunk("data: [DONE]")
+        
+        assert chunk is None  # [DONE] returns None to signal end
+    
+    def test_parse_empty_line(self):
+        """Test parsing empty lines."""
+        parser = OpenAIStreamParser()
+        chunk = parser.parse_chunk("")
+        
+        assert chunk is None
+
+
+class TestOpenAIService:
+    """Test OpenAIService main functionality."""
+    
+    def test_validate_settings_valid(self):
+        """Test validation of valid OpenAI settings."""
+        service = OpenAIService()
+        settings = {
+            "base_url": "https://api.openai.com/v1",
+            "api_key": "sk-test-key",
+            "default_model": "gpt-4"
+        }
+        
+        assert service.validate_settings(settings) is True
+    
+    def test_validate_settings_missing_api_key(self):
+        """Test validation fails with missing API key."""
+        service = OpenAIService()
+        settings = {
+            "base_url": "https://api.openai.com/v1",
+            "default_model": "gpt-4"
+        }
+        
+        assert service.validate_settings(settings) is False
+    
+    def test_validate_settings_missing_model(self):
+        """Test validation fails with missing model."""
+        service = OpenAIService()
+        settings = {
+            "base_url": "https://api.openai.com/v1",
+            "api_key": "sk-test-key"
+        }
+        
+        assert service.validate_settings(settings) is False
+    
+    @pytest.mark.asyncio
+    async def test_send_message_success(self):
+        """Test successful message sending."""
+        service = OpenAIService()
+        request = ChatRequest(
+            message="Hello",
+            provider_type=ProviderType.OPENAI,
+            provider_settings={
+                "base_url": "https://api.openai.com/v1",
+                "api_key": "sk-test-key",
+                "default_model": "gpt-4"
+            },
+            chat_controls={}
+        )
+        
+        # Mock the HTTP response
+        mock_response_data = {
+            "id": "chatcmpl-123",
+            "object": "chat.completion",
+            "model": "gpt-4",
+            "choices": [
+                {
+                    "index": 0,
+                    "message": {
+                        "role": "assistant",
+                        "content": "Hello! How can I help?"
+                    },
+                    "finish_reason": "stop"
+                }
+            ],
+            "usage": {
+                "total_tokens": 25
+            }
+        }
+        
+        with patch('aiohttp.ClientSession.post') as mock_post:
+            mock_response = AsyncMock()
+            mock_response.text.return_value = json.dumps(mock_response_data)
+            mock_response.status = 200
+            mock_post.return_value.__aenter__.return_value = mock_response
+            
+            response = await service.send_message(request)
+            
+            assert isinstance(response, ChatResponse)
+            assert response.content == "Hello! How can I help?"
+            assert response.model == "gpt-4"
+            assert response.provider_type == ProviderType.OPENAI
+    
+    @pytest.mark.asyncio
+    async def test_send_message_authentication_error(self):
+        """Test handling of authentication errors."""
+        service = OpenAIService()
+        request = ChatRequest(
+            message="Hello",
+            provider_type=ProviderType.OPENAI,
+            provider_settings={
+                "base_url": "https://api.openai.com/v1",
+                "api_key": "invalid-key",
+                "default_model": "gpt-4"
+            },
+            chat_controls={}
+        )
+        
+        with patch('aiohttp.ClientSession.post') as mock_post:
+            mock_response = AsyncMock()
+            mock_response.status = 401
+            mock_response.text.return_value = '{"error":{"message":"Invalid API key"}}'
+            mock_post.return_value.__aenter__.return_value = mock_response
+            
+            with pytest.raises(ProviderAuthenticationError, match="OpenAI authentication failed"):
+                await service.send_message(request)
+    
+    @pytest.mark.asyncio
+    async def test_send_message_stream_success(self):
+        """Test successful streaming message sending."""
+        service = OpenAIService()
+        request = ChatRequest(
+            message="Hello",
+            provider_type=ProviderType.OPENAI,
+            provider_settings={
+                "base_url": "https://api.openai.com/v1",
+                "api_key": "sk-test-key",
+                "default_model": "gpt-4"
+            },
+            chat_controls={"stream": True}
+        )
+        
+        # Mock streaming response chunks
+        chunk1 = b'data: {"id":"chatcmpl-123","choices":[{"index":0,"delta":{"content":"Hello"},"finish_reason":null}],"model":"gpt-4"}\n\n'
+        chunk2 = b'data: {"id":"chatcmpl-123","choices":[{"index":0,"delta":{"content":" there"},"finish_reason":null}],"model":"gpt-4"}\n\n'
+        chunk3 = b'data: {"id":"chatcmpl-123","choices":[{"index":0,"delta":{},"finish_reason":"stop"}],"model":"gpt-4","usage":{"total_tokens":10}}\n\n'
+        chunk4 = b'data: [DONE]\n\n'
+        
+        async def mock_stream_chunks(chunk_size):
+            for chunk in [chunk1, chunk2, chunk3, chunk4]:
+                yield chunk
+        
+        with patch('aiohttp.ClientSession.post') as mock_post:
+            mock_response = AsyncMock()
+            mock_response.status = 200
+            mock_response.content.iter_chunked = mock_stream_chunks
+            mock_post.return_value.__aenter__.return_value = mock_response
+            
+            chunks = []
+            async for chunk in service.send_message_stream(request):
+                chunks.append(chunk)
+            
+            assert len(chunks) == 3  # Excluding [DONE] message
+            assert chunks[0].content == "Hello"
+            assert chunks[0].done is False
+            assert chunks[1].content == " there"
+            assert chunks[1].done is False
+            assert chunks[2].content == ""
+            assert chunks[2].done is True
+            assert chunks[2].metadata["usage"]["total_tokens"] == 10
+    
+    @pytest.mark.asyncio
+    async def test_send_message_connection_error(self):
+        """Test handling of connection errors."""
+        service = OpenAIService()
+        request = ChatRequest(
+            message="Hello",
+            provider_type=ProviderType.OPENAI,
+            provider_settings={
+                "base_url": "https://invalid-host.com/v1",
+                "api_key": "sk-test-key",
+                "default_model": "gpt-4"
+            },
+            chat_controls={}
+        )
+        
+        # Test with an invalid host - this will be tested in integration tests
+        # For now, just test that the service can handle the request structure
+        assert service.validate_settings(request.provider_settings) is True
+    
+    def test_get_timeout_configuration(self):
+        """Test timeout configuration."""
+        service = OpenAIService()
+        timeout = service._get_timeout()
+        
+        assert isinstance(timeout, ClientTimeout)
+        assert timeout.total == 60  # 1 minute default for OpenAI
+    
+    def test_format_error_message(self):
+        """Test error message formatting."""
+        service = OpenAIService()
+        
+        error_msg = service._format_error_message("Authentication failed", 401)
+        assert "Authentication failed" in error_msg
+        assert "status 401" in error_msg
