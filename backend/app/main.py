@@ -16,6 +16,8 @@ from app.models import Base
 from app.api.database import router as database_router
 from app.api.modules import router as modules_router
 from app.api.personas import router as personas_router
+from app.api.chat import router as chat_router
+from app.api.connections import router as connections_router
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -89,6 +91,8 @@ def create_app() -> FastAPI:
     app.include_router(database_router, prefix="/api", tags=["database"])
     app.include_router(modules_router, prefix="/api", tags=["modules"])
     app.include_router(personas_router, prefix="/api", tags=["personas"])
+    app.include_router(chat_router, tags=["chat"])
+    app.include_router(connections_router, tags=["connections"])
     
     # Mount static files for serving images
     static_dir = Path(__file__).parent.parent / "static"

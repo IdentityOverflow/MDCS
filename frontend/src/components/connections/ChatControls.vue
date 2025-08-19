@@ -1,10 +1,12 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, computed } from 'vue'
 import { useLocalStorage, useNotification } from '@/composables/storage'
+import { usePersonas } from '@/composables/usePersonas'
 
 // Default chat controls based on connections.md spec
 const defaultChatControls = {
-  system_or_instructions: '',
+  provider: 'ollama', // Default provider selection
+  selectedPersonaId: '', // Selected persona for system prompt
   temperature: 0.7,
   top_p: 1.0,
   max_tokens: 1024,
@@ -40,9 +42,28 @@ const { data: chatControls, save: saveToStorage, load: loadFromStorage } = useLo
 // Notification system
 const notification = useNotification()
 
+// Personas management
+const { personas, fetchPersonas, getPersonaById } = usePersonas()
+
+// Computed values
+const selectedPersona = computed(() => {
+  return chatControls.value.selectedPersonaId ? 
+    getPersonaById(chatControls.value.selectedPersonaId) : null
+})
+
+const currentSystemPrompt = computed(() => {
+  return selectedPersona.value?.template || ''
+})
+
 // Load data on component mount
-onMounted(() => {
+onMounted(async () => {
   loadFromStorage()
+  // Load personas for selection
+  try {
+    await fetchPersonas({ active_only: true })
+  } catch (error) {
+    console.error('Failed to load personas:', error)
+  }
 })
 
 // State for managing stop sequences input
@@ -76,17 +97,35 @@ function resetToDefaults() {
 
 <template>
   <form class="form" @submit.prevent="saveControls">
-    <!-- System / Instructions -->
+    <!-- Provider Selection -->
     <div class="form-group">
-      <label for="system-instructions">System / Instructions</label>
-      <textarea 
-        id="system-instructions"
-        v-model="chatControls.system_or_instructions" 
-        class="form-textarea"
-        rows="4"
-        placeholder="System prompt for Chat Completions; 'instructions' for Responses API"
-      ></textarea>
-      <small class="form-hint">System prompt for Chat Completions; 'instructions' for Responses API</small>
+      <label for="provider">AI Provider</label>
+      <select id="provider" v-model="chatControls.provider" class="form-select">
+        <option value="ollama">Ollama</option>
+        <option value="openai">OpenAI</option>
+      </select>
+      <small class="form-hint">Choose between Ollama (local) or OpenAI (API) provider</small>
+    </div>
+
+    <!-- Persona Selection -->
+    <div class="form-group">
+      <label for="persona">Persona / System Prompt</label>
+      <select id="persona" v-model="chatControls.selectedPersonaId" class="form-select">
+        <option value="">No Persona (Default)</option>
+        <option v-for="persona in personas" :key="persona.id" :value="persona.id">
+          {{ persona.name }}
+        </option>
+      </select>
+      <small class="form-hint">Selected persona's template will be used as system prompt</small>
+    </div>
+
+    <!-- Current System Prompt Preview (if persona selected) -->
+    <div v-if="currentSystemPrompt" class="form-group">
+      <label>Current System Prompt Preview</label>
+      <div class="system-prompt-preview">
+        {{ currentSystemPrompt }}
+      </div>
+      <small class="form-hint">This will be sent as the system prompt to the AI</small>
     </div>
 
     <!-- Temperature -->
@@ -511,5 +550,21 @@ function resetToDefaults() {
     transform: translateX(0);
     opacity: 1;
   }
+}
+
+/* System prompt preview */
+.system-prompt-preview {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  padding: 12px;
+  border-radius: 2px;
+  color: var(--fg-secondary);
+  font-size: 0.85em;
+  line-height: 1.4;
+  max-height: 120px;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  font-family: monospace;
+  clip-path: polygon(0 0, calc(100% - 4px) 0, 100% 4px, 100% 100%, 0 100%);
 }
 </style>

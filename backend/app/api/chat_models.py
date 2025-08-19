@@ -6,7 +6,8 @@ from enum import Enum
 from typing import Dict, Any, Optional
 from pydantic import BaseModel, Field, field_validator
 
-from ..services.ai_providers import ChatRequest, ChatResponse, StreamingChatResponse as ProviderStreamingResponse, ProviderType
+from ..services.ai_providers import ChatRequest, ChatResponse, ProviderType
+from ..services.ai_providers import StreamingChatResponse as ProviderStreamingResponse
 from ..services.exceptions import ProviderConnectionError, ProviderAuthenticationError, UnsupportedProviderError
 
 
@@ -22,6 +23,7 @@ class ChatSendRequest(BaseModel):
     provider: ChatProvider = Field(..., description="The AI provider to use")
     stream: bool = Field(default=False, description="Whether to stream the response")
     chat_controls: Dict[str, Any] = Field(default_factory=dict, description="Chat control parameters")
+    provider_settings: Optional[Dict[str, Any]] = Field(None, description="Provider connection settings")
     
     @field_validator('message')
     def validate_message(cls, v):
@@ -29,9 +31,12 @@ class ChatSendRequest(BaseModel):
             raise ValueError("Message cannot be empty")
         return v
     
-    def to_provider_request(self, provider_settings: Dict[str, Any]) -> ChatRequest:
+    def to_provider_request(self, fallback_settings: Optional[Dict[str, Any]] = None) -> ChatRequest:
         """Convert to provider ChatRequest."""
         provider_type = ProviderType.OLLAMA if self.provider == ChatProvider.OLLAMA else ProviderType.OPENAI
+        
+        # Use provider settings from request, or fallback if not provided
+        settings = self.provider_settings or fallback_settings or {}
         
         # Add stream setting to chat controls
         chat_controls = self.chat_controls.copy()
@@ -40,7 +45,7 @@ class ChatSendRequest(BaseModel):
         return ChatRequest(
             message=self.message,
             provider_type=provider_type,
-            provider_settings=provider_settings,
+            provider_settings=settings,
             chat_controls=chat_controls
         )
 

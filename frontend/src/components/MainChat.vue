@@ -1,10 +1,69 @@
 <script setup lang="ts">
-import { ref, nextTick } from 'vue'
+import { ref, nextTick, computed, onMounted } from 'vue'
 import ChatControls from './connections/ChatControls.vue'
+import { useChat, type ChatMessage } from '@/composables/useChat'
+import { useLocalStorage } from '@/composables/storage'
+import { usePersonas } from '@/composables/usePersonas'
 
 const message = ref('')
 const showSliders = ref(false)
 const textareaRef = ref<HTMLTextAreaElement>()
+
+// Chat functionality
+const { 
+  messages, 
+  isStreaming, 
+  currentStreamingMessage, 
+  error, 
+  hasMessages, 
+  sendChatMessage, 
+  clearChat 
+} = useChat()
+
+// Get chat controls from storage - no defaults, load what's actually saved
+const { data: chatControls, load: loadChatControls } = useLocalStorage({
+  key: 'chat-controls',
+  defaultValue: {
+    provider: 'ollama',
+    selectedPersonaId: '',
+    stream: true,
+    // All other settings come from ChatControls component
+    temperature: 0.7,
+    top_p: 1.0,
+    max_tokens: 1024,
+    presence_penalty: 0.0,
+    frequency_penalty: 0.0,
+    seed: null,
+    stop: [],
+    json_mode: 'off',
+    tools: [],
+    tool_choice: 'auto',
+    ollama_top_k: 40,
+    ollama_repeat_penalty: 1.1,
+    ollama_mirostat: 0,
+    ollama_num_ctx: 8192,
+    reasoning_effort: 'low',
+    verbosity: 'medium'
+  }
+})
+
+// Load chat controls on component mount
+onMounted(() => {
+  loadChatControls()
+})
+
+// Personas for system prompt
+const { getPersonaById } = usePersonas()
+
+// Computed values
+const selectedPersona = computed(() => {
+  return chatControls.value.selectedPersonaId ? 
+    getPersonaById(chatControls.value.selectedPersonaId) : null
+})
+
+const currentSystemPrompt = computed(() => {
+  return selectedPersona.value?.template || ''
+})
 
 function handleKeydown(event: KeyboardEvent) {
   if (event.key === 'Enter' && !event.shiftKey) {
@@ -13,15 +72,25 @@ function handleKeydown(event: KeyboardEvent) {
   }
 }
 
-function sendMessage() {
-  if (message.value.trim()) {
-    console.log('Sending message:', message.value)
-    // Here you would typically send the message to your chat service
-    message.value = ''
-    // Reset textarea height after sending
-    nextTick(() => {
-      autoResize()
-    })
+async function sendMessage() {
+  if (!message.value.trim() || isStreaming.value) return
+  
+  const userMessage = message.value.trim()
+  message.value = ''
+  
+  // Reset textarea height after sending
+  nextTick(() => {
+    autoResize()
+  })
+  
+  try {
+    await sendChatMessage(
+      userMessage,
+      chatControls.value as any,
+      currentSystemPrompt.value
+    )
+  } catch (error) {
+    console.error('Failed to send message:', error)
   }
 }
 
@@ -39,15 +108,73 @@ function autoResize() {
     textarea.style.height = `${newHeight}px`
   }
 }
+
+// Format timestamp for display
+function formatTime(timestamp: number): string {
+  return new Date(timestamp).toLocaleTimeString([], { 
+    hour: '2-digit', 
+    minute: '2-digit' 
+  })
+}
+
+// Clear chat history
+function handleClearChat() {
+  clearChat()
+}
 </script>
 
 <template>
   <div class="main-chat">
     <!-- Chat messages area -->
     <div class="chat-content">
-      <div class="chat-messages">
-        <!-- Chat messages would go here -->
-        <div class="placeholder-text">Start a conversation...</div>
+      <div class="chat-messages" :class="{ 'has-messages': hasMessages }">
+        <!-- Chat messages -->
+        <div v-if="hasMessages" class="messages-list">
+          <div 
+            v-for="msg in messages" 
+            :key="msg.id" 
+            class="message" 
+            :class="[`message-${msg.role}`, { 'system-message': msg.role === 'system' }]"
+            v-show="msg.role !== 'system'"
+          >
+            <div class="message-content">
+              <div class="message-text">{{ msg.content }}</div>
+              <div class="message-meta">
+                <span class="message-time">{{ formatTime(msg.timestamp) }}</span>
+                <span v-if="msg.metadata?.model" class="message-model">{{ msg.metadata.model }}</span>
+                <span v-if="msg.metadata?.tokens_used" class="message-tokens">{{ msg.metadata.tokens_used }} tokens</span>
+              </div>
+            </div>
+          </div>
+          
+          <!-- Streaming message -->
+          <div v-if="isStreaming && currentStreamingMessage" class="message message-assistant streaming">
+            <div class="message-content">
+              <div class="message-text">{{ currentStreamingMessage }}<span class="streaming-cursor">▋</span></div>
+              <div class="message-meta">
+                <span class="streaming-indicator">
+                  <i class="fa-solid fa-circle-notch fa-spin"></i>
+                  Typing...
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+        
+        <!-- Empty state -->
+        <div v-else class="empty-state">
+          <div class="placeholder-text">Start a conversation...</div>
+          <div class="placeholder-hint">
+            <div v-if="selectedPersona" class="active-persona">
+              <i class="fa-solid fa-user-robot"></i>
+              Active Persona: {{ selectedPersona.name }}
+            </div>
+            <div class="provider-info">
+              <i class="fa-solid fa-server"></i>
+              Provider: {{ chatControls.provider.toUpperCase() }}
+            </div>
+          </div>
+        </div>
       </div>
     </div>
     
@@ -74,9 +201,17 @@ function autoResize() {
               class="icon-btn settings-btn" 
               @click="toggleSliders" 
               :class="{ active: showSliders }" 
-              title="Settings"
+              title="Chat Settings"
             >
               <i class="fa-solid fa-sliders"></i>
+            </button>
+            <button 
+              v-if="hasMessages"
+              class="icon-btn clear-btn" 
+              @click="handleClearChat" 
+              title="Clear Chat"
+            >
+              <i class="fa-solid fa-trash"></i>
             </button>
           </div>
           
@@ -96,10 +231,10 @@ function autoResize() {
             <button 
               class="icon-btn send-btn" 
               @click="sendMessage" 
-              :disabled="!message.trim()" 
-              title="Send Message"
+              :disabled="!message.trim() || isStreaming" 
+              :title="isStreaming ? 'Sending...' : 'Send Message'"
             >
-              <i class="fa-solid fa-paper-plane"></i>
+              <i :class="isStreaming ? 'fa-solid fa-spinner fa-spin' : 'fa-solid fa-paper-plane'"></i>
             </button>
           </div>
         </div>
@@ -130,6 +265,9 @@ function autoResize() {
   flex: 1;
   padding: 32px 16px 120px;
   overflow-y: auto;
+}
+
+.chat-messages:not(.has-messages) {
   display: flex;
   align-items: center;
   justify-content: center;
@@ -312,6 +450,148 @@ function autoResize() {
 
 .send-btn:not(:disabled) {
   opacity: 1;
+}
+
+/* Chat Messages Styling */
+.messages-list {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.message {
+  display: flex;
+  flex-direction: column;
+  max-width: 80%;
+  animation: messageSlideIn 0.3s ease-out;
+}
+
+.message-user {
+  align-self: flex-end;
+}
+
+.message-assistant {
+  align-self: flex-start;
+}
+
+.message-content {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  padding: 12px 16px;
+  position: relative;
+}
+
+.message-user .message-content {
+  background: linear-gradient(135deg, var(--accent) 0%, rgba(0, 212, 255, 0.8) 100%);
+  color: var(--bg);
+  clip-path: polygon(0 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%);
+}
+
+.message-assistant .message-content {
+  background: var(--surface);
+  color: var(--fg);
+  clip-path: polygon(8px 0, 100% 0, 100% 100%, 0 100%, 0 8px);
+}
+
+.message-text {
+  font-size: 0.95em;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+}
+
+.message-meta {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 8px;
+  font-size: 0.8em;
+  opacity: 0.7;
+}
+
+.message-time,
+.message-model,
+.message-tokens {
+  font-family: monospace;
+}
+
+.message-user .message-meta {
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.message-assistant .message-meta {
+  color: var(--fg-secondary);
+}
+
+/* Streaming message */
+.message.streaming .message-content {
+  border-color: var(--accent);
+  box-shadow: 0 0 10px rgba(0, 212, 255, 0.3);
+}
+
+.streaming-cursor {
+  animation: blink 1s infinite;
+  color: var(--accent);
+}
+
+.streaming-indicator {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--accent);
+}
+
+/* Empty state styling */
+.empty-state {
+  text-align: center;
+}
+
+.placeholder-hint {
+  margin-top: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-size: 0.85em;
+  opacity: 0.6;
+}
+
+.active-persona,
+.provider-info {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.active-persona {
+  color: var(--accent);
+}
+
+/* Clear button styling */
+.clear-btn:hover:not(:disabled) {
+  color: #ef4444;
+  border-color: #ef4444;
+}
+
+/* Animations */
+@keyframes messageSlideIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes blink {
+  0%, 50% {
+    opacity: 1;
+  }
+  51%, 100% {
+    opacity: 0;
+  }
 }
 
 </style>

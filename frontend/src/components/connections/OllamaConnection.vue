@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { onMounted } from 'vue'
+import { onMounted, ref } from 'vue'
 import { useLocalStorage, useNotification } from '@/composables/storage'
+import { useApiConfig } from '@/composables/apiConfig'
 
 // Default Ollama connection settings
 const defaultOllamaConnection = {
@@ -40,6 +41,12 @@ const { data: ollamaConnection, save: saveToStorage, load: loadFromStorage } = u
 // Notification system
 const notification = useNotification()
 
+// API configuration
+const { apiRequest } = useApiConfig()
+
+// Connection testing state
+const isTestingConnection = ref(false)
+
 // Load data on component mount
 onMounted(() => {
   loadFromStorage()
@@ -59,10 +66,47 @@ function saveConnection() {
   }
 }
 
-function testConnection() {
-  console.log('Testing Ollama connection...', ollamaConnection.value)
-  // TODO: Implement actual connection test
-  notification.showSuccess('Connection test feature coming soon')
+async function testConnection() {
+  if (isTestingConnection.value) return
+  
+  if (!ollamaConnection.value.host.trim()) {
+    notification.showError('Host URL is required')
+    return
+  }
+  
+  if (!ollamaConnection.value.model.trim()) {
+    notification.showError('Model name is required')
+    return
+  }
+  
+  isTestingConnection.value = true
+  
+  try {
+    const response = await apiRequest('/api/connections/ollama/test', {
+      method: 'POST',
+      body: JSON.stringify({
+        host: ollamaConnection.value.host.trim(),
+        model: ollamaConnection.value.model.trim(),
+        route: ollamaConnection.value.route || '/api/chat',
+        timeout_ms: ollamaConnection.value.timeout_ms || 30000
+      })
+    })
+    
+    const data = await response.json()
+    
+    if (response.ok) {
+      notification.showSuccess(`✅ ${data.message}`)
+    } else {
+      // Handle error response
+      const errorMessage = data.detail?.message || data.message || 'Connection test failed'
+      notification.showError(`❌ ${errorMessage}`)
+    }
+  } catch (error) {
+    console.error('Connection test error:', error)
+    notification.showError(`❌ Network error: ${error instanceof Error ? error.message : 'Unknown error'}`)
+  } finally {
+    isTestingConnection.value = false
+  }
 }
 </script>
 
@@ -136,9 +180,9 @@ function testConnection() {
       </div>
 
       <div class="form-actions">
-        <button type="button" @click="testConnection" class="action-btn cancel-btn">
-          <i class="fa-solid fa-plug"></i>
-          Test Connection
+        <button type="button" @click="testConnection" :disabled="isTestingConnection" class="action-btn cancel-btn">
+          <i :class="isTestingConnection ? 'fa-solid fa-spinner fa-spin' : 'fa-solid fa-plug'"></i>
+          {{ isTestingConnection ? 'Testing...' : 'Test Connection' }}
         </button>
         <button type="submit" class="action-btn save-btn">
           <i class="fa-solid fa-save"></i>

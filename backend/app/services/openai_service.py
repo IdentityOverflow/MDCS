@@ -330,3 +330,57 @@ class OpenAIService(AIProvider):
     def _format_error_message(self, error_text: str, status_code: int) -> str:
         """Format error message for better user experience."""
         return f"OpenAI request failed with status {status_code}: {error_text}"
+    
+    async def test_connection(self, settings: Dict[str, Any]) -> Dict[str, Any]:
+        """Test connection to OpenAI API."""
+        if not self.validate_settings(settings):
+            raise ProviderConnectionError("Invalid OpenAI settings: missing required fields")
+        
+        url = self.request_builder.build_url(settings["base_url"])
+        headers = self.request_builder.build_headers(
+            settings["api_key"],
+            settings.get("organization"),
+            settings.get("project")
+        )
+        
+        # Create a minimal test request
+        test_payload = {
+            "model": settings["default_model"],
+            "messages": [{"role": "user", "content": "test"}],
+            "stream": False,
+            "max_tokens": 1  # Minimal response
+        }
+        
+        try:
+            timeout = ClientTimeout(total=30)  # Shorter timeout for connection test
+            
+            async with aiohttp.ClientSession(timeout=timeout) as session:
+                async with session.post(url, json=test_payload, headers=headers) as response:
+                    response_text = await response.text()
+                    
+                    if response.status == 401:
+                        raise ProviderAuthenticationError(f"OpenAI authentication failed: Invalid API key")
+                    elif response.status != 200:
+                        error_msg = self._format_error_message(response_text, response.status)
+                        raise ProviderConnectionError(error_msg)
+                    
+                    response_data = json.loads(response_text)
+                    
+                    return {
+                        "status": "success",
+                        "message": f"Successfully connected to OpenAI API at {settings['base_url']}",
+                        "model": response_data.get("model", settings["default_model"]),
+                        "organization": settings.get("organization", "default")
+                    }
+        
+        except ClientConnectorError as e:
+            logger.error(f"Failed to connect to OpenAI: {e}")
+            raise ProviderConnectionError(f"Failed to connect to OpenAI at {settings['base_url']}: {str(e)}")
+        except ClientError as e:
+            logger.error(f"OpenAI client error: {e}")
+            raise ProviderConnectionError(f"OpenAI client error: {str(e)}")
+        except ProviderAuthenticationError:
+            raise
+        except Exception as e:
+            logger.error(f"Unexpected error testing OpenAI connection: {e}")
+            raise ProviderConnectionError(f"Unexpected error: {str(e)}")

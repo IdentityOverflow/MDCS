@@ -291,3 +291,47 @@ class OllamaService(AIProvider):
     def _format_error_message(self, error_text: str, status_code: int) -> str:
         """Format error message for better user experience."""
         return f"Ollama request failed with status {status_code}: {error_text}"
+    
+    async def test_connection(self, settings: Dict[str, Any]) -> Dict[str, Any]:
+        """Test connection to Ollama server."""
+        if not self.validate_settings(settings):
+            raise ProviderConnectionError("Invalid Ollama settings: missing host or model")
+        
+        url = self.request_builder.build_url(settings["host"], settings.get("route"))
+        
+        # Create a minimal test request
+        test_payload = {
+            "model": settings["model"],
+            "messages": [{"role": "user", "content": "test"}],
+            "stream": False,
+            "options": {"num_predict": 1}  # Minimal response
+        }
+        
+        try:
+            timeout = ClientTimeout(total=30)  # Shorter timeout for connection test
+            
+            async with aiohttp.ClientSession(timeout=timeout) as session:
+                async with session.post(url, json=test_payload) as response:
+                    if response.status != 200:
+                        error_text = await response.text()
+                        error_msg = self._format_error_message(error_text, response.status)
+                        raise ProviderConnectionError(error_msg)
+                    
+                    response_data = await response.json()
+                    
+                    return {
+                        "status": "success",
+                        "message": f"Successfully connected to Ollama at {settings['host']}",
+                        "model": response_data.get("model", settings["model"]),
+                        "version": response_data.get("version", "unknown")
+                    }
+        
+        except ClientConnectorError as e:
+            logger.error(f"Failed to connect to Ollama: {e}")
+            raise ProviderConnectionError(f"Failed to connect to Ollama at {settings['host']}: {str(e)}")
+        except ClientError as e:
+            logger.error(f"Ollama client error: {e}")
+            raise ProviderConnectionError(f"Ollama client error: {str(e)}")
+        except Exception as e:
+            logger.error(f"Unexpected error testing Ollama connection: {e}")
+            raise ProviderConnectionError(f"Unexpected error: {str(e)}")

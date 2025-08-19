@@ -125,22 +125,43 @@ class TestChatSendRequest:
             message="Hello",
             provider=ChatProvider.OLLAMA,
             stream=True,
-            chat_controls={"temperature": 0.7}
-        )
-        
-        # This method should convert frontend request to provider request
-        provider_request = request.to_provider_request(
+            chat_controls={"temperature": 0.7},
             provider_settings={
                 "host": "http://localhost:11434",
                 "model": "llama3:8b"
             }
         )
         
+        # This method should convert frontend request to provider request
+        provider_request = request.to_provider_request()
+        
         assert provider_request.message == "Hello"
         assert provider_request.provider_type == ProviderType.OLLAMA
         assert provider_request.chat_controls["temperature"] == 0.7
         assert provider_request.chat_controls["stream"] is True
         assert provider_request.provider_settings["host"] == "http://localhost:11434"
+        assert provider_request.provider_settings["model"] == "llama3:8b"
+    
+    def test_to_provider_request_with_fallback(self):
+        """Test conversion with fallback provider settings."""
+        request = ChatSendRequest(
+            message="Hello",
+            provider=ChatProvider.OPENAI,
+            stream=False,
+            chat_controls={"temperature": 0.8}
+            # No provider_settings in request
+        )
+        
+        # Should use fallback settings
+        fallback_settings = {"api_key": "test-key", "model": "gpt-4"}
+        provider_request = request.to_provider_request(fallback_settings)
+        
+        assert provider_request.message == "Hello"
+        assert provider_request.provider_type == ProviderType.OPENAI
+        assert provider_request.chat_controls["temperature"] == 0.8
+        assert provider_request.chat_controls["stream"] is False
+        assert provider_request.provider_settings["api_key"] == "test-key"
+        assert provider_request.provider_settings["model"] == "gpt-4"
 
 
 class TestChatMetadata:
