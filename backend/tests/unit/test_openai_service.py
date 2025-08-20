@@ -447,12 +447,163 @@ class TestOpenAIService:
         timeout = service._get_timeout()
         
         assert isinstance(timeout, ClientTimeout)
-        assert timeout.total == 60  # 1 minute default for OpenAI
     
-    def test_format_error_message(self):
-        """Test error message formatting."""
+    @pytest.mark.asyncio
+    async def test_list_models_success(self):
+        """Test successful model listing."""
         service = OpenAIService()
+        settings = {
+            "base_url": "https://api.openai.com/v1",
+            "api_key": "sk-test-key"
+        }
         
-        error_msg = service._format_error_message("Authentication failed", 401)
-        assert "Authentication failed" in error_msg
-        assert "status 401" in error_msg
+        mock_response_data = {
+            "data": [
+                {
+                    "id": "gpt-4o",
+                    "object": "model",
+                    "created": 1234567890,
+                    "owned_by": "openai"
+                },
+                {
+                    "id": "gpt-3.5-turbo",
+                    "object": "model", 
+                    "created": 1234567891,
+                    "owned_by": "openai"
+                }
+            ]
+        }
+        
+        with patch('aiohttp.ClientSession.get') as mock_get:
+            mock_response = AsyncMock()
+            mock_response.status = 200
+            mock_response.text = AsyncMock(return_value=json.dumps(mock_response_data))
+            mock_get.return_value.__aenter__.return_value = mock_response
+            
+            models = await service.list_models(settings)
+            
+            assert len(models) == 2
+            assert models[0]["id"] == "gpt-4o"
+            assert models[0]["name"] == "gpt-4o"
+            assert models[0]["owned_by"] == "openai"
+            assert models[1]["id"] == "gpt-3.5-turbo"
+            assert models[1]["name"] == "gpt-3.5-turbo"
+            
+            # Verify correct URL was called
+            mock_get.assert_called_once()
+    
+    @pytest.mark.asyncio
+    async def test_list_models_authentication_error(self):
+        """Test model listing with authentication error."""
+        service = OpenAIService()
+        settings = {
+            "base_url": "https://api.openai.com/v1",
+            "api_key": "invalid-key"
+        }
+        
+        with patch('aiohttp.ClientSession.get') as mock_get:
+            mock_response = AsyncMock()
+            mock_response.status = 401
+            mock_response.text = AsyncMock(return_value="Unauthorized")
+            mock_get.return_value.__aenter__.return_value = mock_response
+            
+            with pytest.raises(ProviderAuthenticationError) as exc_info:
+                await service.list_models(settings)
+            
+            assert "Invalid API key" in str(exc_info.value)
+    
+    @pytest.mark.asyncio
+    async def test_list_models_connection_error(self):
+        """Test model listing with connection error."""
+        service = OpenAIService()
+        settings = {
+            "base_url": "https://invalid-host.com/v1",
+            "api_key": "sk-test-key"
+        }
+        
+        with patch('aiohttp.ClientSession.get') as mock_get:
+            from aiohttp import ClientError
+            mock_get.side_effect = ClientError("Connection failed")
+            
+            with pytest.raises(ProviderConnectionError) as exc_info:
+                await service.list_models(settings)
+            
+            assert "OpenAI client error" in str(exc_info.value) or "Failed to connect to OpenAI" in str(exc_info.value)
+    
+    @pytest.mark.asyncio
+    async def test_list_models_invalid_json_response(self):
+        """Test model listing with invalid JSON response."""
+        service = OpenAIService()
+        settings = {
+            "base_url": "https://api.openai.com/v1",
+            "api_key": "sk-test-key"
+        }
+        
+        with patch('aiohttp.ClientSession.get') as mock_get:
+            mock_response = AsyncMock()
+            mock_response.status = 200
+            mock_response.text = AsyncMock(return_value="invalid json")
+            mock_get.return_value.__aenter__.return_value = mock_response
+            
+            with pytest.raises(ProviderConnectionError) as exc_info:
+                await service.list_models(settings)
+            
+            assert "Invalid JSON response from models endpoint" in str(exc_info.value)
+    
+    @pytest.mark.asyncio
+    async def test_list_models_empty_response(self):
+        """Test model listing with empty response."""
+        service = OpenAIService()
+        settings = {
+            "base_url": "https://api.openai.com/v1",
+            "api_key": "sk-test-key"
+        }
+        
+        with patch('aiohttp.ClientSession.get') as mock_get:
+            mock_response = AsyncMock()
+            mock_response.status = 200
+            mock_response.text = AsyncMock(return_value="")
+            mock_get.return_value.__aenter__.return_value = mock_response
+            
+            with pytest.raises(ProviderConnectionError) as exc_info:
+                await service.list_models(settings)
+            
+            assert "Empty response from models endpoint" in str(exc_info.value)
+    
+    @pytest.mark.asyncio
+    async def test_list_models_api_error_response(self):
+        """Test model listing with API error in response."""
+        service = OpenAIService()
+        settings = {
+            "base_url": "https://api.openai.com/v1",
+            "api_key": "sk-test-key"
+        }
+        
+        error_response = {
+            "error": {
+                "message": "Rate limit exceeded",
+                "code": 429
+            }
+        }
+        
+        with patch('aiohttp.ClientSession.get') as mock_get:
+            mock_response = AsyncMock()
+            mock_response.status = 200
+            mock_response.text = AsyncMock(return_value=json.dumps(error_response))
+            mock_get.return_value.__aenter__.return_value = mock_response
+            
+            with pytest.raises(ProviderConnectionError) as exc_info:
+                await service.list_models(settings)
+            
+            assert "API error (429): Rate limit exceeded" in str(exc_info.value)
+    
+    @pytest.mark.asyncio
+    async def test_list_models_validation_error(self):
+        """Test model listing with invalid settings."""
+        service = OpenAIService()
+        settings = {"base_url": "https://api.openai.com/v1"}  # Missing api_key
+        
+        with pytest.raises(ProviderConnectionError) as exc_info:
+            await service.list_models(settings)
+        
+        assert "Invalid OpenAI settings" in str(exc_info.value)

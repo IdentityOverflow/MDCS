@@ -216,3 +216,141 @@ class TestConnectionTestIntegration:
         # Verify both services were called
         mock_ollama.assert_called_once()
         mock_openai.assert_called_once()
+
+
+# Models endpoint tests
+class TestModelsEndpoints:
+    """Test cases for provider models listing endpoints."""
+    
+    @patch('app.services.ollama_service.OllamaService.list_models')
+    def test_ollama_models_success(self, mock_list_models, client):
+        """Test successful Ollama models listing."""
+        mock_models = [
+            {"id": "llama3:8b", "name": "llama3:8b", "object": "model", "created": 1234567890, "owned_by": "ollama"},
+            {"id": "mistral:7b", "name": "mistral:7b", "object": "model", "created": 1234567891, "owned_by": "ollama"}
+        ]
+        mock_list_models.return_value = mock_models
+        
+        request_data = {"host": "http://localhost:11434"}
+        response = client.post("/api/connections/ollama/models", json=request_data)
+        
+        assert response.status_code == 200
+        data = response.json()
+        assert data["object"] == "list"
+        assert len(data["data"]) == 2
+        assert data["data"][0]["id"] == "llama3:8b"
+        assert data["data"][1]["id"] == "mistral:7b"
+        
+        mock_list_models.assert_called_once_with({"host": "http://localhost:11434"})
+    
+    @patch('app.services.openai_service.OpenAIService.list_models')
+    def test_openai_models_success(self, mock_list_models, client):
+        """Test successful OpenAI models listing."""
+        mock_models = [
+            {"id": "gpt-4o", "name": "gpt-4o", "object": "model", "created": 1234567890, "owned_by": "openai"},
+            {"id": "gpt-3.5-turbo", "name": "gpt-3.5-turbo", "object": "model", "created": 1234567891, "owned_by": "openai"}
+        ]
+        mock_list_models.return_value = mock_models
+        
+        request_data = {
+            "base_url": "https://api.openai.com/v1",
+            "api_key": "sk-test-key",
+            "organization": "",
+            "project": ""
+        }
+        response = client.post("/api/connections/openai/models", json=request_data)
+        
+        assert response.status_code == 200
+        data = response.json()
+        assert data["object"] == "list"
+        assert len(data["data"]) == 2
+        assert data["data"][0]["id"] == "gpt-4o"
+        assert data["data"][1]["id"] == "gpt-3.5-turbo"
+        
+        mock_list_models.assert_called_once()
+    
+    def test_unsupported_provider_models(self, client):
+        """Test models endpoint with unsupported provider."""
+        request_data = {"host": "http://localhost:11434"}
+        response = client.post("/api/connections/invalid/models", json=request_data)
+        
+        assert response.status_code == 400
+        assert response.json()["detail"]["error_type"] == "validation_error"
+        assert "Unsupported provider: invalid" in response.json()["detail"]["message"]
+    
+    @patch('app.services.ollama_service.OllamaService.list_models')
+    def test_ollama_models_connection_error(self, mock_list_models, client):
+        """Test Ollama models listing with connection error."""
+        from app.services.exceptions import ProviderConnectionError
+        mock_list_models.side_effect = ProviderConnectionError("Failed to connect to Ollama")
+        
+        request_data = {"host": "http://invalid-host:11434"}
+        response = client.post("/api/connections/ollama/models", json=request_data)
+        
+        assert response.status_code == 500
+        assert response.json()["detail"]["error_type"] == "connection_error"
+        assert "Failed to connect to Ollama" in response.json()["detail"]["message"]
+    
+    @patch('app.services.openai_service.OpenAIService.list_models')
+    def test_openai_models_authentication_error(self, mock_list_models, client):
+        """Test OpenAI models listing with authentication error."""
+        from app.services.exceptions import ProviderAuthenticationError
+        mock_list_models.side_effect = ProviderAuthenticationError("Invalid API key")
+        
+        request_data = {
+            "base_url": "https://api.openai.com/v1",
+            "api_key": "invalid-key",
+            "organization": "",
+            "project": ""
+        }
+        response = client.post("/api/connections/openai/models", json=request_data)
+        
+        assert response.status_code == 500  # Connection errors are mapped to 500
+        assert response.json()["detail"]["error_type"] == "connection_error"
+        assert "Invalid API key" in response.json()["detail"]["message"]
+    
+    @patch('app.services.openai_service.OpenAIService.list_models')
+    def test_openai_models_unexpected_error(self, mock_list_models, client):
+        """Test OpenAI models listing with unexpected error."""
+        mock_list_models.side_effect = Exception("Unexpected error occurred")
+        
+        request_data = {
+            "base_url": "https://api.openai.com/v1",
+            "api_key": "sk-test-key",
+            "organization": "",
+            "project": ""
+        }
+        response = client.post("/api/connections/openai/models", json=request_data)
+        
+        assert response.status_code == 500
+        assert response.json()["detail"]["error_type"] == "internal_error"
+        assert "Unexpected error occurred" in response.json()["detail"]["message"]
+    
+    def test_ollama_models_empty_host(self, client):
+        """Test Ollama models with empty host."""
+        request_data = {"host": ""}
+        response = client.post("/api/connections/ollama/models", json=request_data)
+        
+        # This should work fine - the service will use default host
+        # But let's test it with a mock to avoid actual network calls
+        with patch('app.services.ollama_service.OllamaService.list_models') as mock_list_models:
+            mock_list_models.return_value = []
+            response = client.post("/api/connections/ollama/models", json=request_data)
+            assert response.status_code == 200
+    
+    def test_openai_models_missing_api_key(self, client):
+        """Test OpenAI models with missing API key."""
+        request_data = {
+            "base_url": "https://api.openai.com/v1",
+            "api_key": "",
+            "organization": "",
+            "project": ""
+        }
+        
+        with patch('app.services.openai_service.OpenAIService.list_models') as mock_list_models:
+            from app.services.exceptions import ProviderConnectionError
+            mock_list_models.side_effect = ProviderConnectionError("Invalid OpenAI settings: missing required fields")
+            
+            response = client.post("/api/connections/openai/models", json=request_data)
+            assert response.status_code == 500
+            assert "missing required fields" in response.json()["detail"]["message"]

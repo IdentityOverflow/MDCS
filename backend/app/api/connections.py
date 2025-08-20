@@ -214,6 +214,14 @@ async def list_provider_models(provider: str, request: ModelsListRequest) -> Mod
         )
         raise HTTPException(status_code=500, detail=error.model_dump())
         
+    except ProviderAuthenticationError as e:
+        logger.error(f"{provider.capitalize()} models authentication failed: {e}")
+        error = ConnectionTestError(
+            message=str(e),
+            error_type="connection_error"  # Map auth errors to connection errors for consistency
+        )
+        raise HTTPException(status_code=500, detail=error.model_dump())
+        
     except Exception as e:
         logger.error(f"Unexpected error in {provider} models list: {e}")
         error = ConnectionTestError(

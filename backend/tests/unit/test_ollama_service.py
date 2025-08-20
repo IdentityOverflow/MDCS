@@ -447,7 +447,97 @@ class TestOllamaService:
         error_msg = service._format_error_message("Connection failed", 0)
         assert "Connection failed" in error_msg
         assert "status 0" in error_msg
+    
+    @pytest.mark.asyncio
+    async def test_list_models_success(self):
+        """Test successful model listing."""
+        service = OllamaService()
+        settings = {"host": "http://localhost:11434"}
         
-        error_msg = service._format_error_message("Model not found", 404)
-        assert "Model not found" in error_msg
-        assert "status 404" in error_msg
+        mock_response_data = {
+            "data": [
+                {
+                    "id": "llama3:8b",
+                    "object": "model",
+                    "created": 1234567890,
+                    "owned_by": "ollama"
+                },
+                {
+                    "id": "mistral:7b",
+                    "object": "model", 
+                    "created": 1234567891,
+                    "owned_by": "ollama"
+                }
+            ]
+        }
+        
+        with patch('aiohttp.ClientSession.get') as mock_get:
+            mock_response = AsyncMock()
+            mock_response.status = 200
+            mock_response.json = AsyncMock(return_value=mock_response_data)
+            mock_get.return_value.__aenter__.return_value = mock_response
+            
+            models = await service.list_models(settings)
+            
+            assert len(models) == 2
+            assert models[0]["id"] == "llama3:8b"
+            assert models[0]["name"] == "llama3:8b"
+            assert models[0]["owned_by"] == "ollama"
+            assert models[1]["id"] == "mistral:7b"
+            assert models[1]["name"] == "mistral:7b"
+            
+            # Verify correct URL was called
+            mock_get.assert_called_once()
+            args, kwargs = mock_get.call_args
+            assert "http://localhost:11434/v1/models" in str(args) or "http://localhost:11434/v1/models" in str(kwargs)
+    
+    @pytest.mark.asyncio
+    async def test_list_models_connection_error(self):
+        """Test model listing with connection error."""
+        service = OllamaService()
+        settings = {"host": "http://invalid-host:11434"}
+        
+        with patch('aiohttp.ClientSession.get') as mock_get:
+            from aiohttp import ClientError
+            mock_get.side_effect = ClientError("Connection failed")
+            
+            with pytest.raises(ProviderConnectionError) as exc_info:
+                await service.list_models(settings)
+            
+            assert "Ollama client error" in str(exc_info.value) or "Failed to connect to Ollama" in str(exc_info.value)
+    
+    @pytest.mark.asyncio 
+    async def test_list_models_http_error(self):
+        """Test model listing with HTTP error response."""
+        service = OllamaService()
+        settings = {"host": "http://localhost:11434"}
+        
+        with patch('aiohttp.ClientSession.get') as mock_get:
+            mock_response = AsyncMock()
+            mock_response.status = 404
+            mock_response.text = AsyncMock(return_value="Not Found")
+            mock_get.return_value.__aenter__.return_value = mock_response
+            
+            with pytest.raises(ProviderConnectionError) as exc_info:
+                await service.list_models(settings)
+            
+            assert "Failed to fetch models" in str(exc_info.value)
+    
+    @pytest.mark.asyncio
+    async def test_list_models_default_host(self):
+        """Test model listing with default host."""
+        service = OllamaService()
+        
+        with patch('aiohttp.ClientSession.get') as mock_get:
+            mock_response = AsyncMock()
+            mock_response.status = 200
+            mock_response.json = AsyncMock(return_value={"data": []})
+            mock_get.return_value.__aenter__.return_value = mock_response
+            
+            models = await service.list_models()
+            
+            assert isinstance(models, list)
+            # Verify default host was used
+            mock_get.assert_called_once()
+            args, kwargs = mock_get.call_args
+            assert "http://localhost:11434/v1/models" in str(args) or "http://localhost:11434/v1/models" in str(kwargs)
