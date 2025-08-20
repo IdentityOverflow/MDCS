@@ -11,6 +11,7 @@ export interface ChatMessage {
   role: 'user' | 'assistant' | 'system'
   content: string
   timestamp: number
+  thinking?: string
   metadata?: {
     model?: string
     provider?: string
@@ -41,6 +42,7 @@ export interface ChatControls {
   tools: any[]
   tool_choice: string
   stream: boolean
+  thinking_enabled: boolean
   // Ollama specific
   ollama_top_k: number
   ollama_repeat_penalty: number
@@ -55,6 +57,7 @@ export interface ChatControls {
 const messages: Ref<ChatMessage[]> = ref([])
 const isStreaming = ref(false)
 const currentStreamingMessage = ref('')
+const currentStreamingThinking = ref('')
 const error = ref<string | null>(null)
 
 export function useChat() {
@@ -82,12 +85,13 @@ export function useChat() {
   }
   
   // Add assistant message to chat
-  const addAssistantMessage = (content: string, metadata?: ChatMessage['metadata']): ChatMessage => {
+  const addAssistantMessage = (content: string, metadata?: ChatMessage['metadata'], thinking?: string): ChatMessage => {
     const message: ChatMessage = {
       id: generateMessageId(),
       role: 'assistant',
       content,
       timestamp: Date.now(),
+      thinking,
       metadata
     }
     messages.value.push(message)
@@ -169,6 +173,7 @@ export function useChat() {
       tools: chatControls.tools,
       tool_choice: chatControls.tool_choice,
       stream: chatControls.stream,
+      thinking_enabled: chatControls.thinking_enabled,
       // Ollama specific
       ollama_top_k: chatControls.ollama_top_k,
       ollama_repeat_penalty: chatControls.ollama_repeat_penalty,
@@ -198,6 +203,7 @@ export function useChat() {
     error.value = null
     isStreaming.value = true
     currentStreamingMessage.value = ''
+    currentStreamingThinking.value = ''
     
     // Add user message immediately
     addUserMessage(userMessage)
@@ -229,13 +235,6 @@ export function useChat() {
         provider_settings: enhancedProviderSettings
       }
 
-      // Debug logging
-      console.log('Chat request:', {
-        provider: chatRequest.provider,
-        model: enhancedProviderSettings.model,
-        persona_template: effectivePersonaTemplate,
-        provider_settings: enhancedProviderSettings
-      })
       
       const response = await apiRequest('/api/chat/stream', {
         method: 'POST',
@@ -289,11 +288,17 @@ export function useChat() {
                   // Add content to streaming message
                   currentStreamingMessage.value += chunk.content || ''
                   
+                  // Add thinking content to streaming thinking if available
+                  if (chunk.thinking) {
+                    currentStreamingThinking.value += chunk.thinking
+                  }
+                  
                   // If this is the final chunk, save the complete message
                   if (chunk.done) {
                     assistantMessage = addAssistantMessage(
                       currentStreamingMessage.value,
-                      chunk.metadata
+                      chunk.metadata,
+                      currentStreamingThinking.value || undefined
                     )
                   }
                 } catch (parseError) {
@@ -317,6 +322,7 @@ export function useChat() {
     } finally {
       isStreaming.value = false
       currentStreamingMessage.value = ''
+      currentStreamingThinking.value = ''
     }
   }
   
@@ -361,13 +367,6 @@ export function useChat() {
         provider_settings: enhancedProviderSettings
       }
 
-      // Debug logging
-      console.log('Chat request (non-streaming):', {
-        provider: chatRequest.provider,
-        model: enhancedProviderSettings.model,
-        persona_template: effectivePersonaTemplate,
-        provider_settings: enhancedProviderSettings
-      })
       
       const response = await apiRequest('/api/chat/send', {
         method: 'POST',
@@ -383,7 +382,7 @@ export function useChat() {
       const data = await response.json()
       
       // Add assistant response
-      addAssistantMessage(data.content, data.metadata)
+      addAssistantMessage(data.content, data.metadata, data.thinking)
       
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Unknown error occurred'
@@ -414,6 +413,7 @@ export function useChat() {
   const clearChat = () => {
     messages.value = []
     currentStreamingMessage.value = ''
+    currentStreamingThinking.value = ''
     error.value = null
   }
   
@@ -430,6 +430,7 @@ export function useChat() {
     messages: chatHistory,
     isStreaming: isLoading,
     currentStreamingMessage: computed(() => currentStreamingMessage.value),
+    currentStreamingThinking: computed(() => currentStreamingThinking.value),
     error: computed(() => error.value),
     
     // Computed

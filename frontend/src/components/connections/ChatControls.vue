@@ -18,6 +18,7 @@ const defaultChatControls = {
   tools: [],
   tool_choice: 'auto',
   stream: true,
+  thinking_enabled: false,
   
   // Ollama-specific controls
   ollama_top_k: 40,
@@ -396,6 +397,23 @@ onMounted(async () => {
         <span class="form-checkbox-custom"></span>
         Stream responses
       </label>
+    </div>
+
+    <!-- Enable Thinking -->
+    <div class="form-group">
+      <label class="form-checkbox-label">
+        <input 
+          v-model="chatControls.thinking_enabled" 
+          type="checkbox" 
+          class="form-checkbox"
+        />
+        <span class="form-checkbox-custom"></span>
+        Enable thinking mode
+      </label>
+      <small class="form-hint">
+        <span v-if="chatControls.provider === 'ollama'">Shows the model's reasoning process (Ollama thinking models)</span>
+        <span v-else>Enhanced reasoning for OpenAI reasoning models (o1, o3 series)</span>
+      </small>
     </div>
 
     <!-- Ollama-specific controls -->

@@ -85,6 +85,7 @@ class ChatSendResponse(BaseModel):
     """Response model for chat messages."""
     content: str = Field(..., description="The response content")
     metadata: ChatMetadata = Field(..., description="Response metadata")
+    thinking: Optional[str] = Field(None, description="The model's reasoning/thinking process")
     
     @classmethod
     def from_provider_response(cls, provider_response: ChatResponse, 
@@ -101,7 +102,8 @@ class ChatSendResponse(BaseModel):
         
         return cls(
             content=provider_response.content,
-            metadata=metadata
+            metadata=metadata,
+            thinking=provider_response.thinking
         )
 
 
@@ -110,6 +112,7 @@ class StreamingChatResponse(BaseModel):
     content: str = Field(..., description="The chunk content")
     done: bool = Field(..., description="Whether this is the final chunk")
     metadata: Optional[ChatMetadata] = Field(None, description="Metadata (only present in final chunk)")
+    thinking: Optional[str] = Field(None, description="The model's reasoning/thinking process (if available)")
     
     @classmethod
     def from_provider_chunk(cls, provider_chunk: ProviderStreamingResponse, 
@@ -130,7 +133,8 @@ class StreamingChatResponse(BaseModel):
         return cls(
             content=provider_chunk.content,
             done=provider_chunk.done,
-            metadata=metadata
+            metadata=metadata,
+            thinking=provider_chunk.thinking
         )
 
 

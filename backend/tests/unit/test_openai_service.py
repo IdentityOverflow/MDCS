@@ -137,6 +137,87 @@ class TestOpenAIRequestBuilder:
         
         assert openai_request["response_format"]["type"] == "json_object"
     
+    def test_build_request_with_reasoning_model(self):
+        """Test building request with reasoning model (o1, o3 series)."""
+        request = ChatRequest(
+            message="Solve this complex math problem",
+            provider_type=ProviderType.OPENAI,
+            provider_settings={
+                "base_url": "https://api.openai.com/v1",
+                "api_key": "sk-test-key",
+                "default_model": "o3-mini"
+            },
+            chat_controls={
+                "reasoning_effort": "medium",
+                "max_tokens": 2000,
+                "temperature": 0.7  # Should not be included for reasoning models
+            }
+        )
+        
+        builder = OpenAIRequestBuilder()
+        openai_request = builder.build_request(request)
+        
+        # Reasoning model specific parameters
+        assert openai_request["reasoning_effort"] == "medium"
+        assert openai_request["max_completion_tokens"] == 2000
+        
+        # Standard parameters should not be included for reasoning models
+        assert "temperature" not in openai_request
+        assert "top_p" not in openai_request
+        assert "presence_penalty" not in openai_request
+        assert "frequency_penalty" not in openai_request
+        
+        # JSON mode should not be available for reasoning models
+        assert "response_format" not in openai_request
+    
+    def test_build_request_with_standard_model(self):
+        """Test building request with standard model (gpt-4, gpt-3.5, etc)."""
+        request = ChatRequest(
+            message="Hello",
+            provider_type=ProviderType.OPENAI,
+            provider_settings={
+                "base_url": "https://api.openai.com/v1",
+                "api_key": "sk-test-key",
+                "default_model": "gpt-4o"
+            },
+            chat_controls={
+                "temperature": 0.8,
+                "max_tokens": 512,
+                "reasoning_effort": "high"  # Should be ignored for standard models
+            }
+        )
+        
+        builder = OpenAIRequestBuilder()
+        openai_request = builder.build_request(request)
+        
+        # Standard model parameters
+        assert openai_request["temperature"] == 0.8
+        assert openai_request["max_tokens"] == 512
+        
+        # Reasoning model parameters should not be included for standard models
+        assert "reasoning_effort" not in openai_request
+        assert "max_completion_tokens" not in openai_request
+    
+    def test_is_reasoning_model(self):
+        """Test reasoning model detection logic."""
+        builder = OpenAIRequestBuilder()
+        
+        # Test reasoning models
+        assert builder._is_reasoning_model("o1") is True
+        assert builder._is_reasoning_model("o1-preview") is True
+        assert builder._is_reasoning_model("o1-mini") is True
+        assert builder._is_reasoning_model("o3-mini") is True
+        assert builder._is_reasoning_model("o4-mini") is True
+        assert builder._is_reasoning_model("O1-PREVIEW") is True  # Case insensitive
+        
+        # Test standard models
+        assert builder._is_reasoning_model("gpt-4") is False
+        assert builder._is_reasoning_model("gpt-4o") is False
+        assert builder._is_reasoning_model("gpt-3.5-turbo") is False
+        assert builder._is_reasoning_model("claude-3") is False
+        assert builder._is_reasoning_model("") is False
+        assert builder._is_reasoning_model(None) is False
+    
     def test_build_headers(self):
         """Test header building logic."""
         builder = OpenAIRequestBuilder()

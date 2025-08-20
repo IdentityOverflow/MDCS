@@ -42,6 +42,7 @@ class ChatResponse(BaseModel):
     model: str = Field(..., description="The model used for generation")
     provider_type: ProviderType = Field(..., description="The provider that generated the response")
     metadata: Dict[str, Any] = Field(default_factory=dict, description="Additional response metadata")
+    thinking: Optional[str] = Field(None, description="The model's reasoning/thinking process (if available)")
 
 
 class StreamingChatResponse(BaseModel):
@@ -51,6 +52,7 @@ class StreamingChatResponse(BaseModel):
     model: str = Field(..., description="The model used for generation")
     provider_type: ProviderType = Field(..., description="The provider that generated the response")
     metadata: Dict[str, Any] = Field(default_factory=dict, description="Additional chunk metadata")
+    thinking: Optional[str] = Field(None, description="The model's reasoning/thinking process (if available)")
 
 
 class AIProvider(ABC):

@@ -134,6 +134,41 @@ class TestOllamaRequestBuilder:
         
         assert ollama_request["format"] == "json"
     
+    def test_build_request_with_thinking_enabled(self):
+        """Test building request with thinking enabled."""
+        request = ChatRequest(
+            message="How many R's are in strawberry?",
+            provider_type=ProviderType.OLLAMA,
+            provider_settings={
+                "host": "http://localhost:11434",
+                "model": "deepseek-r1"
+            },
+            chat_controls={"thinking_enabled": True}
+        )
+        
+        builder = OllamaRequestBuilder()
+        ollama_request = builder.build_request(request)
+        
+        assert ollama_request["think"] is True
+        assert ollama_request["model"] == "deepseek-r1"
+    
+    def test_build_request_with_thinking_disabled(self):
+        """Test building request with thinking disabled."""
+        request = ChatRequest(
+            message="Hello",
+            provider_type=ProviderType.OLLAMA,
+            provider_settings={
+                "host": "http://localhost:11434",
+                "model": "llama3:8b"
+            },
+            chat_controls={"thinking_enabled": False}
+        )
+        
+        builder = OllamaRequestBuilder()
+        ollama_request = builder.build_request(request)
+        
+        assert "think" not in ollama_request
+    
     def test_build_url(self):
         """Test URL building logic."""
         builder = OllamaRequestBuilder()
@@ -197,6 +232,48 @@ class TestOllamaResponseParser:
         assert response.content == "Hello!"
         assert response.model == "llama3:8b"
         assert "total_duration" not in response.metadata
+    
+    def test_parse_response_with_thinking(self):
+        """Test parsing response with thinking content."""
+        mock_response_data = {
+            "model": "deepseek-r1",
+            "message": {
+                "role": "assistant",
+                "content": "The word 'strawberry' contains **three** instances of the letter 'R'.",
+                "thinking": "First, the question is: \"how many r in the word strawberry?\" I need to count the number of times the letter 'r' appears in the word \"strawberry\". Let me write down the word: s-t-r-a-w-b-e-r-r-y. Going through each letter: s(no), t(no), r(YES - 1st), a(no), w(no), b(no), e(no), r(YES - 2nd), r(YES - 3rd), y(no). So there are 3 instances of the letter 'r' in \"strawberry\"."
+            },
+            "done": True,
+            "total_duration": 47975065417,
+            "eval_count": 2514
+        }
+        
+        parser = OllamaResponseParser()
+        response = parser.parse_response(mock_response_data)
+        
+        assert isinstance(response, ChatResponse)
+        assert response.content == "The word 'strawberry' contains **three** instances of the letter 'R'."
+        assert response.thinking is not None
+        assert "how many r in the word strawberry" in response.thinking
+        assert response.model == "deepseek-r1"
+        assert response.metadata["eval_count"] == 2514
+    
+    def test_parse_response_without_thinking(self):
+        """Test parsing response without thinking content."""
+        mock_response_data = {
+            "model": "llama3:8b",
+            "message": {
+                "role": "assistant",
+                "content": "Hello! How can I help?"
+            },
+            "done": True
+        }
+        
+        parser = OllamaResponseParser()
+        response = parser.parse_response(mock_response_data)
+        
+        assert isinstance(response, ChatResponse)
+        assert response.content == "Hello! How can I help?"
+        assert response.thinking is None
 
 
 class TestOllamaStreamParser:
@@ -258,6 +335,67 @@ class TestOllamaStreamParser:
         chunk = parser.parse_chunk(chunk_data)
         
         assert chunk.content == ""
+        assert chunk.done is False
+    
+    def test_parse_streaming_chunk_with_thinking(self):
+        """Test parsing a streaming chunk with thinking content."""
+        chunk_data = {
+            "model": "deepseek-r1",
+            "message": {
+                "role": "assistant",
+                "content": "Let me think",
+                "thinking": "I need to analyze this question carefully..."
+            },
+            "done": False
+        }
+        
+        parser = OllamaStreamParser()
+        chunk = parser.parse_chunk(chunk_data)
+        
+        assert isinstance(chunk, StreamingChatResponse)
+        assert chunk.content == "Let me think"
+        assert chunk.thinking == "I need to analyze this question carefully..."
+        assert chunk.done is False
+        assert chunk.model == "deepseek-r1"
+    
+    def test_parse_final_streaming_chunk_with_thinking(self):
+        """Test parsing final streaming chunk with complete thinking."""
+        chunk_data = {
+            "model": "deepseek-r1",
+            "message": {
+                "role": "assistant",
+                "content": "The answer is 3.",
+                "thinking": "Complete reasoning: I counted each letter in 'strawberry' and found 3 instances of 'r'."
+            },
+            "done": True,
+            "total_duration": 47975065417,
+            "eval_count": 2514
+        }
+        
+        parser = OllamaStreamParser()
+        chunk = parser.parse_chunk(chunk_data)
+        
+        assert chunk.content == "The answer is 3."
+        assert chunk.thinking == "Complete reasoning: I counted each letter in 'strawberry' and found 3 instances of 'r'."
+        assert chunk.done is True
+        assert chunk.metadata["eval_count"] == 2514
+    
+    def test_parse_streaming_chunk_without_thinking(self):
+        """Test parsing streaming chunk without thinking content."""
+        chunk_data = {
+            "model": "llama3:8b",
+            "message": {
+                "role": "assistant",
+                "content": "Hello"
+            },
+            "done": False
+        }
+        
+        parser = OllamaStreamParser()
+        chunk = parser.parse_chunk(chunk_data)
+        
+        assert chunk.content == "Hello"
+        assert chunk.thinking is None
         assert chunk.done is False
 
 

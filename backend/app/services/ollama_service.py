@@ -29,6 +29,7 @@ class OllamaRequestBuilder:
         """Build Ollama API request payload."""
         # Get model from either 'model' or 'default_model' field
         model = request.provider_settings.get("model") or request.provider_settings.get("default_model")
+        logger.info(f"Using model: {model} (from provider_settings: {request.provider_settings})")
         
         # Start with basic request structure
         ollama_request = {
@@ -46,6 +47,11 @@ class OllamaRequestBuilder:
         if format_setting:
             ollama_request["format"] = format_setting
         
+        # Add thinking support
+        thinking_enabled = request.chat_controls.get("thinking_enabled", False)
+        
+        if thinking_enabled:
+            ollama_request["think"] = True
         return ollama_request
     
     def _build_messages(self, request: ChatRequest) -> List[Dict[str, str]]:
@@ -133,9 +139,16 @@ class OllamaResponseParser:
     
     def parse_response(self, response_data: Dict[str, Any]) -> ChatResponse:
         """Parse non-streaming Ollama response."""
+        logger.info(f"Parsing Ollama response: {response_data}")
+        
         content = ""
         if "message" in response_data and "content" in response_data["message"]:
             content = response_data["message"]["content"]
+        
+        # Extract thinking content if available
+        thinking = None
+        if "message" in response_data and "thinking" in response_data["message"]:
+            thinking = response_data["message"]["thinking"]
         
         # Extract metadata
         metadata = {}
@@ -147,7 +160,8 @@ class OllamaResponseParser:
             content=content,
             model=response_data.get("model", "unknown"),
             provider_type=ProviderType.OLLAMA,
-            metadata=metadata
+            metadata=metadata,
+            thinking=thinking
         )
 
 
@@ -159,6 +173,11 @@ class OllamaStreamParser:
         content = ""
         if "message" in chunk_data and "content" in chunk_data["message"]:
             content = chunk_data["message"]["content"]
+        
+        # Extract thinking content if available
+        thinking = None
+        if "message" in chunk_data and "thinking" in chunk_data["message"]:
+            thinking = chunk_data["message"]["thinking"]
         
         done = chunk_data.get("done", False)
         
@@ -174,7 +193,8 @@ class OllamaStreamParser:
             done=done,
             model=chunk_data.get("model", "unknown"),
             provider_type=ProviderType.OLLAMA,
-            metadata=metadata
+            metadata=metadata,
+            thinking=thinking
         )
 
 

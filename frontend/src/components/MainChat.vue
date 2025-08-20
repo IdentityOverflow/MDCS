@@ -9,11 +9,15 @@ const message = ref('')
 const showSliders = ref(false)
 const textareaRef = ref<HTMLTextAreaElement>()
 
+// Thinking content visibility tracking
+const expandedThinking = ref<Set<string>>(new Set())
+
 // Chat functionality
 const { 
   messages, 
   isStreaming, 
-  currentStreamingMessage, 
+  currentStreamingMessage,
+  currentStreamingThinking, 
   error, 
   hasMessages, 
   sendChatMessage, 
@@ -38,6 +42,7 @@ const { data: chatControls, load: loadChatControls } = useLocalStorage({
     json_mode: 'off',
     tools: [],
     tool_choice: 'auto',
+    thinking_enabled: false,
     ollama_top_k: 40,
     ollama_repeat_penalty: 1.1,
     ollama_mirostat: 0,
@@ -121,6 +126,16 @@ function formatTime(timestamp: number): string {
 function handleClearChat() {
   clearChat()
 }
+
+// Toggle thinking content visibility
+function toggleThinking(messageId: string) {
+  const expanded = expandedThinking.value
+  if (expanded.has(messageId)) {
+    expanded.delete(messageId)
+  } else {
+    expanded.add(messageId)
+  }
+}
 </script>
 
 <template>
@@ -138,11 +153,36 @@ function handleClearChat() {
             v-show="msg.role !== 'system'"
           >
             <div class="message-content">
+              <!-- Thinking content (if available) - shown above response -->
+              <div v-if="msg.thinking" class="message-thinking">
+                <button 
+                  @click="toggleThinking(msg.id)"
+                  class="thinking-toggle"
+                  :class="{ 'expanded': expandedThinking.has(msg.id) }"
+                >
+                  <i class="fa-solid fa-brain"></i>
+                  <span>Thinking Process</span>
+                  <i class="fa-solid fa-chevron-down toggle-icon"></i>
+                </button>
+                <div 
+                  v-show="expandedThinking.has(msg.id)" 
+                  class="thinking-content"
+                >
+                  <div class="thinking-text">{{ msg.thinking }}</div>
+                </div>
+              </div>
+              
+              <!-- Regular message content -->
               <div class="message-text">{{ msg.content }}</div>
+              
               <div class="message-meta">
                 <span class="message-time">{{ formatTime(msg.timestamp) }}</span>
                 <span v-if="msg.metadata?.model" class="message-model">{{ msg.metadata.model }}</span>
                 <span v-if="msg.metadata?.tokens_used" class="message-tokens">{{ msg.metadata.tokens_used }} tokens</span>
+                <span v-if="msg.thinking" class="thinking-indicator">
+                  <i class="fa-solid fa-brain"></i>
+                  Has reasoning
+                </span>
               </div>
             </div>
           </div>
@@ -150,11 +190,28 @@ function handleClearChat() {
           <!-- Streaming message -->
           <div v-if="isStreaming && currentStreamingMessage" class="message message-assistant streaming">
             <div class="message-content">
+              <!-- Streaming thinking content - shown above response -->
+              <div v-if="currentStreamingThinking" class="message-thinking streaming-thinking">
+                <div class="thinking-toggle expanded">
+                  <i class="fa-solid fa-brain"></i>
+                  <span>Thinking Process (Live)</span>
+                  <i class="fa-solid fa-circle-notch fa-spin"></i>
+                </div>
+                <div class="thinking-content" style="display: block;">
+                  <div class="thinking-text streaming">{{ currentStreamingThinking }}<span class="streaming-cursor">▋</span></div>
+                </div>
+              </div>
+              
               <div class="message-text">{{ currentStreamingMessage }}<span class="streaming-cursor">▋</span></div>
+              
               <div class="message-meta">
                 <span class="streaming-indicator">
                   <i class="fa-solid fa-circle-notch fa-spin"></i>
                   Typing...
+                </span>
+                <span v-if="currentStreamingThinking" class="thinking-indicator">
+                  <i class="fa-solid fa-brain"></i>
+                  Reasoning...
                 </span>
               </div>
             </div>
@@ -541,6 +598,80 @@ function handleClearChat() {
   color: var(--accent);
 }
 
+.thinking-indicator {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--accent);
+  opacity: 0.8;
+  font-size: 0.85em;
+}
+
+/* Thinking content styles */
+.message-thinking {
+  margin: 12px 0;
+  border: 1px solid rgba(0, 212, 255, 0.2);
+  border-radius: 4px;
+  overflow: hidden;
+  background: rgba(0, 212, 255, 0.05);
+}
+
+.thinking-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  background: rgba(120, 120, 120, 0.08);
+  border: none;
+  padding: 8px 12px;
+  color: var(--fg-secondary);
+  cursor: pointer;
+  font-size: 0.9em;
+  transition: all 0.2s ease;
+}
+
+.thinking-toggle:hover {
+  background: rgba(120, 120, 120, 0.12);
+  color: var(--fg-primary);
+}
+
+.thinking-toggle .toggle-icon {
+  margin-left: auto;
+  transition: transform 0.2s ease;
+}
+
+.thinking-toggle.expanded .toggle-icon {
+  transform: rotate(180deg);
+}
+
+.thinking-content {
+  padding: 12px;
+  border-top: 1px solid rgba(120, 120, 120, 0.15);
+  animation: fadeIn 0.2s ease;
+}
+
+.thinking-text {
+  font-size: 0.9em;
+  line-height: 1.5;
+  color: var(--fg-tertiary);
+  font-style: italic;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+}
+
+.thinking-text.streaming {
+  color: var(--fg-secondary);
+}
+
+.streaming-thinking .thinking-toggle {
+  background: rgba(120, 120, 120, 0.12);
+  color: var(--fg-primary);
+}
+
+.streaming-thinking .thinking-content {
+  background: rgba(120, 120, 120, 0.03);
+}
+
 /* Empty state styling */
 .empty-state {
   text-align: center;
@@ -591,6 +722,17 @@ function handleClearChat() {
   }
   51%, 100% {
     opacity: 0;
+  }
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    max-height: 0;
+  }
+  to {
+    opacity: 1;
+    max-height: 200px;
   }
 }
 

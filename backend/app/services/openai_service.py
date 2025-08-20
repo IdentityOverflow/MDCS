@@ -26,15 +26,17 @@ class OpenAIRequestBuilder:
     
     def build_request(self, request: ChatRequest) -> Dict[str, Any]:
         """Build OpenAI API request payload."""
+        model_name = request.provider_settings["default_model"]
+        
         # Start with basic request structure
         openai_request = {
-            "model": request.provider_settings["default_model"],
+            "model": model_name,
             "messages": self._build_messages(request),
             "stream": self._get_stream_setting(request)
         }
         
         # Add optional parameters
-        self._add_optional_params(openai_request, request.chat_controls)
+        self._add_optional_params(openai_request, request.chat_controls, model_name)
         
         return openai_request
     
@@ -62,37 +64,71 @@ class OpenAIRequestBuilder:
         """Get streaming setting from request."""
         return request.chat_controls.get("stream", False)
     
-    def _add_optional_params(self, request_dict: Dict[str, Any], chat_controls: Dict[str, Any]):
+    def _is_reasoning_model(self, model_name: str) -> bool:
+        """Check if the model is a reasoning model (o1, o3 series)."""
+        if not model_name:
+            return False
+        
+        model_lower = model_name.lower()
+        reasoning_models = [
+            'o1', 'o1-preview', 'o1-mini', 'o1-2024',
+            'o3', 'o3-mini', 'o3-2024', 
+            'o4-mini', 'o4-2024'
+        ]
+        
+        # Check if model name starts with or contains reasoning model identifiers
+        return any(reasoning_model in model_lower for reasoning_model in reasoning_models)
+    
+    def _add_optional_params(self, request_dict: Dict[str, Any], chat_controls: Dict[str, Any], model_name: str):
         """Add optional parameters to the request."""
-        # Standard OpenAI parameters
-        if "temperature" in chat_controls and chat_controls["temperature"] is not None:
-            request_dict["temperature"] = chat_controls["temperature"]
-        if "top_p" in chat_controls and chat_controls["top_p"] is not None:
-            request_dict["top_p"] = chat_controls["top_p"]
-        if "max_tokens" in chat_controls and chat_controls["max_tokens"] is not None:
-            request_dict["max_tokens"] = chat_controls["max_tokens"]
-        if "presence_penalty" in chat_controls and chat_controls["presence_penalty"] is not None:
-            request_dict["presence_penalty"] = chat_controls["presence_penalty"]
-        if "frequency_penalty" in chat_controls and chat_controls["frequency_penalty"] is not None:
-            request_dict["frequency_penalty"] = chat_controls["frequency_penalty"]
+        is_reasoning_model = self._is_reasoning_model(model_name)
+        
+        # For reasoning models, use max_completion_tokens instead of max_tokens
+        if is_reasoning_model:
+            if "max_tokens" in chat_controls and chat_controls["max_tokens"] is not None:
+                # Reasoning models support higher token limits
+                max_tokens = min(chat_controls["max_tokens"], 5000)  # Limit to API maximum
+                request_dict["max_completion_tokens"] = max_tokens
+            
+            # Add reasoning effort parameter
+            if "reasoning_effort" in chat_controls and chat_controls["reasoning_effort"]:
+                effort = chat_controls["reasoning_effort"]
+                if effort in ["low", "medium", "high"]:
+                    request_dict["reasoning_effort"] = effort
+        else:
+            # Standard models use regular parameters
+            if "temperature" in chat_controls and chat_controls["temperature"] is not None:
+                request_dict["temperature"] = chat_controls["temperature"]
+            if "top_p" in chat_controls and chat_controls["top_p"] is not None:
+                request_dict["top_p"] = chat_controls["top_p"]
+            if "max_tokens" in chat_controls and chat_controls["max_tokens"] is not None:
+                request_dict["max_tokens"] = chat_controls["max_tokens"]
+            if "presence_penalty" in chat_controls and chat_controls["presence_penalty"] is not None:
+                request_dict["presence_penalty"] = chat_controls["presence_penalty"]
+            if "frequency_penalty" in chat_controls and chat_controls["frequency_penalty"] is not None:
+                request_dict["frequency_penalty"] = chat_controls["frequency_penalty"]
+        
+        # Common parameters for all models
         if "seed" in chat_controls and chat_controls["seed"] is not None:
             request_dict["seed"] = chat_controls["seed"]
         if "stop" in chat_controls and chat_controls["stop"]:
             request_dict["stop"] = chat_controls["stop"]
         
-        # JSON mode
-        json_mode = chat_controls.get("json_mode")
-        if json_mode == "json_object":
-            request_dict["response_format"] = {"type": "json_object"}
-        elif json_mode == "json_schema":
-            # For now, just use json_object mode
-            request_dict["response_format"] = {"type": "json_object"}
+        # JSON mode (not supported by reasoning models currently)
+        if not is_reasoning_model:
+            json_mode = chat_controls.get("json_mode")
+            if json_mode == "json_object":
+                request_dict["response_format"] = {"type": "json_object"}
+            elif json_mode == "json_schema":
+                # For now, just use json_object mode
+                request_dict["response_format"] = {"type": "json_object"}
         
-        # Tool usage (if implemented in future)
-        if "tools" in chat_controls and chat_controls["tools"]:
-            request_dict["tools"] = chat_controls["tools"]
-        if "tool_choice" in chat_controls and chat_controls["tool_choice"]:
-            request_dict["tool_choice"] = chat_controls["tool_choice"]
+        # Tool usage (if implemented in future, check model compatibility)
+        if not is_reasoning_model:  # Reasoning models may not support tools currently
+            if "tools" in chat_controls and chat_controls["tools"]:
+                request_dict["tools"] = chat_controls["tools"]
+            if "tool_choice" in chat_controls and chat_controls["tool_choice"]:
+                request_dict["tool_choice"] = chat_controls["tool_choice"]
     
     def build_headers(self, api_key: str, organization: Optional[str], project: Optional[str]) -> Dict[str, str]:
         """Build headers for OpenAI API request."""
@@ -143,7 +179,8 @@ class OpenAIResponseParser:
             content=content,
             model=response_data.get("model", "unknown"),
             provider_type=ProviderType.OPENAI,
-            metadata=metadata
+            metadata=metadata,
+            thinking=None  # OpenAI doesn't currently expose reasoning process
         )
 
 
@@ -198,7 +235,8 @@ class OpenAIStreamParser:
             done=done,
             model=chunk_data.get("model", "unknown"),
             provider_type=ProviderType.OPENAI,
-            metadata=metadata
+            metadata=metadata,
+            thinking=None  # OpenAI doesn't currently expose reasoning process
         )
 
 
