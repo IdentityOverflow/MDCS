@@ -4,6 +4,7 @@
 
 import { ref, computed, type Ref } from 'vue'
 import { useApiConfig } from './apiConfig'
+import { usePersonas } from './usePersonas'
 
 export interface ChatMessage {
   id: string
@@ -28,7 +29,7 @@ export interface ChatRequest {
 
 export interface ChatControls {
   provider: 'ollama' | 'openai'
-  selectedPersonaId: string
+  selected_model: string
   temperature: number
   top_p: number
   max_tokens: number
@@ -58,6 +59,7 @@ const error = ref<string | null>(null)
 
 export function useChat() {
   const { apiRequest } = useApiConfig()
+  const { getPersonaById } = usePersonas()
   
   // Computed values
   const chatHistory = computed(() => messages.value)
@@ -110,7 +112,7 @@ export function useChat() {
     return message
   }
   
-  // Get provider settings from localStorage
+  // Get provider settings from localStorage (always fresh)
   const getProviderSettings = (provider: 'ollama' | 'openai'): Record<string, any> | null => {
     try {
       if (provider === 'ollama') {
@@ -123,6 +125,32 @@ export function useChat() {
       return null
     } catch (error) {
       console.error(`Failed to load ${provider} settings from localStorage:`, error)
+      return null
+    }
+  }
+
+  // Get fresh chat controls from localStorage
+  const getFreshChatControls = (): ChatControls | null => {
+    try {
+      const controlsData = localStorage.getItem('chat-controls')
+      return controlsData ? JSON.parse(controlsData) : null
+    } catch (error) {
+      console.error('Failed to load chat controls from localStorage:', error)
+      return null
+    }
+  }
+
+  // Get selected persona template from localStorage
+  const getSelectedPersonaTemplate = (): string | null => {
+    try {
+      const selectedPersonaId = localStorage.getItem('selectedPersonaId')
+      if (selectedPersonaId) {
+        const persona = getPersonaById(selectedPersonaId)
+        return persona?.template || null
+      }
+      return null
+    } catch (error) {
+      console.error('Failed to get selected persona template:', error)
       return null
     }
   }
@@ -175,19 +203,39 @@ export function useChat() {
     addUserMessage(userMessage)
     
     try {
+      // Get fresh chat controls from localStorage to ensure we have the latest values
+      const freshControls = getFreshChatControls() || chatControls
+      
       // Get provider settings from localStorage
-      const providerSettings = getProviderSettings(chatControls.provider)
+      const providerSettings = getProviderSettings(freshControls.provider)
       if (!providerSettings) {
-        throw new Error(`${chatControls.provider.toUpperCase()} connection settings not found. Please configure in Settings.`)
+        throw new Error(`${freshControls.provider.toUpperCase()} connection settings not found. Please configure in Settings.`)
+      }
+
+      // Get persona template (use provided one or get from selected persona)
+      const effectivePersonaTemplate = personaTemplate || getSelectedPersonaTemplate()
+
+      // Add selected model to provider settings
+      const enhancedProviderSettings = {
+        ...providerSettings,
+        model: freshControls.selected_model || providerSettings.default_model
       }
 
       const chatRequest: ChatRequest = {
         message: userMessage,
-        provider: chatControls.provider,
+        provider: freshControls.provider,
         stream: true,
-        chat_controls: buildChatControls(chatControls, personaTemplate),
-        provider_settings: providerSettings
+        chat_controls: buildChatControls(freshControls, effectivePersonaTemplate),
+        provider_settings: enhancedProviderSettings
       }
+
+      // Debug logging
+      console.log('Chat request:', {
+        provider: chatRequest.provider,
+        model: enhancedProviderSettings.model,
+        persona_template: effectivePersonaTemplate,
+        provider_settings: enhancedProviderSettings
+      })
       
       const response = await apiRequest('/api/chat/stream', {
         method: 'POST',
@@ -287,19 +335,39 @@ export function useChat() {
     addUserMessage(userMessage)
     
     try {
+      // Get fresh chat controls from localStorage to ensure we have the latest values
+      const freshControls = getFreshChatControls() || chatControls
+      
       // Get provider settings from localStorage
-      const providerSettings = getProviderSettings(chatControls.provider)
+      const providerSettings = getProviderSettings(freshControls.provider)
       if (!providerSettings) {
-        throw new Error(`${chatControls.provider.toUpperCase()} connection settings not found. Please configure in Settings.`)
+        throw new Error(`${freshControls.provider.toUpperCase()} connection settings not found. Please configure in Settings.`)
+      }
+
+      // Get persona template (use provided one or get from selected persona)
+      const effectivePersonaTemplate = personaTemplate || getSelectedPersonaTemplate()
+
+      // Add selected model to provider settings
+      const enhancedProviderSettings = {
+        ...providerSettings,
+        model: freshControls.selected_model || providerSettings.default_model
       }
 
       const chatRequest: ChatRequest = {
         message: userMessage,
-        provider: chatControls.provider,
+        provider: freshControls.provider,
         stream: false,
-        chat_controls: buildChatControls(chatControls, personaTemplate),
-        provider_settings: providerSettings
+        chat_controls: buildChatControls(freshControls, effectivePersonaTemplate),
+        provider_settings: enhancedProviderSettings
       }
+
+      // Debug logging
+      console.log('Chat request (non-streaming):', {
+        provider: chatRequest.provider,
+        model: enhancedProviderSettings.model,
+        persona_template: effectivePersonaTemplate,
+        provider_settings: enhancedProviderSettings
+      })
       
       const response = await apiRequest('/api/chat/send', {
         method: 'POST',

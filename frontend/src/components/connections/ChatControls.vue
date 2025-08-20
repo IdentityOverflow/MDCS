@@ -1,12 +1,12 @@
 <script setup lang="ts">
-import { ref, onMounted, computed } from 'vue'
+import { ref, onMounted, watch } from 'vue'
 import { useLocalStorage, useNotification } from '@/composables/storage'
-import { usePersonas } from '@/composables/usePersonas'
+import { useApiConfig } from '@/composables/apiConfig'
 
 // Default chat controls based on connections.md spec
 const defaultChatControls = {
   provider: 'ollama', // Default provider selection
-  selectedPersonaId: '', // Selected persona for system prompt
+  selected_model: '', // Selected model for chat (separate from connection default_model)
   temperature: 0.7,
   top_p: 1.0,
   max_tokens: 1024,
@@ -42,29 +42,15 @@ const { data: chatControls, save: saveToStorage, load: loadFromStorage } = useLo
 // Notification system
 const notification = useNotification()
 
-// Personas management
-const { personas, fetchPersonas, getPersonaById } = usePersonas()
+// API configuration
+const { apiRequest } = useApiConfig()
 
-// Computed values
-const selectedPersona = computed(() => {
-  return chatControls.value.selectedPersonaId ? 
-    getPersonaById(chatControls.value.selectedPersonaId) : null
-})
+// Model picker state
+const availableModels = ref<Array<{ id: string; name: string }>>([])
+const isLoadingModels = ref(false)
+const modelsError = ref<string | null>(null)
 
-const currentSystemPrompt = computed(() => {
-  return selectedPersona.value?.template || ''
-})
-
-// Load data on component mount
-onMounted(async () => {
-  loadFromStorage()
-  // Load personas for selection
-  try {
-    await fetchPersonas({ active_only: true })
-  } catch (error) {
-    console.error('Failed to load personas:', error)
-  }
-})
+// Note: Persona selection is now handled by HomeView.vue via card selection
 
 // State for managing stop sequences input
 const newStopSequence = ref('')
@@ -80,53 +66,172 @@ function removeStopSequence(index: number) {
   chatControls.value.stop.splice(index, 1)
 }
 
-function saveControls() {
-  const success = saveToStorage()
-  if (success) {
-    notification.showSuccess('Chat controls saved successfully')
-  } else {
-    notification.showError('Failed to save chat controls')
-  }
-}
+// saveControls function removed - now using auto-save
 
 function resetToDefaults() {
   Object.assign(chatControls.value, structuredClone(defaultChatControls))
   notification.showSuccess('Reset to default values')
 }
+
+// Model fetching functions
+function getProviderConnectionSettings() {
+  const provider = chatControls.value.provider
+  try {
+    if (provider === 'ollama') {
+      const settings = localStorage.getItem('ollama-connection')
+      return settings ? JSON.parse(settings) : null
+    } else if (provider === 'openai') {
+      const settings = localStorage.getItem('openai-connection')
+      return settings ? JSON.parse(settings) : null
+    }
+  } catch (error) {
+    console.error(`Failed to load ${provider} connection settings:`, error)
+  }
+  return null
+}
+
+async function fetchAvailableModels() {
+  const provider = chatControls.value.provider
+  const connectionSettings = getProviderConnectionSettings()
+  
+  if (!connectionSettings) {
+    const providerName = provider === 'openai' ? 'OpenAI-compatible' : 'Ollama'
+    modelsError.value = `${providerName} connection not configured. Please configure connection settings first.`
+    availableModels.value = []
+    return
+  }
+  
+  isLoadingModels.value = true
+  modelsError.value = null
+  
+  try {
+    const requestBody = provider === 'ollama' 
+      ? { host: connectionSettings.host }
+      : {
+          base_url: connectionSettings.base_url,
+          api_key: connectionSettings.api_key,
+          organization: connectionSettings.organization || '',
+          project: connectionSettings.project || ''
+        }
+    
+    const response = await apiRequest(`/api/connections/${provider}/models`, {
+      method: 'POST',
+      body: JSON.stringify(requestBody)
+    })
+    
+    if (!response.ok) {
+      const errorData = await response.json()
+      throw new Error(errorData.detail?.message || errorData.message || 'Failed to fetch models')
+    }
+    
+    const data = await response.json()
+    availableModels.value = data.data || []
+    
+    // If no model is selected and we have models available, select the first one or default_model
+    if (!chatControls.value.selected_model && availableModels.value.length > 0) {
+      const defaultModelId = connectionSettings.default_model
+      const hasDefaultModel = defaultModelId && availableModels.value.some(m => m.id === defaultModelId)
+      
+      chatControls.value.selected_model = hasDefaultModel 
+        ? defaultModelId 
+        : availableModels.value[0].id
+    }
+    
+  } catch (error) {
+    console.error(`Failed to fetch ${provider} models:`, error)
+    modelsError.value = error instanceof Error ? error.message : 'Unknown error occurred'
+    availableModels.value = []
+  } finally {
+    isLoadingModels.value = false
+  }
+}
+
+// Auto-save with debouncing
+const autoSaveTimeout = ref<number | null>(null)
+const lastSavedData = ref<string>('')
+
+function scheduleAutoSave() {
+  if (autoSaveTimeout.value) {
+    clearTimeout(autoSaveTimeout.value)
+  }
+  
+  autoSaveTimeout.value = setTimeout(() => {
+    const currentData = JSON.stringify(chatControls.value)
+    if (currentData !== lastSavedData.value) {
+      const success = saveToStorage()
+      if (success) {
+        lastSavedData.value = currentData
+        // Optional: Brief visual feedback without notification toast
+        console.log('Auto-saved chat controls')
+      }
+    }
+  }, 300) // 300ms debounce
+}
+
+// Watch for changes and auto-save
+watch(chatControls, () => {
+  scheduleAutoSave()
+}, { deep: true })
+
+// Watch for provider changes and re-fetch models
+watch(() => chatControls.value.provider, () => {
+  fetchAvailableModels()
+}, { immediate: false })
+
+// Initialize lastSavedData on mount and fetch initial models
+onMounted(async () => {
+  loadFromStorage()
+  lastSavedData.value = JSON.stringify(chatControls.value)
+  // Fetch models for the current provider
+  await fetchAvailableModels()
+})
 </script>
 
 <template>
-  <form class="form" @submit.prevent="saveControls">
+  <div class="form">
     <!-- Provider Selection -->
     <div class="form-group">
       <label for="provider">AI Provider</label>
       <select id="provider" v-model="chatControls.provider" class="form-select">
         <option value="ollama">Ollama</option>
-        <option value="openai">OpenAI</option>
+        <option value="openai">OpenAI Compatible</option>
       </select>
-      <small class="form-hint">Choose between Ollama (local) or OpenAI (API) provider</small>
+      <small class="form-hint">Choose between Ollama or OpenAI-compatible API provider</small>
     </div>
 
-    <!-- Persona Selection -->
+    <!-- Model Selection -->
     <div class="form-group">
-      <label for="persona">Persona / System Prompt</label>
-      <select id="persona" v-model="chatControls.selectedPersonaId" class="form-select">
-        <option value="">No Persona (Default)</option>
-        <option v-for="persona in personas" :key="persona.id" :value="persona.id">
-          {{ persona.name }}
-        </option>
-      </select>
-      <small class="form-hint">Selected persona's template will be used as system prompt</small>
+      <label for="model">Model</label>
+      <div class="model-picker-container">
+        <select 
+          id="model" 
+          v-model="chatControls.selected_model" 
+          class="form-select" 
+          :disabled="isLoadingModels || availableModels.length === 0"
+        >
+          <option value="" disabled>{{ isLoadingModels ? 'Loading models...' : 'Select a model' }}</option>
+          <option v-for="model in availableModels" :key="model.id" :value="model.id">
+            {{ model.name }}
+          </option>
+        </select>
+        <button 
+          type="button" 
+          @click="fetchAvailableModels" 
+          :disabled="isLoadingModels"
+          class="action-btn refresh-btn"
+          title="Refresh models list"
+        >
+          <i :class="isLoadingModels ? 'fa-solid fa-spinner fa-spin' : 'fa-solid fa-refresh'"></i>
+        </button>
+      </div>
+      <small v-if="modelsError" class="form-hint error">{{ modelsError }}</small>
+      <small v-else-if="availableModels.length === 0 && !isLoadingModels" class="form-hint error">
+        No models available. Please configure {{ chatControls.provider === 'openai' ? 'OpenAI-compatible' : 'Ollama' }} connection settings first.
+      </small>
+      <small v-else class="form-hint">Model to use for this chat session</small>
     </div>
 
-    <!-- Current System Prompt Preview (if persona selected) -->
-    <div v-if="currentSystemPrompt" class="form-group">
-      <label>Current System Prompt Preview</label>
-      <div class="system-prompt-preview">
-        {{ currentSystemPrompt }}
-      </div>
-      <small class="form-hint">This will be sent as the system prompt to the AI</small>
-    </div>
+    <!-- Note: Persona selection is now handled by clicking persona cards in the DisplayArea -->
 
     <!-- Temperature -->
     <div class="form-group">
@@ -397,12 +502,12 @@ function resetToDefaults() {
         <i class="fa-solid fa-undo"></i>
         Reset to Defaults
       </button>
-      <button type="submit" class="action-btn save-btn">
-        <i class="fa-solid fa-save"></i>
-        Save Configuration
-      </button>
+      <div class="auto-save-indicator">
+        <i class="fa-solid fa-check-circle"></i>
+        Settings auto-saved
+      </div>
     </div>
-  </form>
+  </div>
   
   <!-- Notification Toast -->
   <div v-if="notification.isVisible.value" class="notification-toast" :class="notification.type.value">
@@ -552,19 +657,50 @@ function resetToDefaults() {
   }
 }
 
-/* System prompt preview */
-.system-prompt-preview {
-  background: var(--surface);
-  border: 1px solid var(--border);
-  padding: 12px;
-  border-radius: 2px;
-  color: var(--fg-secondary);
+/* Auto-save indicator */
+.auto-save-indicator {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--fg-muted);
   font-size: 0.85em;
-  line-height: 1.4;
-  max-height: 120px;
-  overflow-y: auto;
-  white-space: pre-wrap;
-  font-family: monospace;
-  clip-path: polygon(0 0, calc(100% - 4px) 0, 100% 4px, 100% 100%, 0 100%);
+  opacity: 0.7;
+}
+
+.auto-save-indicator i {
+  color: var(--accent);
+  font-size: 0.9em;
+}
+
+/* Model picker container */
+.model-picker-container {
+  display: flex;
+  gap: 8px;
+  align-items: stretch;
+}
+
+.model-picker-container .form-select {
+  flex: 1;
+}
+
+.model-picker-container .refresh-btn {
+  padding: 12px;
+  min-width: auto;
+  border: 1px solid var(--border);
+  background: var(--surface);
+}
+
+.model-picker-container .refresh-btn:hover:not(:disabled) {
+  background: var(--border);
+}
+
+.model-picker-container .refresh-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Error state for form hints */
+.form-hint.error {
+  color: var(--error, #ef4444);
 }
 </style>

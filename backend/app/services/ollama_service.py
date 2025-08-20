@@ -27,9 +27,12 @@ class OllamaRequestBuilder:
     
     def build_request(self, request: ChatRequest) -> Dict[str, Any]:
         """Build Ollama API request payload."""
+        # Get model from either 'model' or 'default_model' field
+        model = request.provider_settings.get("model") or request.provider_settings.get("default_model")
+        
         # Start with basic request structure
         ollama_request = {
-            "model": request.provider_settings["model"],
+            "model": model,
             "messages": self._build_messages(request),
             "stream": self._get_stream_setting(request),
             "options": self._build_options(request.chat_controls)
@@ -185,8 +188,10 @@ class OllamaService(AIProvider):
     
     def validate_settings(self, settings: Dict[str, Any]) -> bool:
         """Validate Ollama-specific settings."""
-        required_fields = ["host", "model"]
-        return all(field in settings and settings[field] for field in required_fields)
+        required_fields = ["host"]
+        # Model can be either 'model' (for chat requests) or 'default_model' (for connection settings)
+        has_model = any(field in settings and settings[field] for field in ["model", "default_model"])
+        return all(field in settings and settings[field] for field in required_fields) and has_model
     
     async def send_message(self, request: ChatRequest) -> ChatResponse:
         """Send message to Ollama and get complete response."""
@@ -299,9 +304,12 @@ class OllamaService(AIProvider):
         
         url = self.request_builder.build_url(settings["host"], settings.get("route"))
         
+        # Get model from either 'model' or 'default_model' field  
+        model = settings.get("model") or settings.get("default_model")
+        
         # Create a minimal test request
         test_payload = {
-            "model": settings["model"],
+            "model": model,
             "messages": [{"role": "user", "content": "test"}],
             "stream": False,
             "options": {"num_predict": 1}  # Minimal response
@@ -322,7 +330,7 @@ class OllamaService(AIProvider):
                     return {
                         "status": "success",
                         "message": f"Successfully connected to Ollama at {settings['host']}",
-                        "model": response_data.get("model", settings["model"]),
+                        "model": response_data.get("model", model),
                         "version": response_data.get("version", "unknown")
                     }
         
@@ -334,4 +342,59 @@ class OllamaService(AIProvider):
             raise ProviderConnectionError(f"Ollama client error: {str(e)}")
         except Exception as e:
             logger.error(f"Unexpected error testing Ollama connection: {e}")
+            raise ProviderConnectionError(f"Unexpected error: {str(e)}")
+    
+    async def list_models(self, settings: Dict[str, Any] = None) -> List[Dict[str, Any]]:
+        """
+        List available models from Ollama using the /v1/models endpoint.
+        
+        Args:
+            settings: Optional connection settings (uses default host if not provided)
+            
+        Returns:
+            List of model information dicts
+            
+        Raises:
+            ProviderConnectionError: If connection fails
+        """
+        # Use provided settings or get from default connection
+        host = settings.get("host", "http://localhost:11434") if settings else "http://localhost:11434"
+        url = urljoin(host, "/v1/models")
+        
+        try:
+            timeout = ClientTimeout(total=30)
+            
+            async with aiohttp.ClientSession(timeout=timeout) as session:
+                async with session.get(url) as response:
+                    if response.status != 200:
+                        error_text = await response.text()
+                        error_msg = self._format_error_message(error_text, response.status)
+                        raise ProviderConnectionError(f"Failed to fetch models: {error_msg}")
+                    
+                    response_data = await response.json()
+                    
+                    # Ollama /v1/models returns OpenAI-compatible format
+                    models = response_data.get("data", [])
+                    
+                    # Ensure consistent format for frontend
+                    formatted_models = []
+                    for model in models:
+                        formatted_models.append({
+                            "id": model.get("id", ""),
+                            "name": model.get("id", ""),  # Use id as name for Ollama
+                            "object": model.get("object", "model"),
+                            "created": model.get("created", 0),
+                            "owned_by": model.get("owned_by", "ollama")
+                        })
+                    
+                    return formatted_models
+        
+        except ClientConnectorError as e:
+            logger.error(f"Failed to connect to Ollama models endpoint: {e}")
+            raise ProviderConnectionError(f"Failed to connect to Ollama at {host}: {str(e)}")
+        except ClientError as e:
+            logger.error(f"Ollama models client error: {e}")
+            raise ProviderConnectionError(f"Ollama client error: {str(e)}")
+        except Exception as e:
+            logger.error(f"Unexpected error fetching Ollama models: {e}")
             raise ProviderConnectionError(f"Unexpected error: {str(e)}")

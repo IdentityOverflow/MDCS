@@ -4,6 +4,7 @@ import { truncateDescription, getPersonaImage, handleImageError } from '@/compos
 
 const props = defineProps<{
   persona: Persona
+  selected?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -28,7 +29,7 @@ function handleDelete(event: Event) {
 </script>
 
 <template>
-  <div class="card-base clickable" @click="selectPersona">
+  <div class="card-base clickable" :class="{ 'selected': selected }" @click="selectPersona">
     <div class="card-header">
       <h3 class="card-title">{{ persona.name }}</h3>
       <div class="card-actions">
@@ -105,5 +106,24 @@ function handleDelete(event: Event) {
   flex-direction: column;
   justify-content: center;
   min-width: 0;
+}
+
+/* Selected state styling */
+.card-base.selected {
+  border-color: var(--accent);
+  box-shadow: 0 0 12px rgba(0, 212, 255, 0.4);
+  background: linear-gradient(135deg, var(--surface) 0%, rgba(0, 212, 255, 0.05) 100%);
+}
+
+.card-base.selected::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: linear-gradient(45deg, transparent 45%, rgba(0, 212, 255, 0.1) 50%, transparent 55%);
+  pointer-events: none;
+  clip-path: polygon(0 0, calc(100% - 8px) 0, 100% 8px, 100% 100%, 0 100%);
 }
 </style>

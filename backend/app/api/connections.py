@@ -137,6 +137,92 @@ async def test_ollama_connection(request: OllamaConnectionTestRequest) -> Connec
         raise HTTPException(status_code=500, detail=error.model_dump())
 
 
+# Response model for model lists
+class ModelInfo(BaseModel):
+    """Model information."""
+    id: str = Field(..., description="Model ID")
+    name: str = Field(..., description="Model display name")
+    object: str = Field(default="model", description="Object type")
+    created: int = Field(default=0, description="Creation timestamp")
+    owned_by: str = Field(default="", description="Owner organization")
+
+
+class ModelsListResponse(BaseModel):
+    """Response model for model lists."""
+    object: str = Field(default="list", description="Response object type")
+    data: list[ModelInfo] = Field(..., description="List of available models")
+
+
+# Request models for model listing
+class ModelsListRequest(BaseModel):
+    """Request model for listing models from providers."""
+    # Ollama settings
+    host: str = Field(default="http://localhost:11434", description="Provider host URL")
+    
+    # OpenAI settings (optional for Ollama)  
+    api_key: str = Field(default="", description="API key (required for OpenAI)")
+    base_url: str = Field(default="", description="Base URL (OpenAI-compatible)")
+    organization: str = Field(default="", description="Organization (OpenAI)")
+    project: str = Field(default="", description="Project (OpenAI)")
+
+
+@router.post("/{provider}/models", response_model=ModelsListResponse)
+async def list_provider_models(provider: str, request: ModelsListRequest) -> ModelsListResponse:
+    """
+    Get available models from a provider using the /v1/models endpoint.
+    
+    Args:
+        provider: The provider name ("ollama" or "openai")
+        
+    Returns:
+        List of available models in OpenAI format
+        
+    Raises:
+        HTTPException: For connection or validation errors
+    """
+    if provider not in ["ollama", "openai"]:
+        error = ConnectionTestError(
+            message=f"Unsupported provider: {provider}",
+            error_type="validation_error"
+        )
+        raise HTTPException(status_code=400, detail=error.model_dump())
+    
+    try:
+        if provider == "ollama":
+            # Create service instance and get models
+            ollama_service = OllamaService()
+            settings = {"host": request.host}
+            models = await ollama_service.list_models(settings)
+        else:  # openai
+            # Create service instance and get models
+            openai_service = OpenAIService()
+            settings = {
+                "base_url": request.base_url,
+                "api_key": request.api_key,
+                "organization": request.organization,
+                "project": request.project
+            }
+            models = await openai_service.list_models(settings)
+        
+        return ModelsListResponse(data=models)
+        
+    except ProviderConnectionError as e:
+        logger.error(f"{provider.capitalize()} models list failed: {e}")
+        error = ConnectionTestError(
+            message=str(e),
+            error_type="connection_error"
+        )
+        raise HTTPException(status_code=500, detail=error.model_dump())
+        
+    except Exception as e:
+        logger.error(f"Unexpected error in {provider} models list: {e}")
+        error = ConnectionTestError(
+            message=f"Unexpected error: {str(e)}",
+            error_type="internal_error"
+        )
+        raise HTTPException(status_code=500, detail=error.model_dump())
+
+
 @router.post("/openai/test", response_model=ConnectionTestResponse)
 async def test_openai_connection(request: OpenAIConnectionTestRequest) -> ConnectionTestResponse:
     """

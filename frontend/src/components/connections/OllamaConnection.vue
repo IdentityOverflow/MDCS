@@ -7,8 +7,8 @@ import { useApiConfig } from '@/composables/apiConfig'
 const defaultOllamaConnection = {
   host: 'http://localhost:11434',
   route: '/api/chat',
-  model: '',
-  stream: true,
+  default_model: '',
+  // stream setting removed - now in Chat Controls
   keep_alive: '5m',
   format: null,
   options: {
@@ -34,7 +34,7 @@ const { data: ollamaConnection, save: saveToStorage, load: loadFromStorage } = u
   key: 'ollama-connection',
   defaultValue: defaultOllamaConnection,
   validate: (value) => {
-    return value && typeof value.host === 'string' && typeof value.model === 'string'
+    return value && typeof value.host === 'string' && typeof value.default_model === 'string'
   }
 })
 
@@ -53,8 +53,8 @@ onMounted(() => {
 })
 
 function saveConnection() {
-  if (!ollamaConnection.value.model.trim()) {
-    notification.showError('Model is required')
+  if (!ollamaConnection.value.default_model.trim()) {
+    notification.showError('Default Model is required')
     return
   }
 
@@ -74,8 +74,8 @@ async function testConnection() {
     return
   }
   
-  if (!ollamaConnection.value.model.trim()) {
-    notification.showError('Model name is required')
+  if (!ollamaConnection.value.default_model.trim()) {
+    notification.showError('Default Model name is required')
     return
   }
   
@@ -86,7 +86,7 @@ async function testConnection() {
       method: 'POST',
       body: JSON.stringify({
         host: ollamaConnection.value.host.trim(),
-        model: ollamaConnection.value.model.trim(),
+        model: ollamaConnection.value.default_model.trim(),
         route: ollamaConnection.value.route || '/api/chat',
         timeout_ms: ollamaConnection.value.timeout_ms || 30000
       })
@@ -134,16 +134,16 @@ async function testConnection() {
       </div>
 
       <div class="form-group">
-        <label for="ollama-model">Model *</label>
+        <label for="ollama-model">Default Model *</label>
         <input 
           id="ollama-model"
-          v-model="ollamaConnection.model" 
+          v-model="ollamaConnection.default_model" 
           type="text" 
           class="form-input"
           placeholder="llama3:8b"
           required
         />
-        <small class="form-hint">Local model name, e.g. llama3:8b or mistral:7b</small>
+        <small class="form-hint">Default model for testing connection, e.g. llama3:8b or mistral:7b</small>
       </div>
 
       <div class="form-group">
@@ -158,17 +158,7 @@ async function testConnection() {
         <small class="form-hint">Keep model in memory after requests (e.g., 5m, 0 to unload)</small>
       </div>
 
-      <div class="form-group">
-        <label class="form-checkbox-label">
-          <input 
-            v-model="ollamaConnection.stream" 
-            type="checkbox" 
-            class="form-checkbox"
-          />
-          <span class="form-checkbox-custom"></span>
-          Stream responses
-        </label>
-      </div>
+      <!-- Note: Stream setting moved to Chat Controls -->
 
       <div class="form-group">
         <label for="ollama-format">Format</label>

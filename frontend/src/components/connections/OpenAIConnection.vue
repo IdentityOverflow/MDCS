@@ -3,9 +3,9 @@ import { onMounted, ref } from 'vue'
 import { useLocalStorage, useNotification } from '@/composables/storage'
 import { useApiConfig } from '@/composables/apiConfig'
 
-// Default OpenAI connection settings
+// Default OpenAI-compatible connection settings
 const defaultOpenAIConnection = {
-  base_url: 'https://api.openai.com/v1',
+  base_url: '',
   api_key: '',
   organization: '',
   project: '',
@@ -14,7 +14,7 @@ const defaultOpenAIConnection = {
   deployment: '',
   default_model: '',
   compatibility_mode: 'responses',
-  stream: true,
+  // stream setting removed - now in Chat Controls
   timeout_ms: 60000,
   extra_headers: {}
 }
@@ -116,7 +116,7 @@ async function testConnection() {
           v-model="openaiConnection.base_url" 
           type="text" 
           class="form-input"
-          placeholder="https://api.openai.com/v1"
+          placeholder="https://your-openai-compatible-api.com/v1"
         />
         <small class="form-hint">Root API URL. For Azure/OpenAI-compatible vendors, set their base endpoint</small>
       </div>
@@ -202,17 +202,7 @@ async function testConnection() {
         <small class="form-hint">Client request timeout</small>
       </div>
 
-      <div class="form-group">
-        <label class="form-checkbox-label">
-          <input 
-            v-model="openaiConnection.stream" 
-            type="checkbox" 
-            class="form-checkbox"
-          />
-          <span class="form-checkbox-custom"></span>
-          Enable SSE streaming
-        </label>
-      </div>
+      <!-- Note: Stream setting moved to Chat Controls -->
 
       <div class="form-actions">
         <button type="button" @click="testConnection" :disabled="isTestingConnection" class="action-btn cancel-btn">

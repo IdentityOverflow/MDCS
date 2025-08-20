@@ -131,17 +131,17 @@ cd backend && python app/main.py
 **Testing**:
 ```bash
 # IMPORTANT: Use the full conda path since project2501 environment is in miniforge3
-source /home/q/miniforge3/etc/profile.d/conda.sh
-conda activate project2501
-cd backend
+# AND make sure you're already in the backend directory (/home/q/Documents/AI/project2501/backend)
+source /home/q/miniforge3/etc/profile.d/conda.sh && conda activate project2501 && pytest -v
 
-# Run all tests
-pytest                    # Run all tests (55+ tests)
-pytest -v                # Verbose output
+# Alternative commands if needed:
+# Run all tests (225+ tests passing)
+pytest                    # Run all tests
+pytest -v                # Verbose output (RECOMMENDED - shows all test details)
 
 # Run specific test categories
-pytest tests/unit/        # Unit tests only
-pytest tests/integration/ # Integration tests only
+pytest tests/unit/        # Unit tests only (152 tests)
+pytest tests/integration/ # Integration tests only (73 tests)
 
 # Run specific test files or methods
 pytest tests/unit/test_modules_api.py -v                    # Specific file

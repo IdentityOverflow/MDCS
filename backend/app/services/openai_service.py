@@ -210,9 +210,10 @@ class OpenAIService(AIProvider):
         self.response_parser = OpenAIResponseParser()
         self.stream_parser = OpenAIStreamParser()
     
-    def validate_settings(self, settings: Dict[str, Any]) -> bool:
+    def validate_settings(self, settings: Dict[str, Any], require_model: bool = True) -> bool:
         """Validate OpenAI-specific settings."""
-        required_fields = ["base_url", "api_key", "default_model"]
+        base_fields = ["base_url", "api_key"]
+        required_fields = base_fields + (["default_model"] if require_model else [])
         return all(field in settings and settings[field] for field in required_fields)
     
     async def send_message(self, request: ChatRequest) -> ChatResponse:
@@ -383,4 +384,100 @@ class OpenAIService(AIProvider):
             raise
         except Exception as e:
             logger.error(f"Unexpected error testing OpenAI connection: {e}")
+            raise ProviderConnectionError(f"Unexpected error: {str(e)}")
+    
+    async def list_models(self, settings: Dict[str, Any] = None) -> List[Dict[str, Any]]:
+        """
+        List available models from OpenAI using the /v1/models endpoint.
+        
+        Args:
+            settings: Connection settings with base_url and api_key
+            
+        Returns:
+            List of model information dicts
+            
+        Raises:
+            ProviderConnectionError: If connection fails
+            ProviderAuthenticationError: If authentication fails
+        """
+        if not settings or not self.validate_settings(settings, require_model=False):
+            raise ProviderConnectionError("Invalid OpenAI settings: missing required fields (base_url, api_key)")
+        
+        base_url = settings["base_url"].rstrip('/')
+        url = f"{base_url}/models"
+        
+        headers = self.request_builder.build_headers(
+            settings["api_key"],
+            settings.get("organization"),
+            settings.get("project")
+        )
+        
+        logger.info(f"Fetching models from URL: {url}")
+        logger.info(f"Using headers: {dict(headers)}")
+        
+        try:
+            timeout = ClientTimeout(total=30)
+            
+            async with aiohttp.ClientSession(timeout=timeout) as session:
+                async with session.get(url, headers=headers) as response:
+                    response_text = await response.text()
+                    
+                    logger.info(f"Models response status: {response.status}")
+                    logger.info(f"Models response text (first 200 chars): {response_text[:200]}")
+                    
+                    if response.status == 401:
+                        raise ProviderAuthenticationError(f"OpenAI authentication failed: Invalid API key")
+                    elif response.status != 200:
+                        error_msg = self._format_error_message(response_text, response.status)
+                        raise ProviderConnectionError(f"Failed to fetch models: {error_msg}")
+                    
+                    # Better JSON parsing with error handling
+                    if not response_text.strip():
+                        raise ProviderConnectionError("Empty response from models endpoint")
+                    
+                    try:
+                        response_data = json.loads(response_text)
+                    except json.JSONDecodeError as e:
+                        logger.error(f"Failed to parse models response as JSON: {response_text[:200]}...")
+                        raise ProviderConnectionError(f"Invalid JSON response from models endpoint: {str(e)}")
+                    
+                    # Check if response contains an error (like OpenRouter error format)
+                    if "error" in response_data:
+                        error_info = response_data["error"]
+                        if isinstance(error_info, dict):
+                            error_message = error_info.get("message", "Unknown error")
+                            error_code = error_info.get("code", "unknown")
+                            if error_code == 401:
+                                raise ProviderAuthenticationError(f"API authentication failed: {error_message}")
+                            else:
+                                raise ProviderConnectionError(f"API error ({error_code}): {error_message}")
+                        else:
+                            raise ProviderConnectionError(f"API error: {error_info}")
+                    
+                    # OpenAI returns data in standard format
+                    models = response_data.get("data", [])
+                    
+                    # Ensure consistent format for frontend
+                    formatted_models = []
+                    for model in models:
+                        formatted_models.append({
+                            "id": model.get("id", ""),
+                            "name": model.get("id", ""),  # Use id as name
+                            "object": model.get("object", "model"),
+                            "created": model.get("created", 0),
+                            "owned_by": model.get("owned_by", "openai")
+                        })
+                    
+                    return formatted_models
+        
+        except ClientConnectorError as e:
+            logger.error(f"Failed to connect to OpenAI models endpoint: {e}")
+            raise ProviderConnectionError(f"Failed to connect to OpenAI at {base_url}: {str(e)}")
+        except ClientError as e:
+            logger.error(f"OpenAI models client error: {e}")
+            raise ProviderConnectionError(f"OpenAI client error: {str(e)}")
+        except ProviderAuthenticationError:
+            raise
+        except Exception as e:
+            logger.error(f"Unexpected error fetching OpenAI models: {e}")
             raise ProviderConnectionError(f"Unexpected error: {str(e)}")

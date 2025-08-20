@@ -7,6 +7,7 @@ import type { Persona } from '@/types'
 
 const showNewPersona = ref(false)
 const editingPersonaId = ref<string | null>(null)
+const selectedPersonaId = ref<string | null>(null)
 
 const emit = defineEmits<{
   selectPersona: [persona: Persona]
@@ -31,6 +32,8 @@ const showError = computed(() => !loading.value && error.value)
 onMounted(async () => {
   try {
     await fetchPersonas()
+    // Load selected persona ID from localStorage
+    selectedPersonaId.value = localStorage.getItem('selectedPersonaId')
   } catch (err) {
     console.error('Failed to load personas:', err)
   }
@@ -50,6 +53,11 @@ function goBackToPersonas() {
 }
 
 function handlePersonaSelect(persona: Persona) {
+  // Update local state
+  selectedPersonaId.value = persona.id
+  // Update localStorage (this will also be done by HomeView, but doing it here too for consistency)
+  localStorage.setItem('selectedPersonaId', persona.id)
+  // Emit to parent
   emit('selectPersona', persona)
 }
 
@@ -131,6 +139,7 @@ function handleErrorDismiss() {
             v-for="persona in personas"
             :key="persona.id"
             :persona="persona"
+            :selected="selectedPersonaId === persona.id"
             @select="handlePersonaSelect"
             @edit="editPersona"
             @delete="handleDeletePersona"

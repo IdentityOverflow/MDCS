@@ -1,24 +1,23 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, onMounted } from 'vue'
 import MainChat from '../components/MainChat.vue'
 import DisplayArea from '../components/DisplayArea.vue'
 import ControlPanel from '../components/ControlPanel.vue'
 import Info from '../components/Info.vue'
-
-interface Persona {
-  id: string
-  name: string
-  description: string
-  model: string
-  template: string
-  mode: 'autonomous' | 'reactive'
-  loop_frequency?: number
-  first_message?: string
-  image: string
-}
+import type { Persona } from '@/types'
 
 const selectedComponent = ref('Personas')
 const selectedPersona = ref<Persona | null>(null)
+
+// Load selected persona from localStorage on mount
+onMounted(() => {
+  const savedPersonaId = localStorage.getItem('selectedPersonaId')
+  if (savedPersonaId) {
+    // We'll need to fetch the persona details from the API
+    // For now, just store the ID - the actual persona will be set when DisplayArea loads
+    console.log('Saved persona ID:', savedPersonaId)
+  }
+})
 
 function handleComponentSelect(componentName: string) {
   selectedComponent.value = componentName
@@ -26,6 +25,9 @@ function handleComponentSelect(componentName: string) {
 
 function handlePersonaSelect(persona: Persona) {
   selectedPersona.value = persona
+  // Save selected persona ID to localStorage for persistence
+  localStorage.setItem('selectedPersonaId', persona.id)
+  console.log('Selected persona:', persona.name)
 }
 </script>
 
