@@ -1,7 +1,7 @@
 # Project 2501 - Cognitive Systems Framework
 ## Design Collaboration Scratchpad
 
-*"Building dynamic cognitive architectures through modular, scriptable modules"*
+*"Building dynamic cognitive architectures through scriptable modules"*
 
 ---
 
@@ -16,21 +16,40 @@ Traditional LLM interactions use static system prompts that get buried or lost a
 - **Inflexibility**: Cannot adapt behavior dynamically based on conversation state
 - **Limited persistence**: Each session starts from scratch
 
-### The Solution: Dynamic System Prompt Architecture
-Project 2501 treats the system prompt as a **living, modular heads-up display** that stays persistently visible to the AI throughout any conversation length. Instead of:
+### Proposed Solution: Dynamic System Prompt Architecture
+Project 2501 treats the system prompt as a **living, modular heads-up display** that stays persistently visible to the AI throughout any conversation length.
+So instead of the classic:
 ```
-{system: "Static prompt...", user: "msg1", ai: "response1", user: "msg2", ai: "response2"...}
+{
+  system: "Static prompt...",
+  user: "msg1",
+  ai: "response1",
+  user: "msg2",
+  ai: "response2",
+  ...
+}
 ```
 
-We create:
+We can use something like:
 ```
-{system: "Instructions: {personality_module}, Memory: {conversation_summary}, Context: {recent_exchanges}", user: "latest_message", ai: "latest_response"}
+{
+  system: "Personality: @personality_module,
+          Current time and date: @current_time_module,
+          Long term memory: @early_conversation_summary_module,
+          Recent memory: @recent_exchanges_module,
+          Instructions for x: @instruction_for_x_module,
+          Instructions for y: @instruction_for_y_module,
+          ...",
+  user: "latest_message",
+  ai: "latest_response"
+}
 ```
+Where each module is defined separately, comes with all the necessay information and can be static or updated during the conversation by a script or by the AI sytem itself.
 
 ### Module System
-- **Simple Modules**: Static text templates (personalities, instructions, tools, etc.)
-- **Advanced Modules**: Python scripts that update dynamically (memory, context, time, custom logic, etc.)
-- **Self-Modifying**: AI can update some of its own modules, creating evolving **personas**
+- **Simple Modules**: Static text templates (personality, static instructions, persisten information, etc.).
+- **Advanced Modules**: Can laverage python scripts that update the module content dynamically (memory, context, time, adaptive reasoning, etc.).
+- **Self-Modifying**: AI can update some of its own modules, creating evolving **personas**.
 
 ### Key Innovation
 This enables **infinite conversations with adaptive memory**, **composable AI personas**, and **self-evolving cognitive architectures** - essentially creating a framework for building any type of AI agent or interactive system imaginable.
@@ -45,9 +64,9 @@ A model-agnostic platform where users can design, share, and evolve sophisticate
 ### System Architecture Layers
 
 **Data Layer**
-- **Database**: PostgreSQL with pgvector extension
+- **Database**: PostgreSQL (with pgvector extension)
   - **Relational data**: personas, modules, templates, conversations
-  - **Vector storage**: Future AI embeddings, semantic search capabilities (future plans)
+  - **Vector storage**: Semantic search capabilities (future plans)
   - **ACID compliance** for data integrity
   - **Excellent Python ecosystem support**
 
@@ -55,7 +74,7 @@ A model-agnostic platform where users can design, share, and evolve sophisticate
 - **Framework**: FastAPI for REST API development
 - **Core Engine**: Module execution and template resolution
 - **API Layer**: RESTful endpoints for frontend communication
-- **Model Integration**: Abstracted interface for different AI providers
+- **AI model Integration**: Abstracted interface for different AI providers
 - **Module Sandbox**: Secure Python execution environment
 - **Import/Export System**: JSON and PNG-embedded formats
 
@@ -65,6 +84,7 @@ A model-agnostic platform where users can design, share, and evolve sophisticate
 - **Golden Ratio Layout**: Responsive viewport management
 - **Persona Management**: Visual editing interface for personas/modules/templates
 - **State Management**: Pinia for complex application state
+- **Debug tool**: System prompt debug tool to facilitate module creation and integration
 
 ### Core System Modules
 
@@ -94,7 +114,6 @@ A model-agnostic platform where users can design, share, and evolve sophisticate
 
 **5. Security & Sandbox**
 - Python script execution isolation
-- Resource limiting (memory, CPU, execution time)
 - Safe function whitelisting
 - User-generated code validation
 
@@ -121,10 +140,10 @@ A model-agnostic platform where users can design, share, and evolve sophisticate
 - Use case examples: Memory management, dynamic context, self-modifying behavior
 
 ### Template System
-- Uses placeholder syntax: `{module_name}`
+- Uses placeholder syntax: `{module_name}` (will be change to @module_name )
 - Template defines how modules are arranged in final prompt
 - Modules are resolved at runtime before sending to AI
-- Available modules shown as a list of drag-and-drop insetable items
+- Available modules shown as a list of drag-and-drop insetable items (will be cahanged to a suggestion system based on available modules)
 - Support for saved/loaded template presets
 
 ### Module Features Observed
@@ -135,10 +154,10 @@ A model-agnostic platform where users can design, share, and evolve sophisticate
 - **Execution Control**: Fine-grained control over when modules update
 
 ### Module Dependencies & Execution
-- Modules can reference other modules using `{module_name}` syntax
+- Modules can reference other modules using `{module_name}` syntax (will be @module_name )
 - Recursive call detection prevents infinite loops
 - Missing dependency validation with user warnings
-- User responsibility for architectural coherence (good design principle)
+- User responsibility for architectural coherence
 
 ### Performance & Timing
 - Background execution for post-response modules (e.g., memory updates)
@@ -281,50 +300,3 @@ Previous implementation suffered from **AI context loss during development** - e
 - FastAPI for robust REST API development
 - Vue 3 + Composition API for reactive frontend
 - JSON + PNG-embedded import/export formats
-
----
-
-## 🤔 Open Questions & Decisions
-
-### Architecture Decisions
-1. **Database Choice**: PostgreSQL + pgvector for both relational and vector storage ✓
-2. **Frontend Framework**: Vue 3 with Composition API ✓
-3. **Backend Framework**: FastAPI for RESTful API development ✓
-4. **API Layer**: RESTful endpoints for frontend-backend communication ✓
-5. **Module Execution**: Enhanced sandboxing for secure Python execution?
-6. **Model Integration**: Unified interface for different AI providers (OpenAI, local models)?
-7. **Import/Export**: JSON format + PNG-embedded (SillyTavern style) implementation?
-
-### Frontend Design Decisions
-8. **UI Framework**: Vuetify, Quasar, Element Plus, or custom styling?
-9. **State Management**: Pinia for application state management?
-10. **Layout System**: Golden ratio implementation strategy?
-11. **Real-time Updates**: WebSocket integration with Vue 3?
-12. **Module Editor**: Code editor integration (Monaco, CodeMirror)?
-
-### Development Strategy
-13. **Documentation Tools**: Auto-generation tools for Python (Sphinx?) vs manual architectural docs?
-14. **Testing Framework**: Unit testing approach for AI-dependent modules?
-15. **CI/CD Pipeline**: Automated testing and deployment strategy?
-16. **Code Organization**: Separate repos for frontend/backend? ✓
-
-### Technical Improvements
-17. **Performance**: Strategies for handling many concurrent advanced modules?
-18. **Security**: Robust sandboxing for user-created Python modules?
-19. **Offline Capability**: Local model integration architecture?
-20. **Real-time Updates**: WebSocket communication for live module updates?
-
----
-
-## 📝 Next Steps
-*[Action items from our collaboration]*
-
-- [ ] Design Vue 3 component structure for golden ratio layout
-- [ ] Define database schema for personas, modules, templates, conversations
-- [ ] Specify REST API endpoints and data models
-- [ ] Plan module execution flow and template resolution
-- [ ] Set up development workflow and testing strategy
-
----
-
-*This document is a living collaboration space for Project 2501 design decisions*
