@@ -313,7 +313,7 @@ cd frontend && npm run test:unit       # Tests must pass (when they exist)
 - **Backend API Structure**: FastAPI app with proper configuration
 - **Database Connection**: Connection pooling, testing, error handling
 - **Frontend UI Framework**: Vue 3 app with golden ratio layout and cyberpunk theme
-- **Test Infrastructure**: Comprehensive test suite (**90/90 passing**)
+- **Test Infrastructure**: Comprehensive test suite (**294/294 passing**)
 - **Development Environment**: Scripts, conda environment, modern dependencies
 
 #### **🚀 COMPLETE: Full Chat Infrastructure (Phase 2 - DONE)**
@@ -324,7 +324,7 @@ cd frontend && npm run test:unit       # Tests must pass (when they exist)
 - **Frontend-Backend Integration**: Complete chat functionality with all controls working ✅
 - **Settings Architecture**: Provider settings passed in requests (no backend duplication) ✅
 - **Error Handling**: Comprehensive authentication, connection, and validation error handling ✅
-- **TDD Coverage**: All 90 integration tests passing, including 14 chat-specific tests ✅
+- **TDD Coverage**: All 294 integration tests passing, including 14 chat, 14 conversation, and 27 message tests ✅
 
 #### **Chat System Architecture:**
 **Frontend-Only Settings Storage**: All provider connection settings (Ollama, OpenAI) stored in browser localStorage only.
@@ -339,15 +339,25 @@ cd frontend && npm run test:unit       # Tests must pass (when they exist)
 
 #### **Backend API Endpoints Summary:**
 ```
-Database:     GET  /api/database/test              # Database connection test
-Modules:      GET  /api/modules/                   # List modules
-              POST /api/modules/                   # Create module
-Personas:     GET  /api/personas/                  # List personas  
-              POST /api/personas/                  # Create persona
-Chat:         POST /api/chat/send                  # Complete chat response
-              POST /api/chat/stream                # Streaming chat response
-Connections:  POST /api/connections/ollama/test    # Test Ollama connection
-              POST /api/connections/openai/test    # Test OpenAI connection
+Database:      GET  /api/database/test                    # Database connection test
+Modules:       GET  /api/modules/                         # List modules
+               POST /api/modules/                         # Create module
+Personas:      GET  /api/personas/                        # List personas  
+               POST /api/personas/                        # Create persona
+Chat:          POST /api/chat/send                        # Complete chat response
+               POST /api/chat/stream                      # Streaming chat response
+Connections:   POST /api/connections/ollama/test          # Test Ollama connection
+               POST /api/connections/openai/test          # Test OpenAI connection
+Conversations: GET  /api/conversations/by-persona/{id}    # Get conversation by persona
+               GET  /api/conversations/{id}               # Get conversation by ID
+               POST /api/conversations                    # Create conversation
+               PUT  /api/conversations/{id}               # Update conversation
+               DELETE /api/conversations/{id}             # Delete conversation (cascade)
+Messages:      GET  /api/messages/by-conversation/{id}   # List messages in conversation
+               GET  /api/messages/{id}                   # Get message by ID
+               POST /api/messages                        # Create message (with thinking)
+               PUT  /api/messages/{id}                   # Update message content/thinking
+               DELETE /api/messages/{id}                 # Delete message
 ```
 
 **Chat Request Format:**
@@ -376,18 +386,79 @@ Connections:  POST /api/connections/ollama/test    # Test Ollama connection
 - **Persona Integration**: System prompts from selected personas ✅
 - **Real-time Chat**: Full bidirectional streaming chat interface ✅
 
-### 🚧 **Next Development Priorities (Phase 3)**:
+#### **🗃️ COMPLETE: Conversation Persistence System (Phase 3 - DONE)**
+- **Conversation Storage**: Full CRUD API for persistent conversations with database storage ✅
+- **Message Storage**: Messages stored with thinking content, token counts, and metadata ✅
+- **Persona-Conversation Relationships**: Each persona has an ongoing conversation ✅
+- **Cascade Deletion**: Deleting conversation automatically deletes all associated messages ✅
+- **UUID Primary Keys**: All conversation and message IDs use UUIDs for better security ✅
+- **Database Migrations**: Proper schema migrations for thinking field and persona relationships ✅
+- **TDD Implementation**: All 14 conversation API tests passing with comprehensive coverage ✅
+
+#### **Conversation System Architecture:**
+**Database Models**:
+- `Conversation`: UUID primary key, title, persona_id (FK), provider info, timestamps
+- `Message`: UUID primary key, conversation_id (FK with CASCADE), role, content, thinking, token counts
+- **Relationships**: One-to-many (Conversation → Messages), many-to-one (Conversation → Persona)
+
+**API Endpoints**:
+- `GET /api/conversations/by-persona/{persona_id}` - Get active conversation for persona
+- `GET /api/conversations/{id}` - Get specific conversation with all messages
+- `POST /api/conversations` - Create new conversation
+- `PUT /api/conversations/{id}` - Update conversation (title)  
+- `DELETE /api/conversations/{id}` - Delete conversation and cascade delete all messages
+
+**Key Features**:
+- **Message Thinking**: AI reasoning content stored separately from main response
+- **Cascade Deletion**: Database-level foreign key constraint ensures message cleanup
+- **Provider Tracking**: Snapshots of AI provider settings used for conversation
+- **Full Message History**: Complete conversation state with ordering and metadata
+
+#### **💬 COMPLETE: Message CRUD API System (Phase 3.1 - DONE)**
+- **Message Storage**: Full CRUD API for individual message management with thinking support ✅
+- **UUID Primary Keys**: All message IDs use UUIDs for consistency and security ✅
+- **Thinking Content**: Separate storage for AI reasoning alongside main response content ✅
+- **Token Tracking**: Input/output token counts for usage monitoring and billing ✅
+- **Metadata Support**: Flexible extra_data JSON field for additional message information ✅
+- **Role Validation**: Strict validation for message roles (user, assistant, system) ✅
+- **Conversation Integration**: Messages properly linked to conversations with cascade deletion ✅
+- **TDD Implementation**: All 27 message API tests passing with comprehensive coverage ✅
+
+#### **Message API Architecture:**
+**Database Model**:
+- `Message`: UUID primary key, conversation_id (FK with CASCADE), role, content, thinking, extra_data, token counts
+- **Relationships**: Many-to-one (Message → Conversation), proper cascade deletion
+
+**API Endpoints**:
+- `POST /api/messages` - Create new message with validation and thinking support
+- `GET /api/messages/{id}` - Get specific message by ID
+- `GET /api/messages/by-conversation/{conversation_id}` - List all messages in conversation (ordered)
+- `PUT /api/messages/{id}` - Update message content, thinking, tokens, or metadata
+- `DELETE /api/messages/{id}` - Delete message (automatically removes from conversation)
+
+**Key Features**:
+- **Thinking Support**: AI reasoning content stored separately from main response
+- **Partial Updates**: Update only specific fields (content, thinking, tokens, metadata)
+- **Token Tracking**: Track input/output token usage for billing and monitoring
+- **Role System**: Validates user/assistant/system roles with proper enum handling
+- **Database Migration**: Converted from integer to UUID primary keys for security
+- **Cascade Integration**: Messages properly integrate with conversation lifecycle
+
+### 🚧 **Next Development Priorities (Phase 4)**:
+- **Frontend Chat Integration**: Connect UI to conversation and message persistence systems
+- **In-Place Message Editing**: UI for editing message content and thinking sections
 - **Cognitive Engine**: Template resolution and module execution system
 - **Module Sandbox**: Secure Python script execution for Advanced modules
 - **Import/Export System**: JSON and PNG-embedded persona sharing
-- **Advanced Chat Features**: File uploads, tool calling, conversation memory
 
 ### 💡 **Key Implementation Notes**:
 - **The core innovation** is the dynamic system prompt architecture - keep this central
 - **Complete chat system is working** - full Ollama/OpenAI integration with streaming
+- **Conversation persistence is complete** - full CRUD API with database storage and thinking support
+- **Message CRUD system is complete** - full message management with thinking, tokens, and metadata
 - **Frontend-centric architecture** - all settings managed in browser, passed via requests
-- **Database models are solid** - use them as the foundation for conversation storage
-- **Test coverage is excellent** - 90/90 passing tests, maintain this standard
+- **Database models are solid** - UUIDs, proper relationships, cascade deletion working
+- **Test coverage is excellent** - 294/294 passing tests, maintain this standard
 - **Architecture is well-planned** - follow the existing design patterns
 
 ### 🏗️ **Chat Architecture Patterns (FOLLOW THESE)**:
