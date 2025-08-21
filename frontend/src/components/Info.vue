@@ -1,10 +1,13 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import type { Persona } from '@/types'
+import type { Conversation } from '@/composables/useChat'
 import { getPersonaImage, handleImageError, countComponents } from '@/composables/utils'
 
 const props = defineProps<{
   selectedPersona: Persona | null
+  currentConversation?: Conversation | null
+  isLoadingConversation?: boolean
 }>()
 
 const secondaryScreenText = ref('STATUS OK')
@@ -20,8 +23,20 @@ const displayText = computed(() => {
     if (props.selectedPersona.mode === 'autonomous' && props.selectedPersona.loop_frequency) {
       text += `FREQ: ${props.selectedPersona.loop_frequency}HZ\n`
     }
-    text += `COMPONENTS: ${componentCount}\n\n`
-    text += `DESCRIPTION:\n${props.selectedPersona.description}`
+    text += `COMPONENTS: ${componentCount}\n`
+    
+    // Add conversation info if available
+    if (props.isLoadingConversation) {
+      text += `CONVERSATION: LOADING...\n`
+    } else if (props.currentConversation) {
+      const msgCount = props.currentConversation.messages.length
+      text += `CONVERSATION: ${msgCount} MSG\n`
+      text += `CREATED: ${new Date(props.currentConversation.created_at).toLocaleDateString()}\n`
+    } else {
+      text += `CONVERSATION: NEW\n`
+    }
+    
+    text += `\nDESCRIPTION:\n${props.selectedPersona.description}`
     return text
   }
   return secondaryScreenText.value

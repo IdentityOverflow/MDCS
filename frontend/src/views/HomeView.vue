@@ -4,18 +4,35 @@ import MainChat from '../components/MainChat.vue'
 import DisplayArea from '../components/DisplayArea.vue'
 import ControlPanel from '../components/ControlPanel.vue'
 import Info from '../components/Info.vue'
+import { useChat } from '@/composables/useChat'
+import { usePersonas } from '@/composables/usePersonas'
 import type { Persona } from '@/types'
 
 const selectedComponent = ref('Personas')
 const selectedPersona = ref<Persona | null>(null)
 
+// Use chat composable for conversation loading
+const { loadConversationForPersona, currentConversation, isLoadingConversation } = useChat()
+const { getPersonaById } = usePersonas()
+
 // Load selected persona from localStorage on mount
-onMounted(() => {
+onMounted(async () => {
   const savedPersonaId = localStorage.getItem('selectedPersonaId')
   if (savedPersonaId) {
-    // We'll need to fetch the persona details from the API
-    // For now, just store the ID - the actual persona will be set when DisplayArea loads
-    console.log('Saved persona ID:', savedPersonaId)
+    // Load the persona details and its conversation
+    const persona = getPersonaById(savedPersonaId)
+    if (persona) {
+      selectedPersona.value = persona
+      // Load conversation for this persona
+      try {
+        await loadConversationForPersona(savedPersonaId)
+        console.log('Loaded conversation for persona:', persona.name)
+      } catch (error) {
+        console.error('Failed to load conversation for persona:', error)
+      }
+    } else {
+      console.log('Saved persona ID not found, will fetch from API:', savedPersonaId)
+    }
   }
 })
 
@@ -23,11 +40,19 @@ function handleComponentSelect(componentName: string) {
   selectedComponent.value = componentName
 }
 
-function handlePersonaSelect(persona: Persona) {
+async function handlePersonaSelect(persona: Persona) {
   selectedPersona.value = persona
   // Save selected persona ID to localStorage for persistence
   localStorage.setItem('selectedPersonaId', persona.id)
   console.log('Selected persona:', persona.name)
+  
+  // Load conversation for the selected persona
+  try {
+    await loadConversationForPersona(persona.id)
+    console.log('Loaded conversation for selected persona:', persona.name)
+  } catch (error) {
+    console.error('Failed to load conversation for selected persona:', error)
+  }
 }
 </script>
 
@@ -36,7 +61,11 @@ function handlePersonaSelect(persona: Persona) {
     <MainChat />
     <DisplayArea :selected-component="selectedComponent" @select-persona="handlePersonaSelect" />
     <ControlPanel @select-component="handleComponentSelect" />
-    <Info :selected-persona="selectedPersona" />
+    <Info 
+      :selected-persona="selectedPersona" 
+      :current-conversation="currentConversation" 
+      :is-loading-conversation="isLoadingConversation" 
+    />
   </div>
 </template>
 

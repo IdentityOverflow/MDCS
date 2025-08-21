@@ -18,6 +18,22 @@ export interface ChatMessage {
     tokens_used?: number
     response_time?: number
   }
+  // Additional fields for persistence
+  conversation_id?: string
+  input_tokens?: number
+  output_tokens?: number
+  extra_data?: Record<string, any>
+}
+
+export interface Conversation {
+  id: string
+  title: string
+  persona_id?: string
+  provider_type?: string
+  provider_config?: Record<string, any>
+  messages: ChatMessage[]
+  created_at: string
+  updated_at: string
 }
 
 export interface ChatRequest {
@@ -60,6 +76,11 @@ const currentStreamingMessage = ref('')
 const currentStreamingThinking = ref('')
 const error = ref<string | null>(null)
 
+// Conversation persistence state
+const currentConversation: Ref<Conversation | null> = ref(null)
+const isLoadingConversation = ref(false)
+const isSavingMessage = ref(false)
+
 export function useChat() {
   const { apiRequest } = useApiConfig()
   const { getPersonaById } = usePersonas()
@@ -69,32 +90,265 @@ export function useChat() {
   const hasMessages = computed(() => messages.value.length > 0)
   const isLoading = computed(() => isStreaming.value)
   
-  // Generate unique ID for messages
+  // Generate unique ID for messages (fallback for local messages)
   const generateMessageId = () => `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
+
+  // === CONVERSATION PERSISTENCE FUNCTIONS ===
   
-  // Add user message to chat
-  const addUserMessage = (content: string): ChatMessage => {
+  // Load conversation for a persona
+  const loadConversationForPersona = async (personaId: string): Promise<void> => {
+    isLoadingConversation.value = true
+    error.value = null
+    
+    try {
+      const response = await apiRequest(`/api/conversations/by-persona/${personaId}`)
+      
+      if (response.ok) {
+        const conversation: Conversation = await response.json()
+        currentConversation.value = conversation
+        
+        // Convert API messages to chat messages format
+        messages.value = conversation.messages.map(msg => ({
+          id: msg.id,
+          role: msg.role as 'user' | 'assistant' | 'system',
+          content: msg.content,
+          timestamp: new Date(msg.created_at).getTime(),
+          thinking: msg.thinking || undefined,
+          conversation_id: conversation.id,
+          input_tokens: msg.input_tokens || undefined,
+          output_tokens: msg.output_tokens || undefined,
+          extra_data: msg.extra_data || undefined,
+          metadata: msg.extra_data?.metadata || undefined
+        }))
+      } else if (response.status === 404) {
+        // No existing conversation for this persona, create a new one
+        await createConversationForPersona(personaId)
+      } else {
+        const errorData = await response.json()
+        throw new Error(errorData.detail || 'Failed to load conversation')
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to load conversation'
+      error.value = message
+      console.error('Load conversation error:', err)
+    } finally {
+      isLoadingConversation.value = false
+    }
+  }
+
+  // Create new conversation for persona
+  const createConversationForPersona = async (personaId: string): Promise<void> => {
+    try {
+      const persona = getPersonaById(personaId)
+      const title = `Chat with ${persona?.name || 'AI'}`
+      
+      const response = await apiRequest('/api/conversations', {
+        method: 'POST',
+        body: JSON.stringify({
+          title,
+          persona_id: personaId,
+          provider_type: null,
+          provider_config: null
+        })
+      })
+
+      if (response.ok) {
+        const conversation: Conversation = await response.json()
+        currentConversation.value = conversation
+        messages.value = [] // Start with empty conversation
+      } else {
+        const errorData = await response.json()
+        throw new Error(errorData.detail || 'Failed to create conversation')
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to create conversation'
+      error.value = message
+      console.error('Create conversation error:', err)
+    }
+  }
+
+  // Save message to database
+  const saveMessageToDb = async (message: ChatMessage): Promise<ChatMessage> => {
+    if (!currentConversation.value) {
+      throw new Error('No active conversation')
+    }
+
+    try {
+      const response = await apiRequest('/api/messages', {
+        method: 'POST',
+        body: JSON.stringify({
+          conversation_id: currentConversation.value.id,
+          role: message.role,
+          content: message.content,
+          thinking: message.thinking || null,
+          input_tokens: message.input_tokens || null,
+          output_tokens: message.output_tokens || null,
+          extra_data: message.extra_data || null
+        })
+      })
+
+      if (response.ok) {
+        const savedMessage = await response.json()
+        // Return message with database ID
+        return {
+          ...message,
+          id: savedMessage.id,
+          conversation_id: savedMessage.conversation_id
+        }
+      } else {
+        const errorData = await response.json()
+        throw new Error(errorData.detail || 'Failed to save message')
+      }
+    } catch (err) {
+      console.error('Save message error:', err)
+      throw err
+    }
+  }
+
+  // Update message in database
+  const updateMessageInDb = async (messageId: string, updates: Partial<ChatMessage>): Promise<void> => {
+    try {
+      const response = await apiRequest(`/api/messages/${messageId}`, {
+        method: 'PUT',
+        body: JSON.stringify({
+          content: updates.content,
+          thinking: updates.thinking,
+          input_tokens: updates.input_tokens,
+          output_tokens: updates.output_tokens,
+          extra_data: updates.extra_data
+        })
+      })
+
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.detail || 'Failed to update message')
+      }
+    } catch (err) {
+      console.error('Update message error:', err)
+      throw err
+    }
+  }
+
+  // Delete message from database
+  const deleteMessageFromDb = async (messageId: string): Promise<void> => {
+    try {
+      const response = await apiRequest(`/api/messages/${messageId}`, {
+        method: 'DELETE'
+      })
+
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.detail || 'Failed to delete message')
+      }
+    } catch (err) {
+      console.error('Delete message error:', err)
+      throw err
+    }
+  }
+
+  // Clear conversation in database
+  const clearConversationInDb = async (): Promise<void> => {
+    if (!currentConversation.value) return
+
+    try {
+      const response = await apiRequest(`/api/conversations/${currentConversation.value.id}`, {
+        method: 'DELETE'
+      })
+
+      if (response.ok) {
+        // Create a new conversation for the same persona
+        if (currentConversation.value.persona_id) {
+          await createConversationForPersona(currentConversation.value.persona_id)
+        } else {
+          currentConversation.value = null
+        }
+      } else {
+        const errorData = await response.json()
+        throw new Error(errorData.detail || 'Failed to clear conversation')
+      }
+    } catch (err) {
+      console.error('Clear conversation error:', err)
+      throw err
+    }
+  }
+  
+  // Add user message to chat (with optional persistence)
+  const addUserMessage = async (content: string, persist: boolean = true): Promise<ChatMessage> => {
     const message: ChatMessage = {
       id: generateMessageId(),
       role: 'user',
       content,
       timestamp: Date.now()
     }
+    
     messages.value.push(message)
+    
+    // Save to database if persistence is enabled and we have an active conversation
+    if (persist && currentConversation.value) {
+      try {
+        isSavingMessage.value = true
+        const savedMessage = await saveMessageToDb(message)
+        // Update the message in our local state with the database ID
+        const index = messages.value.findIndex(m => m.id === message.id)
+        if (index >= 0) {
+          messages.value[index] = savedMessage
+        }
+        return savedMessage
+      } catch (err) {
+        console.error('Failed to save user message:', err)
+        // Continue with local message even if persistence fails
+        return message
+      } finally {
+        isSavingMessage.value = false
+      }
+    }
+    
     return message
   }
   
-  // Add assistant message to chat
-  const addAssistantMessage = (content: string, metadata?: ChatMessage['metadata'], thinking?: string): ChatMessage => {
+  // Add assistant message to chat (with optional persistence)
+  const addAssistantMessage = async (
+    content: string, 
+    metadata?: ChatMessage['metadata'], 
+    thinking?: string,
+    inputTokens?: number,
+    outputTokens?: number,
+    persist: boolean = true
+  ): Promise<ChatMessage> => {
     const message: ChatMessage = {
       id: generateMessageId(),
       role: 'assistant',
       content,
       timestamp: Date.now(),
       thinking,
-      metadata
+      metadata,
+      input_tokens: inputTokens,
+      output_tokens: outputTokens,
+      extra_data: metadata ? { metadata } : undefined
     }
+    
     messages.value.push(message)
+    
+    // Save to database if persistence is enabled and we have an active conversation
+    if (persist && currentConversation.value) {
+      try {
+        isSavingMessage.value = true
+        const savedMessage = await saveMessageToDb(message)
+        // Update the message in our local state with the database ID
+        const index = messages.value.findIndex(m => m.id === message.id)
+        if (index >= 0) {
+          messages.value[index] = savedMessage
+        }
+        return savedMessage
+      } catch (err) {
+        console.error('Failed to save assistant message:', err)
+        // Continue with local message even if persistence fails
+        return message
+      } finally {
+        isSavingMessage.value = false
+      }
+    }
+    
     return message
   }
   
@@ -206,7 +460,7 @@ export function useChat() {
     currentStreamingThinking.value = ''
     
     // Add user message immediately
-    addUserMessage(userMessage)
+    await addUserMessage(userMessage)
     
     try {
       // Get fresh chat controls from localStorage to ensure we have the latest values
@@ -255,7 +509,6 @@ export function useChat() {
       
       const decoder = new TextDecoder()
       let buffer = ''
-      let assistantMessage: ChatMessage | null = null
       
       try {
         while (true) {
@@ -295,10 +548,12 @@ export function useChat() {
                   
                   // If this is the final chunk, save the complete message
                   if (chunk.done) {
-                    assistantMessage = addAssistantMessage(
+                    await addAssistantMessage(
                       currentStreamingMessage.value,
                       chunk.metadata,
-                      currentStreamingThinking.value || undefined
+                      currentStreamingThinking.value || undefined,
+                      chunk.metadata?.input_tokens,
+                      chunk.metadata?.output_tokens
                     )
                   }
                 } catch (parseError) {
@@ -318,7 +573,7 @@ export function useChat() {
       console.error('Chat streaming error:', err)
       
       // Add error message as assistant message
-      addAssistantMessage(`❌ Error: ${message}`)
+      await addAssistantMessage(`❌ Error: ${message}`, undefined, undefined, undefined, undefined, false)
     } finally {
       isStreaming.value = false
       currentStreamingMessage.value = ''
@@ -338,7 +593,7 @@ export function useChat() {
     isStreaming.value = true
     
     // Add user message immediately
-    addUserMessage(userMessage)
+    await addUserMessage(userMessage)
     
     try {
       // Get fresh chat controls from localStorage to ensure we have the latest values
@@ -382,7 +637,13 @@ export function useChat() {
       const data = await response.json()
       
       // Add assistant response
-      addAssistantMessage(data.content, data.metadata, data.thinking)
+      await addAssistantMessage(
+        data.content, 
+        data.metadata, 
+        data.thinking || undefined,
+        data.metadata?.input_tokens,
+        data.metadata?.output_tokens
+      )
       
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Unknown error occurred'
@@ -390,7 +651,7 @@ export function useChat() {
       console.error('Chat error:', err)
       
       // Add error message as assistant message
-      addAssistantMessage(`❌ Error: ${message}`)
+      await addAssistantMessage(`❌ Error: ${message}`, undefined, undefined, undefined, undefined, false)
     } finally {
       isStreaming.value = false
     }
@@ -409,19 +670,56 @@ export function useChat() {
     }
   }
   
-  // Clear chat history
-  const clearChat = () => {
+  // Clear chat history (with optional database clearing)
+  const clearChat = async (clearFromDb: boolean = true) => {
     messages.value = []
     currentStreamingMessage.value = ''
     currentStreamingThinking.value = ''
     error.value = null
+    
+    // Clear from database if requested and we have an active conversation
+    if (clearFromDb && currentConversation.value) {
+      try {
+        await clearConversationInDb()
+      } catch (err) {
+        console.error('Failed to clear conversation from database:', err)
+        // Continue with local clear even if database clear fails
+      }
+    }
   }
   
-  // Remove a specific message
-  const removeMessage = (messageId: string) => {
+  // Remove a specific message (with optional database removal)
+  const removeMessage = async (messageId: string, removeFromDb: boolean = true) => {
     const index = messages.value.findIndex(m => m.id === messageId)
     if (index >= 0) {
       messages.value.splice(index, 1)
+      
+      // Remove from database if requested
+      if (removeFromDb) {
+        try {
+          await deleteMessageFromDb(messageId)
+        } catch (err) {
+          console.error('Failed to remove message from database:', err)
+          // Message was already removed locally, so don't re-add it
+        }
+      }
+    }
+  }
+  
+  // Update message content (with database sync)
+  const updateMessage = async (messageId: string, updates: Partial<ChatMessage>) => {
+    const index = messages.value.findIndex(m => m.id === messageId)
+    if (index >= 0) {
+      // Update local message
+      messages.value[index] = { ...messages.value[index], ...updates }
+      
+      // Sync with database
+      try {
+        await updateMessageInDb(messageId, updates)
+      } catch (err) {
+        console.error('Failed to update message in database:', err)
+        throw err
+      }
     }
   }
   
@@ -433,15 +731,25 @@ export function useChat() {
     currentStreamingThinking: computed(() => currentStreamingThinking.value),
     error: computed(() => error.value),
     
+    // Conversation persistence state
+    currentConversation: computed(() => currentConversation.value),
+    isLoadingConversation: computed(() => isLoadingConversation.value),
+    isSavingMessage: computed(() => isSavingMessage.value),
+    
     // Computed
     hasMessages,
     
-    // Methods
+    // Chat methods
     sendChatMessage,
     clearChat,
     removeMessage,
+    updateMessage,
     addUserMessage,
     addAssistantMessage,
-    addSystemMessage
+    addSystemMessage,
+    
+    // Persistence methods
+    loadConversationForPersona,
+    createConversationForPersona
   }
 }
