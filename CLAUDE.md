@@ -102,6 +102,7 @@ project-2501/
 - **Framework**: Vue 3.5.18 with TypeScript
 - **State**: Pinia 3.0.3
 - **Routing**: Vue Router 4.5.1
+- **Markdown**: marked 16.2.0 + @types/marked 5.0.2
 - **Testing**: Vitest 3.2.4
 - **Build**: Vite 7.0.6
 
@@ -444,22 +445,71 @@ Messages:      GET  /api/messages/by-conversation/{id}   # List messages in conv
 - **Database Migration**: Converted from integer to UUID primary keys for security
 - **Cascade Integration**: Messages properly integrate with conversation lifecycle
 
-### 🚧 **Next Development Priorities (Phase 4)**:
-- **Frontend Chat Integration**: Connect UI to conversation and message persistence systems
-- **In-Place Message Editing**: UI for editing message content and thinking sections
+#### **🎯 COMPLETE: Advanced Chat UI Features (Phase 4 - DONE)**
+- **Frontend Chat Integration**: Complete connection between UI and conversation persistence systems ✅
+- **In-Place Message Editing**: Full UI for editing message content and thinking sections with save/cancel ✅
+- **Edit/Delete Message Actions**: Contextual buttons with existing card styling, positioned in message corners ✅
+- **Markdown Rendering**: Real-time markdown parsing for formatted messages with toggle control ✅
+- **Chat Options Menu**: Collapsible panel system for markdown toggle and destructive actions ✅
+- **Auto-Scroll**: Intelligent scroll-to-bottom for new messages and streaming responses ✅
+- **Confirmation Dialogs**: Safety prompts for destructive actions like clearing conversations ✅
+
+#### **Advanced Chat UI Architecture:**
+**In-Place Editing System**:
+- **Edit Mode Toggle**: Messages become directly editable with textarea inputs
+- **Content + Thinking**: Both main message and AI reasoning content can be edited separately
+- **Action Buttons**: Edit/delete buttons appear on hover, positioned in message bubble corners
+- **Save/Cancel Controls**: Replace edit/delete with save/cancel buttons during editing
+- **Database Sync**: All edits immediately persist to database with proper error handling
+- **Visual Feedback**: Active editing state with highlighted borders and button state changes
+
+**Markdown Rendering System**:
+- **Toggle Control**: User can switch between raw markdown and rendered HTML in real-time
+- **Library Integration**: Uses `marked` library with breaks enabled for line break preservation
+- **Custom Styling**: Compact markdown CSS designed to match plain text density
+- **Scoped Styles**: Uses `:deep()` selectors to penetrate Vue's scoped styles for v-html content
+- **Line Break Preservation**: Post-processing to maintain empty lines from original text
+- **Conditional Formatting**: `white-space: pre-wrap` only applied to non-markdown content
+
+**Chat Options Panel**:
+- **Panel System**: Reuses existing chat controls UI pattern for consistency
+- **Dual Purpose**: Settings button opens chat controls, menu button opens chat options
+- **Toggle Architecture**: Smart button behavior - same button closes panel if already showing that type
+- **Menu Options**: Markdown rendering toggle with checkbox state, clear chat with confirmation
+- **Safety Features**: Clear chat requires confirmation dialog warning of permanent deletion
+- **Visual Integration**: Matches existing cyberpunk theme with proper hover states
+
+**Auto-Scroll Features**:
+- **Smart Triggers**: Scrolls on new messages, during streaming, after sending, and on message updates
+- **Reactive Watching**: Deep watches message array and streaming state for automatic scrolling
+- **Performance Optimized**: Uses `nextTick()` to ensure DOM updates before scrolling
+- **Streaming Integration**: Real-time scroll during AI response streaming
+- **User Experience**: Always shows latest content without manual scrolling needed
+
+**Key Implementation Details**:
+- **Message Actions**: Edit/delete buttons use existing `card-icon-btn` styles from `@/assets/card.css`
+- **Button Positioning**: Positioned in lower right corner of message bubbles with opacity transitions
+- **State Management**: Reactive editing state with proper cleanup and error handling
+- **Markdown Library**: `marked@16.2.0` with `@types/marked@5.0.2` for TypeScript support
+- **CSS Architecture**: `:deep()` selectors for scoped style penetration of dynamically generated content
+
+### 🚧 **Next Development Priorities (Phase 5)**:
 - **Cognitive Engine**: Template resolution and module execution system
 - **Module Sandbox**: Secure Python script execution for Advanced modules
 - **Import/Export System**: JSON and PNG-embedded persona sharing
+- **Advanced Chat Features**: File uploads, tool calling, conversation memory
 
 ### 💡 **Key Implementation Notes**:
 - **The core innovation** is the dynamic system prompt architecture - keep this central
 - **Complete chat system is working** - full Ollama/OpenAI integration with streaming
 - **Conversation persistence is complete** - full CRUD API with database storage and thinking support
 - **Message CRUD system is complete** - full message management with thinking, tokens, and metadata
+- **Advanced chat UI is complete** - in-place editing, markdown rendering, auto-scroll, and options menu
 - **Frontend-centric architecture** - all settings managed in browser, passed via requests
 - **Database models are solid** - UUIDs, proper relationships, cascade deletion working
 - **Test coverage is excellent** - 294/294 passing tests, maintain this standard
 - **Architecture is well-planned** - follow the existing design patterns
+- **UI patterns are consistent** - reuses existing components and styling for cohesive experience
 
 ### 🏗️ **Chat Architecture Patterns (FOLLOW THESE)**:
 - **Settings Storage**: Frontend localStorage only, never duplicate in backend

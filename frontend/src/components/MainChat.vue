@@ -1,16 +1,27 @@
 <script setup lang="ts">
-import { ref, nextTick, computed, onMounted } from 'vue'
+import { ref, nextTick, computed, onMounted, onUnmounted, watch } from 'vue'
 import ChatControls from './connections/ChatControls.vue'
 import { useChat, type ChatMessage } from '@/composables/useChat'
 import { useLocalStorage } from '@/composables/storage'
 import { usePersonas } from '@/composables/usePersonas'
+import { useMarkdown } from '@/composables/useMarkdown'
 
 const message = ref('')
-const showSliders = ref(false)
+const showPanel = ref(false)
+const panelType = ref<'controls' | 'menu'>('controls')
 const textareaRef = ref<HTMLTextAreaElement>()
+const chatMessagesRef = ref<HTMLElement>()
+
+// Menu options
+const enableMarkdown = ref(true)
 
 // Thinking content visibility tracking
 const expandedThinking = ref<Set<string>>(new Set())
+
+// Message editing state
+const editingMessageId = ref<string | null>(null)
+const editingContent = ref<string>('')
+const editingThinking = ref<string>('')
 
 // Chat functionality
 const { 
@@ -18,10 +29,11 @@ const {
   isStreaming, 
   currentStreamingMessage,
   currentStreamingThinking, 
-  error, 
   hasMessages, 
   sendChatMessage, 
-  clearChat 
+  clearChat,
+  removeMessage,
+  updateMessage 
 } = useChat()
 
 // Get chat controls from storage - no defaults, load what's actually saved
@@ -52,13 +64,40 @@ const { data: chatControls, load: loadChatControls } = useLocalStorage({
   }
 })
 
+// Click outside handler to close panel
+function handleClickOutside(event: MouseEvent) {
+  const target = event.target as HTMLElement
+  if (!target.closest('.chat-controls-panel') && !target.closest('.left-controls')) {
+    showPanel.value = false
+  }
+}
+
 // Load chat controls on component mount
 onMounted(() => {
   loadChatControls()
+  document.addEventListener('click', handleClickOutside)
+})
+
+onUnmounted(() => {
+  document.removeEventListener('click', handleClickOutside)
+})
+
+// Auto-scroll watchers
+watch(messages, () => {
+  scrollToBottom()
+}, { deep: true })
+
+watch([currentStreamingMessage, currentStreamingThinking], () => {
+  if (isStreaming.value) {
+    scrollToBottom()
+  }
 })
 
 // Personas for system prompt
 const { getPersonaById } = usePersonas()
+
+// Markdown parsing
+const { parseMarkdown } = useMarkdown()
 
 // Computed values
 const selectedPersona = computed(() => {
@@ -69,6 +108,23 @@ const selectedPersona = computed(() => {
 const currentSystemPrompt = computed(() => {
   return selectedPersona.value?.template || ''
 })
+
+const streamingMessageWithCursor = computed(() => {
+  if (!currentStreamingMessage.value) return ''
+  const content = enableMarkdown.value 
+    ? parseMarkdown(currentStreamingMessage.value) 
+    : currentStreamingMessage.value.replace(/\n/g, '<br>')
+  return content + '<span class="streaming-cursor">▋</span>'
+})
+
+// Helper function to render message content based on markdown setting
+const renderMessageContent = (content: string): string => {
+  if (enableMarkdown.value) {
+    return parseMarkdown(content)
+  } else {
+    return content.replace(/\n/g, '<br>')
+  }
+}
 
 function handleKeydown(event: KeyboardEvent) {
   if (event.key === 'Enter' && !event.shiftKey) {
@@ -94,13 +150,42 @@ async function sendMessage() {
       chatControls.value as any,
       currentSystemPrompt.value
     )
+    // Scroll to bottom after sending message
+    scrollToBottom()
   } catch (error) {
     console.error('Failed to send message:', error)
   }
 }
 
-function toggleSliders() {
-  showSliders.value = !showSliders.value
+function toggleControls() {
+  if (showPanel.value && panelType.value === 'controls') {
+    showPanel.value = false
+  } else {
+    panelType.value = 'controls'
+    showPanel.value = true
+  }
+}
+
+function toggleMenu() {
+  if (showPanel.value && panelType.value === 'menu') {
+    showPanel.value = false
+  } else {
+    panelType.value = 'menu'
+    showPanel.value = true
+  }
+}
+
+function toggleMarkdown() {
+  enableMarkdown.value = !enableMarkdown.value
+}
+
+// Scroll to bottom function
+function scrollToBottom() {
+  nextTick(() => {
+    if (chatMessagesRef.value) {
+      chatMessagesRef.value.scrollTop = chatMessagesRef.value.scrollHeight
+    }
+  })
 }
 
 function autoResize() {
@@ -124,7 +209,9 @@ function formatTime(timestamp: number): string {
 
 // Clear chat history
 function handleClearChat() {
-  clearChat()
+  if (confirm('Are you sure you want to clear this conversation? This will permanently delete all messages and cannot be undone.')) {
+    clearChat()
+  }
 }
 
 // Toggle thinking content visibility
@@ -136,44 +223,137 @@ function toggleThinking(messageId: string) {
     expanded.add(messageId)
   }
 }
+
+// Message editing functions
+function startEditMessage(messageId: string) {
+  const msg = messages.value.find(m => m.id === messageId)
+  if (msg) {
+    editingMessageId.value = messageId
+    editingContent.value = msg.content
+    editingThinking.value = msg.thinking || ''
+    // Expand thinking if it exists to show in edit mode
+    if (msg.thinking) {
+      expandedThinking.value.add(messageId)
+    }
+  }
+}
+
+function cancelEditMessage() {
+  editingMessageId.value = null
+  editingContent.value = ''
+  editingThinking.value = ''
+}
+
+async function saveEditMessage() {
+  if (!editingMessageId.value) return
+  
+  try {
+    await updateMessage(editingMessageId.value, {
+      content: editingContent.value.trim(),
+      thinking: editingThinking.value.trim() || undefined
+    })
+    cancelEditMessage()
+  } catch (error) {
+    console.error('Failed to update message:', error)
+    alert('Failed to update message. Please try again.')
+  }
+}
+
+async function deleteMessage(messageId: string) {
+  if (!confirm('Are you sure you want to delete this message?')) {
+    return
+  }
+  
+  try {
+    await removeMessage(messageId)
+  } catch (error) {
+    console.error('Failed to delete message:', error)
+    alert('Failed to delete message. Please try again.')
+  }
+}
+
+// Check if message can be edited (not system messages and not currently streaming)
+function canEditMessage(msg: ChatMessage): boolean {
+  return msg.role !== 'system' && !isStreaming.value
+}
 </script>
 
 <template>
   <div class="main-chat">
     <!-- Chat messages area -->
     <div class="chat-content">
-      <div class="chat-messages" :class="{ 'has-messages': hasMessages }">
+      <div ref="chatMessagesRef" class="chat-messages" :class="{ 'has-messages': hasMessages }">
         <!-- Chat messages -->
         <div v-if="hasMessages" class="messages-list">
           <div 
             v-for="msg in messages" 
             :key="msg.id" 
             class="message" 
-            :class="[`message-${msg.role}`, { 'system-message': msg.role === 'system' }]"
+            :class="[`message-${msg.role}`, { 'system-message': msg.role === 'system', 'editing': editingMessageId === msg.id }]"
             v-show="msg.role !== 'system'"
           >
             <div class="message-content">
+              <!-- Message actions (edit/delete buttons) -->
+              <div v-if="canEditMessage(msg)" class="message-actions">
+                <template v-if="editingMessageId === msg.id">
+                  <!-- Save/Cancel buttons when editing -->
+                  <button class="card-icon-btn save-btn" @click="saveEditMessage" title="Save changes">
+                    <i class="fa-solid fa-check"></i>
+                  </button>
+                  <button class="card-icon-btn cancel-btn" @click="cancelEditMessage" title="Cancel editing">
+                    <i class="fa-solid fa-times"></i>
+                  </button>
+                </template>
+                <template v-else>
+                  <!-- Edit/Delete buttons when not editing -->
+                  <button class="card-icon-btn edit-btn" @click="startEditMessage(msg.id)" title="Edit message">
+                    <i class="fa-solid fa-edit"></i>
+                  </button>
+                  <button class="card-icon-btn delete-btn" @click="deleteMessage(msg.id)" title="Delete message">
+                    <i class="fa-solid fa-trash"></i>
+                  </button>
+                </template>
+              </div>
+
               <!-- Thinking content (if available) - shown above response -->
-              <div v-if="msg.thinking" class="message-thinking">
+              <div v-if="msg.thinking || (editingMessageId === msg.id)" class="message-thinking">
                 <button 
                   @click="toggleThinking(msg.id)"
                   class="thinking-toggle"
                   :class="{ 'expanded': expandedThinking.has(msg.id) }"
                 >
                   <i class="fa-solid fa-brain"></i>
-                  <span>Thinking Process</span>
+                  <span>{{ editingMessageId === msg.id ? 'Edit Thinking Process' : 'Thinking Process' }}</span>
                   <i class="fa-solid fa-chevron-down toggle-icon"></i>
                 </button>
                 <div 
                   v-show="expandedThinking.has(msg.id)" 
                   class="thinking-content"
                 >
-                  <div class="thinking-text">{{ msg.thinking }}</div>
+                  <!-- Editable thinking content -->
+                  <textarea
+                    v-if="editingMessageId === msg.id"
+                    v-model="editingThinking"
+                    class="thinking-edit-textarea"
+                    placeholder="Add thinking process (optional)..."
+                    rows="3"
+                  ></textarea>
+                  <!-- Display thinking content -->
+                  <div v-else class="thinking-text">{{ msg.thinking }}</div>
                 </div>
               </div>
               
               <!-- Regular message content -->
-              <div class="message-text">{{ msg.content }}</div>
+              <!-- Editable message content -->
+              <textarea
+                v-if="editingMessageId === msg.id"
+                v-model="editingContent"
+                class="message-edit-textarea"
+                placeholder="Edit message..."
+                rows="3"
+              ></textarea>
+              <!-- Display message content -->
+              <div v-else class="message-text" :class="{ 'plain-text': !enableMarkdown }" v-html="renderMessageContent(msg.content)"></div>
               
               <div class="message-meta">
                 <span class="message-time">{{ formatTime(msg.timestamp) }}</span>
@@ -202,7 +382,7 @@ function toggleThinking(messageId: string) {
                 </div>
               </div>
               
-              <div class="message-text">{{ currentStreamingMessage }}<span class="streaming-cursor">▋</span></div>
+              <div class="message-text" v-html="streamingMessageWithCursor"></div>
               
               <div class="message-meta">
                 <span class="streaming-indicator">
@@ -238,16 +418,34 @@ function toggleThinking(messageId: string) {
     <!-- Floating input container -->
     <div class="floating-input-container">
       <div class="input-card">
-        <!-- Chat Controls panel (appears above input when active) -->
-        <div v-if="showSliders" class="chat-controls-panel">
+        <!-- Panel (appears above input when active) -->
+        <div v-if="showPanel" class="chat-controls-panel">
           <div class="controls-header">
-            <h3>Chat Controls</h3>
-            <button class="close-btn" @click="toggleSliders">
+            <h3>{{ panelType === 'controls' ? 'Chat Controls' : 'Chat Options' }}</h3>
+            <button class="close-btn" @click="showPanel = false">
               <i class="fa-solid fa-times"></i>
             </button>
           </div>
           <div class="controls-content">
-            <ChatControls />
+            <!-- Chat Controls Content -->
+            <div v-if="panelType === 'controls'">
+              <ChatControls />
+            </div>
+            <!-- Menu Options Content -->
+            <div v-else-if="panelType === 'menu'" class="menu-options">
+              <div class="option-item">
+                <button class="option-toggle" @click="toggleMarkdown">
+                  <i :class="enableMarkdown ? 'fa-solid fa-check-square' : 'fa-regular fa-square'"></i>
+                  <span>Render Markdown</span>
+                </button>
+              </div>
+              <div class="option-item">
+                <button class="option-action clear-action" @click="handleClearChat(); showPanel = false">
+                  <i class="fa-solid fa-trash"></i>
+                  <span>Clear Chat</span>
+                </button>
+              </div>
+            </div>
           </div>
         </div>
         
@@ -256,19 +454,21 @@ function toggleThinking(messageId: string) {
           <div class="left-controls">
             <button 
               class="icon-btn settings-btn" 
-              @click="toggleSliders" 
-              :class="{ active: showSliders }" 
+              @click="toggleControls" 
+              :class="{ active: showPanel && panelType === 'controls' }" 
               title="Chat Settings"
             >
               <i class="fa-solid fa-sliders"></i>
             </button>
+            
             <button 
               v-if="hasMessages"
-              class="icon-btn clear-btn" 
-              @click="handleClearChat" 
-              title="Clear Chat"
+              class="icon-btn menu-btn" 
+              @click="toggleMenu" 
+              :class="{ active: showPanel && panelType === 'menu' }" 
+              title="Chat Options"
             >
-              <i class="fa-solid fa-trash"></i>
+              <i class="fa-solid fa-ellipsis-vertical"></i>
             </button>
           </div>
           
@@ -302,6 +502,8 @@ function toggleThinking(messageId: string) {
 </template>
 
 <style scoped>
+@import '@/assets/card.css';
+
 .main-chat {
   background: var(--surface);
   border: 1px solid var(--border);
@@ -553,8 +755,108 @@ function toggleThinking(messageId: string) {
 .message-text {
   font-size: 0.95em;
   line-height: 1.5;
-  white-space: pre-wrap;
   word-wrap: break-word;
+}
+
+.message-text.plain-text {
+  white-space: pre-wrap;
+}
+
+/* Markdown content styling - using :deep() to penetrate scoped styles */
+:deep(.message-text h1),
+:deep(.message-text h2),
+:deep(.message-text h3),
+:deep(.message-text h4),
+:deep(.message-text h5),
+:deep(.message-text h6) {
+  margin: 0.4em 0 0.2em 0;
+  color: inherit;
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+:deep(.message-text h1) { font-size: 1.3em; }
+:deep(.message-text h2) { font-size: 1.2em; }
+:deep(.message-text h3) { font-size: 1.1em; }
+:deep(.message-text h4) { font-size: 1.05em; }
+:deep(.message-text h5) { font-size: 1.02em; }
+:deep(.message-text h6) { font-size: 1em; }
+
+:deep(.message-text p) {
+  margin: 0;
+  line-height: 1.5;
+}
+
+:deep(.message-text p + p) {
+  margin-top: 0.4em;
+}
+
+:deep(.message-text strong) {
+  font-weight: 700;
+  color: inherit;
+}
+
+:deep(.message-text em) {
+  font-style: italic;
+  color: inherit;
+}
+
+:deep(.message-text code) {
+  background: rgba(120, 120, 120, 0.15);
+  padding: 2px 4px;
+  border-radius: 2px;
+  font-family: 'Courier New', monospace;
+  font-size: 0.9em;
+  color: var(--accent);
+}
+
+:deep(.message-text pre) {
+  background: rgba(120, 120, 120, 0.1);
+  border: 1px solid rgba(120, 120, 120, 0.2);
+  border-radius: 4px;
+  padding: 12px;
+  margin: 0.3em 0;
+  overflow-x: auto;
+}
+
+:deep(.message-text pre code) {
+  background: none;
+  padding: 0;
+  color: inherit;
+}
+
+:deep(.message-text blockquote) {
+  border-left: 3px solid var(--accent);
+  margin: 0.3em 0;
+  padding: 0 12px;
+  color: inherit;
+  opacity: 0.9;
+  font-style: italic;
+}
+
+:deep(.message-text ul),
+:deep(.message-text ol) {
+  margin: 0.2em 0;
+  padding-left: 20px;
+}
+
+:deep(.message-text li) {
+  margin: 0;
+  line-height: 1.4;
+}
+
+:deep(.message-text a) {
+  color: var(--accent);
+  text-decoration: underline;
+}
+
+:deep(.message-text a:hover) {
+  color: var(--fg);
+}
+
+/* Ensure line breaks are properly rendered */
+:deep(.message-text br) {
+  line-height: 1.5;
 }
 
 .message-meta {
@@ -698,10 +1000,129 @@ function toggleThinking(messageId: string) {
   color: var(--accent);
 }
 
-/* Clear button styling */
-.clear-btn:hover:not(:disabled) {
+/* Menu options styling */
+.menu-options {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.option-item {
+  display: flex;
+}
+
+.option-toggle,
+.option-action {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  background: none;
+  border: 1px solid var(--border);
+  color: var(--fg);
+  font-size: 0.9em;
+  text-align: left;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  border-radius: 4px;
+}
+
+.option-toggle:hover,
+.option-action:hover {
+  background: rgba(120, 120, 120, 0.1);
+  border-color: var(--fg);
+}
+
+.option-toggle i,
+.option-action i {
+  width: 16px;
+  text-align: center;
+  font-size: 0.9em;
+}
+
+.option-action.clear-action:hover {
+  background: rgba(239, 68, 68, 0.1);
   color: #ef4444;
   border-color: #ef4444;
+}
+
+/* Message actions (edit/delete buttons) */
+.message-actions {
+  position: absolute;
+  bottom: 8px;
+  right: 8px;
+  display: flex;
+  gap: 4px;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+  z-index: 10;
+}
+
+.message:hover .message-actions {
+  opacity: 1;
+}
+
+.message.editing .message-actions {
+  opacity: 1;
+}
+
+/* Additional button styles for save/cancel */
+.card-icon-btn.save-btn:hover {
+  color: #22c55e;
+  border-color: #22c55e;
+}
+
+.card-icon-btn.cancel-btn:hover {
+  color: #f59e0b;
+  border-color: #f59e0b;
+}
+
+/* Message editing styles */
+.message.editing {
+  max-width: 80%;
+  min-width: 600px;
+}
+
+.message.editing .message-content {
+  border-color: var(--accent);
+  box-shadow: 0 0 10px rgba(0, 212, 255, 0.2);
+}
+
+.message-edit-textarea,
+.thinking-edit-textarea {
+  width: 100%;
+  box-sizing: border-box;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  color: var(--fg);
+  padding: 8px 12px;
+  font-size: 0.95em;
+  font-family: inherit;
+  line-height: 1.5;
+  resize: vertical;
+  min-height: 80px;
+  border-radius: 4px;
+  transition: border-color 0.2s ease;
+}
+
+.message-edit-textarea:focus,
+.thinking-edit-textarea:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 5px rgba(0, 212, 255, 0.3);
+}
+
+.thinking-edit-textarea {
+  min-height: 60px;
+  font-style: italic;
+  background: rgba(0, 212, 255, 0.02);
+}
+
+.message-edit-textarea::placeholder,
+.thinking-edit-textarea::placeholder {
+  color: var(--fg-secondary);
+  opacity: 0.6;
 }
 
 /* Animations */
