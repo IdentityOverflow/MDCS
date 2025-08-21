@@ -6,6 +6,7 @@ import Scratchpad from './views/Scratchpad.vue'
 import Tools from './views/Tools.vue'
 import Files from './views/Files.vue'
 import Settings from './views/Settings.vue'
+import Rooms from './views/Rooms.vue'
 
 const props = defineProps<{
   selectedComponent: string
@@ -23,6 +24,7 @@ const currentComponent = computed(() => {
     case 'Tools': return Tools
     case 'Files': return Files
     case 'Settings': return Settings
+    case 'Rooms': return Rooms
     default: return Personas
   }
 })

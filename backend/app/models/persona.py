@@ -3,6 +3,7 @@ Persona database model for storing AI personas.
 """
 
 from sqlalchemy import Column, String, Text, JSON, Boolean
+from sqlalchemy.orm import relationship
 from sqlalchemy.dialects.postgresql import UUID
 import uuid
 
@@ -41,6 +42,9 @@ class Persona(Base):
     
     # Status
     is_active = Column(Boolean, default=True, nullable=False)
+    
+    # Relationship to conversations (one persona can have multiple conversations, but typically one active)
+    conversations = relationship("Conversation", back_populates="persona", cascade="all, delete-orphan")
     
     def __repr__(self) -> str:
         return f"<Persona(id={self.id}, name='{self.name}', mode='{self.mode}')>"

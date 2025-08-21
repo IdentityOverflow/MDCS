@@ -31,6 +31,9 @@ class Conversation(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
     title = Column(String(255), nullable=False, index=True)
     
+    # Association with persona (one conversation per persona)
+    persona_id = Column(UUID(as_uuid=True), ForeignKey("personas.id"), nullable=True, index=True)
+    
     # Provider information (which AI provider was used)
     provider_type = Column(String(50), nullable=True)  # "openai", "ollama", etc.
     provider_config = Column(JSON, nullable=True)  # Snapshot of provider config used
@@ -38,8 +41,11 @@ class Conversation(Base):
     # Relationship to messages
     messages = relationship("Message", back_populates="conversation", cascade="all, delete-orphan", order_by="Message.created_at")
     
+    # Relationship to persona
+    persona = relationship("Persona", back_populates="conversations")
+    
     def __repr__(self) -> str:
-        return f"<Conversation(id={self.id}, title='{self.title}')>"
+        return f"<Conversation(id={self.id}, title='{self.title}', persona_id={self.persona_id})>"
 
 
 class Message(Base):
@@ -48,9 +54,12 @@ class Message(Base):
     """
     __tablename__ = "messages"
     
-    conversation_id = Column(UUID(as_uuid=True), ForeignKey("conversations.id"), nullable=False, index=True)
+    conversation_id = Column(UUID(as_uuid=True), ForeignKey("conversations.id", ondelete="CASCADE"), nullable=False, index=True)
     role = Column(SQLEnum(MessageRole), nullable=False)
     content = Column(Text, nullable=False)
+    
+    # Thinking content (for AI reasoning models)
+    thinking = Column(Text, nullable=True)
     
     # Optional metadata (renamed to avoid SQLAlchemy reserved keyword)
     extra_data = Column(JSON, nullable=True)  # For storing additional message data
