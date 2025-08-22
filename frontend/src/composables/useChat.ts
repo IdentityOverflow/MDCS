@@ -23,6 +23,8 @@ export interface ChatMessage {
   input_tokens?: number
   output_tokens?: number
   extra_data?: Record<string, any>
+  created_at?: string
+  updated_at?: string
 }
 
 export interface Conversation {
@@ -112,7 +114,7 @@ export function useChat() {
           id: msg.id,
           role: msg.role as 'user' | 'assistant' | 'system',
           content: msg.content,
-          timestamp: new Date(msg.created_at).getTime(),
+          timestamp: new Date(msg.created_at || Date.now()).getTime(),
           thinking: msg.thinking || undefined,
           conversation_id: conversation.id,
           input_tokens: msg.input_tokens || undefined,
@@ -485,7 +487,7 @@ export function useChat() {
         message: userMessage,
         provider: freshControls.provider,
         stream: true,
-        chat_controls: buildChatControls(freshControls, effectivePersonaTemplate),
+        chat_controls: buildChatControls(freshControls, effectivePersonaTemplate || undefined),
         provider_settings: enhancedProviderSettings
       }
 
@@ -618,7 +620,7 @@ export function useChat() {
         message: userMessage,
         provider: freshControls.provider,
         stream: false,
-        chat_controls: buildChatControls(freshControls, effectivePersonaTemplate),
+        chat_controls: buildChatControls(freshControls, effectivePersonaTemplate || undefined),
         provider_settings: enhancedProviderSettings
       }
 

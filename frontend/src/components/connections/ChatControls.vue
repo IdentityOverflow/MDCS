@@ -13,7 +13,7 @@ const defaultChatControls = {
   presence_penalty: 0.0,
   frequency_penalty: 0.0,
   seed: null,
-  stop: [],
+  stop: [] as string[],
   json_mode: 'off',
   tools: [],
   tool_choice: 'auto',

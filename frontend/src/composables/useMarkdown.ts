@@ -6,10 +6,7 @@ import { marked } from 'marked'
 // Configure marked with safe defaults
 marked.setOptions({
   breaks: true,        // Convert \n to <br> (this should handle single line breaks)
-  gfm: true,          // GitHub Flavored Markdown
-  headerIds: false,   // Don't generate header IDs
-  mangle: false,      // Don't escape autolinked email addresses
-  sanitize: false     // We'll handle XSS prevention at template level
+  gfm: true           // GitHub Flavored Markdown
 })
 
 export function useMarkdown() {
@@ -53,7 +50,7 @@ export function useMarkdown() {
       /^\d+\. /m,        // Numbered lists
       /\[.*?\]\(.*?\)/,  // Links
       /^```/m,           // Code blocks
-      /^\> /m            // Blockquotes
+      /^> /m            // Blockquotes
     ]
     
     return markdownPatterns.some(pattern => pattern.test(text))

@@ -51,7 +51,7 @@ function handleDelete(event: Event) {
       </div>
       
       <div class="card-content">
-        <p class="card-description">{{ truncateDescription(persona.description) }}</p>
+        <p class="card-description">{{ truncateDescription(persona.description || '') }}</p>
       </div>
     </div>
   </div>

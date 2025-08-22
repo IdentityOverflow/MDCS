@@ -27,7 +27,9 @@ export function usePersonas() {
     personas.value.find(p => p.id === id)
 
   // API operations
-  const fetchPersonas = async (filters?: { mode?: string; active_only?: boolean }) => {
+  const fetchPersonas = async (filtersOrEvent?: { mode?: string; active_only?: boolean } | Event) => {
+    // Handle case where this is called as an event handler
+    const filters = (filtersOrEvent && 'mode' in filtersOrEvent) ? filtersOrEvent : undefined
     loading.value = true
     error.value = null
     

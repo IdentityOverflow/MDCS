@@ -87,8 +87,7 @@ async function testConnection() {
       body: JSON.stringify({
         host: ollamaConnection.value.host.trim(),
         model: ollamaConnection.value.default_model.trim(),
-        route: ollamaConnection.value.route || '/api/chat',
-        timeout_ms: ollamaConnection.value.timeout_ms || 30000
+        route: ollamaConnection.value.route || '/api/chat'
       })
     })
     
