@@ -26,7 +26,8 @@ class OpenAIRequestBuilder:
     
     def build_request(self, request: ChatRequest) -> Dict[str, Any]:
         """Build OpenAI API request payload."""
-        model_name = request.provider_settings["default_model"]
+        # Use selected model from provider settings, falling back to default_model
+        model_name = request.provider_settings.get("model") or request.provider_settings.get("default_model")
         
         # Start with basic request structure
         openai_request = {
@@ -36,7 +37,7 @@ class OpenAIRequestBuilder:
         }
         
         # Add optional parameters
-        self._add_optional_params(openai_request, request.chat_controls, model_name)
+        self._add_optional_params(openai_request, request.chat_controls)
         
         return openai_request
     
@@ -64,49 +65,36 @@ class OpenAIRequestBuilder:
         """Get streaming setting from request."""
         return request.chat_controls.get("stream", False)
     
-    def _is_reasoning_model(self, model_name: str) -> bool:
-        """Check if the model is a reasoning model (o1, o3 series)."""
-        if not model_name:
-            return False
-        
-        model_lower = model_name.lower()
-        reasoning_models = [
-            'o1', 'o1-preview', 'o1-mini', 'o1-2024',
-            'o3', 'o3-mini', 'o3-2024', 
-            'o4-mini', 'o4-2024'
-        ]
-        
-        # Check if model name starts with or contains reasoning model identifiers
-        return any(reasoning_model in model_lower for reasoning_model in reasoning_models)
-    
-    def _add_optional_params(self, request_dict: Dict[str, Any], chat_controls: Dict[str, Any], model_name: str):
+    def _add_optional_params(self, request_dict: Dict[str, Any], chat_controls: Dict[str, Any]):
         """Add optional parameters to the request."""
-        is_reasoning_model = self._is_reasoning_model(model_name)
+        thinking_enabled = chat_controls.get("thinking_enabled", False)
         
-        # For reasoning models, use max_completion_tokens instead of max_tokens
-        if is_reasoning_model:
-            if "max_tokens" in chat_controls and chat_controls["max_tokens"] is not None:
-                # Reasoning models support higher token limits
-                max_tokens = min(chat_controls["max_tokens"], 5000)  # Limit to API maximum
+        # Always try to add standard parameters first
+        if "temperature" in chat_controls and chat_controls["temperature"] is not None:
+            request_dict["temperature"] = chat_controls["temperature"]
+        if "top_p" in chat_controls and chat_controls["top_p"] is not None:
+            request_dict["top_p"] = chat_controls["top_p"]
+        if "presence_penalty" in chat_controls and chat_controls["presence_penalty"] is not None:
+            request_dict["presence_penalty"] = chat_controls["presence_penalty"]
+        if "frequency_penalty" in chat_controls and chat_controls["frequency_penalty"] is not None:
+            request_dict["frequency_penalty"] = chat_controls["frequency_penalty"]
+        
+        # Handle max_tokens - some reasoning models prefer max_completion_tokens
+        if "max_tokens" in chat_controls and chat_controls["max_tokens"] is not None:
+            max_tokens = chat_controls["max_tokens"]
+            # Try both parameter names - the API will use whichever it supports
+            request_dict["max_tokens"] = max_tokens
+            if thinking_enabled:
+                # Also add max_completion_tokens for reasoning models that prefer it
                 request_dict["max_completion_tokens"] = max_tokens
-            
-            # Add reasoning effort parameter
+        
+        # Add reasoning-specific parameters when thinking is enabled
+        if thinking_enabled:
+            # Add reasoning effort parameter if specified
             if "reasoning_effort" in chat_controls and chat_controls["reasoning_effort"]:
                 effort = chat_controls["reasoning_effort"]
                 if effort in ["low", "medium", "high"]:
                     request_dict["reasoning_effort"] = effort
-        else:
-            # Standard models use regular parameters
-            if "temperature" in chat_controls and chat_controls["temperature"] is not None:
-                request_dict["temperature"] = chat_controls["temperature"]
-            if "top_p" in chat_controls and chat_controls["top_p"] is not None:
-                request_dict["top_p"] = chat_controls["top_p"]
-            if "max_tokens" in chat_controls and chat_controls["max_tokens"] is not None:
-                request_dict["max_tokens"] = chat_controls["max_tokens"]
-            if "presence_penalty" in chat_controls and chat_controls["presence_penalty"] is not None:
-                request_dict["presence_penalty"] = chat_controls["presence_penalty"]
-            if "frequency_penalty" in chat_controls and chat_controls["frequency_penalty"] is not None:
-                request_dict["frequency_penalty"] = chat_controls["frequency_penalty"]
         
         # Common parameters for all models
         if "seed" in chat_controls and chat_controls["seed"] is not None:
@@ -114,21 +102,19 @@ class OpenAIRequestBuilder:
         if "stop" in chat_controls and chat_controls["stop"]:
             request_dict["stop"] = chat_controls["stop"]
         
-        # JSON mode (not supported by reasoning models currently)
-        if not is_reasoning_model:
-            json_mode = chat_controls.get("json_mode")
-            if json_mode == "json_object":
-                request_dict["response_format"] = {"type": "json_object"}
-            elif json_mode == "json_schema":
-                # For now, just use json_object mode
-                request_dict["response_format"] = {"type": "json_object"}
+        # JSON mode - try to add it, let the API decide if it's supported
+        json_mode = chat_controls.get("json_mode")
+        if json_mode == "json_object":
+            request_dict["response_format"] = {"type": "json_object"}
+        elif json_mode == "json_schema":
+            # For now, just use json_object mode
+            request_dict["response_format"] = {"type": "json_object"}
         
-        # Tool usage (if implemented in future, check model compatibility)
-        if not is_reasoning_model:  # Reasoning models may not support tools currently
-            if "tools" in chat_controls and chat_controls["tools"]:
-                request_dict["tools"] = chat_controls["tools"]
-            if "tool_choice" in chat_controls and chat_controls["tool_choice"]:
-                request_dict["tool_choice"] = chat_controls["tool_choice"]
+        # Tool usage - try to add it, let the API decide if it's supported
+        if "tools" in chat_controls and chat_controls["tools"]:
+            request_dict["tools"] = chat_controls["tools"]
+        if "tool_choice" in chat_controls and chat_controls["tool_choice"]:
+            request_dict["tool_choice"] = chat_controls["tool_choice"]
     
     def build_headers(self, api_key: str, organization: Optional[str], project: Optional[str]) -> Dict[str, str]:
         """Build headers for OpenAI API request."""
@@ -151,6 +137,50 @@ class OpenAIRequestBuilder:
         return f"{base_url}/chat/completions"
 
 
+class ThinkingExtractor:
+    """Utility class for extracting thinking/reasoning content from API responses."""
+    
+    @staticmethod
+    def extract_from_choice(choice: Dict[str, Any]) -> Optional[str]:
+        """
+        Extract thinking/reasoning content from a choice object.
+        
+        Tries various common locations where reasoning models might store thinking content.
+        """
+        # Try message.reasoning (common in OpenAI reasoning models)
+        if "message" in choice and isinstance(choice["message"], dict):
+            message = choice["message"]
+            if "reasoning" in message and message["reasoning"]:
+                return str(message["reasoning"])
+            if "thinking" in message and message["thinking"]:
+                return str(message["thinking"])
+        
+        # Try choice.reasoning (alternative location)
+        if "reasoning" in choice and choice["reasoning"]:
+            return str(choice["reasoning"])
+        
+        # Try choice.thinking (alternative location)
+        if "thinking" in choice and choice["thinking"]:
+            return str(choice["thinking"])
+        
+        return None
+    
+    @staticmethod
+    def extract_from_delta(delta: Dict[str, Any]) -> str:
+        """
+        Extract thinking content from a delta object in streaming responses.
+        """
+        # Try delta.reasoning (common in streaming reasoning responses)
+        if "reasoning" in delta and delta["reasoning"]:
+            return str(delta["reasoning"])
+        
+        # Try delta.thinking (alternative location)
+        if "thinking" in delta and delta["thinking"]:
+            return str(delta["thinking"])
+        
+        return ""
+
+
 class OpenAIResponseParser:
     """Parses OpenAI API responses."""
     
@@ -158,6 +188,7 @@ class OpenAIResponseParser:
         """Parse non-streaming OpenAI response."""
         content = ""
         finish_reason = None
+        thinking = None
         
         if "choices" in response_data and response_data["choices"]:
             choice = response_data["choices"][0]
@@ -165,6 +196,9 @@ class OpenAIResponseParser:
                 content = choice["message"]["content"] or ""
             if "finish_reason" in choice:
                 finish_reason = choice["finish_reason"]
+            
+            # Try to extract thinking/reasoning content from various possible locations
+            thinking = ThinkingExtractor.extract_from_choice(choice)
         
         # Extract metadata
         metadata = {}
@@ -180,7 +214,7 @@ class OpenAIResponseParser:
             model=response_data.get("model", "unknown"),
             provider_type=ProviderType.OPENAI,
             metadata=metadata,
-            thinking=None  # OpenAI doesn't currently expose reasoning process
+            thinking=thinking
         )
 
 
@@ -209,13 +243,21 @@ class OpenAIStreamParser:
             return None
         
         content = ""
+        thinking = ""
         finish_reason = None
         done = False
         
         if "choices" in chunk_data and chunk_data["choices"]:
             choice = chunk_data["choices"][0]
-            if "delta" in choice and "content" in choice["delta"]:
-                content = choice["delta"]["content"] or ""
+            if "delta" in choice:
+                delta = choice["delta"]
+                # Extract content
+                if "content" in delta:
+                    content = delta["content"] or ""
+                
+                # Extract thinking content from delta (for streaming thinking)
+                thinking = ThinkingExtractor.extract_from_delta(delta)
+            
             if "finish_reason" in choice and choice["finish_reason"]:
                 finish_reason = choice["finish_reason"]
                 done = True
@@ -236,7 +278,7 @@ class OpenAIStreamParser:
             model=chunk_data.get("model", "unknown"),
             provider_type=ProviderType.OPENAI,
             metadata=metadata,
-            thinking=None  # OpenAI doesn't currently expose reasoning process
+            thinking=thinking if thinking else None
         )
 
 
