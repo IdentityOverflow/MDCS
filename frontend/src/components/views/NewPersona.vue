@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted, computed, watch } from 'vue'
 import { usePersonas } from '@/composables/usePersonas'
+import TemplateEditor from '@/components/TemplateEditor.vue'
 import type { PersonaCreateRequest, PersonaUpdateRequest } from '@/types'
 
 const props = defineProps<{
@@ -38,6 +39,67 @@ const dragOver = ref(false)
 const fileInput = ref<HTMLInputElement>()
 const saving = ref(false)
 const loadingPersona = ref(false)
+
+// Template validation
+const templateValidation = ref({
+  isValid: true,
+  warnings: [] as Array<{ type: string, message: string }>
+})
+
+// Template validation functions
+function validateTemplate(template: string): { isValid: boolean; warnings: Array<{ type: string, message: string }> } {
+  const warnings: Array<{ type: string, message: string }> = []
+  
+  if (!template.trim()) {
+    return { isValid: false, warnings: [{ type: 'error', message: 'Template is required' }] }
+  }
+  
+  // Parse @module_name references (but not escaped \@module_name)
+  const modulePattern = /(?<!\\)@([a-z][a-z0-9_]*)/g
+  const invalidPattern = /(?<!\\)@([^a-z\s][a-zA-Z0-9_]*|[A-Z][a-zA-Z0-9_]*|[a-z][a-zA-Z0-9_]*[A-Z][a-zA-Z0-9_]*)/g
+  const moduleMatches = Array.from(template.matchAll(modulePattern))
+  const invalidMatches = Array.from(template.matchAll(invalidPattern))
+  
+  // Check for invalid module name formats
+  if (invalidMatches.length > 0) {
+    const invalidNames = invalidMatches.map(match => `@${match[1]}`).join(', ')
+    warnings.push({
+      type: 'error',
+      message: `Invalid module name format: ${invalidNames}. Module names must start with a letter and contain only lowercase letters, numbers, and underscores.`
+    })
+  }
+  
+  // Check for valid module references
+  if (moduleMatches.length > 0) {
+    const moduleNames = moduleMatches.map(match => match[1])
+    const uniqueModules = [...new Set(moduleNames)]
+    
+    if (uniqueModules.length > 0) {
+      warnings.push({
+        type: 'info',
+        message: `Found ${uniqueModules.length} module reference(s): ${uniqueModules.map(name => `@${name}`).join(', ')}`
+      })
+    }
+    
+    // Check for potential circular references (same module name in template)
+    const duplicates = moduleNames.filter((name, index) => moduleNames.indexOf(name) !== index)
+    if (duplicates.length > 0) {
+      const uniqueDuplicates = [...new Set(duplicates)]
+      warnings.push({
+        type: 'warning', 
+        message: `Module(s) referenced multiple times: ${uniqueDuplicates.map(name => `@${name}`).join(', ')}`
+      })
+    }
+  }
+  
+  const hasErrors = warnings.some(w => w.type === 'error')
+  return { isValid: !hasErrors, warnings }
+}
+
+function onTemplateChange() {
+  const result = validateTemplate(formData.value.template)
+  templateValidation.value = result
+}
 
 // Computed values
 const isEditing = computed(() => !!props.editingPersonaId)
@@ -168,8 +230,14 @@ async function savePersona() {
     return
   }
   
-  if (!formData.value.template.trim()) {
-    alert('Please enter a persona template')
+  // Validate template
+  const templateResult = validateTemplate(formData.value.template)
+  if (!templateResult.isValid) {
+    const errorMessages = templateResult.warnings
+      .filter(w => w.type === 'error')
+      .map(w => w.message)
+      .join('\n')
+    alert(`Template validation failed:\n${errorMessages}`)
     return
   }
   
@@ -289,12 +357,27 @@ async function savePersona() {
         <!-- Template -->
         <div class="form-group">
           <label>Template</label>
-          <textarea 
+          <TemplateEditor
             v-model="formData.template"
-            placeholder="Enter persona template"
+            @input="onTemplateChange"
+            placeholder="Enter persona template (use @module_name to reference modules)"
             rows="8"
-            class="form-textarea"
-          ></textarea>
+            :invalid="!templateValidation.isValid && formData.template.length > 0"
+          />
+          <div v-if="templateValidation.warnings.length > 0" class="template-validation">
+            <div 
+              v-for="warning in templateValidation.warnings" 
+              :key="warning.message"
+              :class="['validation-message', warning.type]"
+            >
+              <i :class="['fa-solid', warning.type === 'error' ? 'fa-exclamation-circle' : warning.type === 'warning' ? 'fa-exclamation-triangle' : 'fa-info-circle']"></i>
+              {{ warning.message }}
+            </div>
+          </div>
+          <div v-else class="validation-help">
+            Reference modules using @module_name syntax (e.g., @greeting, @context_memory). Type @ to see available modules.<br>
+            Use \@module_name to include literal @module_name text without module resolution.
+          </div>
         </div>
 
         <!-- Mode -->
@@ -376,6 +459,43 @@ async function savePersona() {
   background-color: var(--bg-2);
   color: var(--fg-muted);
   cursor: not-allowed;
+}
+
+/* Template validation styles are now handled by TemplateEditor component */
+
+.template-validation {
+  margin-top: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.validation-message {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.8em;
+  font-weight: 500;
+}
+
+.validation-message.error {
+  color: #ff4757;
+}
+
+.validation-message.warning {
+  color: #ffa726;
+}
+
+.validation-message.info {
+  color: var(--accent);
+}
+
+.validation-help {
+  color: var(--fg);
+  opacity: 0.6;
+  font-size: 0.75em;
+  margin-top: 4px;
+  font-style: italic;
 }
 
 </style>

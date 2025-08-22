@@ -30,6 +30,12 @@ const moduleMetadata = ref<{
   updated_at?: string
 } | null>(null)
 
+// Module name validation
+const nameValidation = ref({
+  isValid: true,
+  message: ''
+})
+
 // Use the modules composable
 const {
   getModule,
@@ -41,6 +47,35 @@ const {
 
 // Notification system
 const notification = useNotification()
+
+// Module name validation function
+function validateModuleName(name: string): { isValid: boolean; message: string } {
+  if (!name.trim()) {
+    return { isValid: false, message: 'Module name is required' }
+  }
+  
+  // Check length (max 50 characters)
+  if (name.length > 50) {
+    return { isValid: false, message: 'Module name must be 50 characters or less' }
+  }
+  
+  // Check pattern: starts with letter, contains only a-z, 0-9, _
+  const pattern = /^[a-z][a-z0-9_]*$/
+  if (!pattern.test(name)) {
+    return { 
+      isValid: false, 
+      message: 'Module name must start with a letter and contain only lowercase letters, numbers, and underscores' 
+    }
+  }
+  
+  return { isValid: true, message: '' }
+}
+
+// Reactive name validation
+function onNameChange() {
+  const result = validateModuleName(formData.value.name)
+  nameValidation.value = result
+}
 
 // Load module data if editing
 onMounted(async () => {
@@ -123,8 +158,10 @@ async function saveModule() {
 }
 
 function validateForm(): boolean {
-  if (!formData.value.name.trim()) {
-    notification.showError('Module name is required')
+  // Validate module name
+  const nameResult = validateModuleName(formData.value.name)
+  if (!nameResult.isValid) {
+    notification.showError(nameResult.message)
     return false
   }
   
@@ -172,9 +209,16 @@ function formatDateTime(dateString: string): string {
           <input 
             type="text" 
             v-model="formData.name"
-            placeholder="Enter module name"
-            class="form-input"
+            @input="onNameChange"
+            placeholder="Enter module name (e.g. my_module, greeting_v2)"
+            :class="['form-input', { 'invalid': !nameValidation.isValid && formData.name.length > 0 }]"
           >
+          <div v-if="!nameValidation.isValid && formData.name.length > 0" class="validation-message">
+            {{ nameValidation.message }}
+          </div>
+          <div v-else class="validation-help">
+            Must start with a letter and contain only lowercase letters, numbers, and underscores (max 50 chars)
+          </div>
         </div>
 
         <!-- Description -->
@@ -344,5 +388,26 @@ function formatDateTime(dateString: string): string {
 
 .form-input.readonly::selection {
   background: rgba(0, 212, 255, 0.3);
+}
+
+/* Module name validation styles */
+.form-input.invalid {
+  border-color: #ff4757;
+  box-shadow: 0 0 0 2px rgba(255, 71, 87, 0.2);
+}
+
+.validation-message {
+  color: #ff4757;
+  font-size: 0.8em;
+  margin-top: 4px;
+  font-weight: 500;
+}
+
+.validation-help {
+  color: var(--fg);
+  opacity: 0.6;
+  font-size: 0.75em;
+  margin-top: 4px;
+  font-style: italic;
 }
 </style>

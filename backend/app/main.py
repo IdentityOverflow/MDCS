@@ -20,6 +20,7 @@ from app.api.chat import router as chat_router
 from app.api.connections import router as connections_router
 from app.api.conversations import router as conversations_router
 from app.api.messages import router as messages_router
+from app.api.templates import router as templates_router
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -97,6 +98,7 @@ def create_app() -> FastAPI:
     app.include_router(messages_router, tags=["messages"])
     app.include_router(chat_router, tags=["chat"])
     app.include_router(connections_router, tags=["connections"])
+    app.include_router(templates_router, tags=["templates"])
     
     # Mount static files for serving images
     static_dir = Path(__file__).parent.parent / "static"

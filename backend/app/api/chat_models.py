@@ -5,10 +5,12 @@ Pydantic models for the internal chat API.
 from enum import Enum
 from typing import Dict, Any, Optional
 from pydantic import BaseModel, Field, field_validator
+from sqlalchemy.orm import Session
 
 from ..services.ai_providers import ChatRequest, ChatResponse, ProviderType
 from ..services.ai_providers import StreamingChatResponse as ProviderStreamingResponse
 from ..services.exceptions import ProviderConnectionError, ProviderAuthenticationError, UnsupportedProviderError
+from ..services.module_resolver import ModuleResolver
 
 
 class ChatProvider(str, Enum):
@@ -24,6 +26,7 @@ class ChatSendRequest(BaseModel):
     stream: bool = Field(default=False, description="Whether to stream the response")
     chat_controls: Dict[str, Any] = Field(default_factory=dict, description="Chat control parameters")
     provider_settings: Optional[Dict[str, Any]] = Field(None, description="Provider connection settings")
+    persona_id: Optional[str] = Field(None, description="ID of the persona to use for system prompts")
     
     @field_validator('message')
     def validate_message(cls, v):
@@ -31,7 +34,8 @@ class ChatSendRequest(BaseModel):
             raise ValueError("Message cannot be empty")
         return v
     
-    def to_provider_request(self, fallback_settings: Optional[Dict[str, Any]] = None) -> ChatRequest:
+    def to_provider_request(self, fallback_settings: Optional[Dict[str, Any]] = None, 
+                           system_prompt: str = "") -> ChatRequest:
         """Convert to provider ChatRequest."""
         provider_type = ProviderType.OLLAMA if self.provider == ChatProvider.OLLAMA else ProviderType.OPENAI
         
@@ -46,7 +50,8 @@ class ChatSendRequest(BaseModel):
             message=self.message,
             provider_type=provider_type,
             provider_settings=settings,
-            chat_controls=chat_controls
+            chat_controls=chat_controls,
+            system_prompt=system_prompt
         )
 
 
@@ -86,10 +91,12 @@ class ChatSendResponse(BaseModel):
     content: str = Field(..., description="The response content")
     metadata: ChatMetadata = Field(..., description="Response metadata")
     thinking: Optional[str] = Field(None, description="The model's reasoning/thinking process")
+    resolved_system_prompt: Optional[str] = Field(None, description="The resolved system prompt used for debugging")
     
     @classmethod
     def from_provider_response(cls, provider_response: ChatResponse, 
-                             response_time: Optional[float] = None) -> "ChatSendResponse":
+                             response_time: Optional[float] = None,
+                             resolved_system_prompt: Optional[str] = None) -> "ChatSendResponse":
         """Create response from provider response."""
         provider = ChatProvider.OLLAMA if provider_response.provider_type == ProviderType.OLLAMA else ChatProvider.OPENAI
         
@@ -103,7 +110,8 @@ class ChatSendResponse(BaseModel):
         return cls(
             content=provider_response.content,
             metadata=metadata,
-            thinking=provider_response.thinking
+            thinking=provider_response.thinking,
+            resolved_system_prompt=resolved_system_prompt
         )
 
 

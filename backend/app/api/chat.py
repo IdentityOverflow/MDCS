@@ -5,10 +5,12 @@ FastAPI endpoints for chat functionality.
 import time
 import logging
 from typing import Dict, Any, Optional
+from uuid import UUID
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, HTTPException, status, Depends
 from fastapi.responses import StreamingResponse
 from pydantic import ValidationError
+from sqlalchemy.orm import Session
 
 from .chat_models import (
     ChatSendRequest,
@@ -23,6 +25,9 @@ from ..services.exceptions import (
     ProviderAuthenticationError,
     UnsupportedProviderError
 )
+from ..services.module_resolver import ModuleResolver
+from ..database.connection import get_db
+from ..models import Persona
 
 logger = logging.getLogger(__name__)
 
@@ -39,8 +44,72 @@ def get_provider_settings_from_request(request: ChatSendRequest) -> Optional[Dic
     return request.provider_settings
 
 
+async def resolve_system_prompt(request: ChatSendRequest, db: Session) -> str:
+    """
+    Resolve system prompt from persona template with module resolution.
+    
+    Args:
+        request: Chat request containing optional persona_id
+        db: Database session
+        
+    Returns:
+        Resolved system prompt (empty string if no persona)
+        
+    Raises:
+        HTTPException: If persona is not found or inactive
+    """
+    if not request.persona_id:
+        return ""
+    
+    try:
+        # Convert persona_id to UUID and fetch persona
+        persona_uuid = UUID(request.persona_id)
+        persona = db.query(Persona).filter(
+            Persona.id == persona_uuid,
+            Persona.is_active == True
+        ).first()
+        
+        if not persona:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Persona with ID {request.persona_id} not found or inactive"
+            )
+        
+        # If persona has no template, return empty string
+        if not persona.template:
+            return ""
+        
+        # Resolve template using ModuleResolver
+        resolver = ModuleResolver(db_session=db)
+        result = resolver.resolve_template(persona.template)
+        
+        # Log warnings for debugging
+        if result.warnings:
+            logger.warning(f"Template resolution warnings for persona {persona.id}: {len(result.warnings)} warnings")
+            for warning in result.warnings:
+                logger.warning(f"  {warning.warning_type}: {warning.message}")
+        
+        return result.resolved_template
+        
+    except ValueError:
+        # Invalid UUID format
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid persona ID format: {request.persona_id}"
+        )
+    except HTTPException:
+        # Re-raise HTTPException (e.g., persona not found) without modification
+        raise
+    except Exception as e:
+        logger.error(f"Error resolving system prompt for persona {request.persona_id}: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to resolve system prompt: {str(e)}"
+        )
+
+
 @router.post("/send", response_model=ChatSendResponse)
-async def send_chat_message(request: ChatSendRequest) -> ChatSendResponse:
+async def send_chat_message(request: ChatSendRequest, db: Session = Depends(get_db)) -> ChatSendResponse:
     """
     Send a chat message and get a complete response.
     
@@ -65,12 +134,22 @@ async def send_chat_message(request: ChatSendRequest) -> ChatSendResponse:
         raise HTTPException(status_code=400, detail=error.model_dump())
     
     try:
+        # Resolve system prompt from persona (if provided)
+        resolved_system_prompt = await resolve_system_prompt(request, db)
+        
+        # Debug logging
+        if request.persona_id:
+            logger.info(f"Chat request with persona_id: {request.persona_id}")
+            logger.info(f"Resolved system prompt: '{resolved_system_prompt[:100]}...' ({len(resolved_system_prompt)} chars)")
+        else:
+            logger.info("Chat request without persona_id")
+        
         # Create provider instance - convert ChatProvider to ProviderType
         provider_type = ProviderType.OLLAMA if request.provider == ChatProvider.OLLAMA else ProviderType.OPENAI
         provider = ProviderFactory.create_provider(provider_type)
         
-        # Convert to provider request (provider_settings are now included in request)
-        provider_request = request.to_provider_request()
+        # Convert to provider request with resolved system prompt
+        provider_request = request.to_provider_request(system_prompt=resolved_system_prompt)
         
         # Send message to provider
         provider_response = await provider.send_message(provider_request)
@@ -78,13 +157,18 @@ async def send_chat_message(request: ChatSendRequest) -> ChatSendResponse:
         # Calculate response time
         response_time = time.time() - start_time
         
-        # Convert to API response
+        # Convert to API response with resolved system prompt for debugging
         response = ChatSendResponse.from_provider_response(
             provider_response=provider_response,
-            response_time=response_time
+            response_time=response_time,
+            resolved_system_prompt=resolved_system_prompt
         )
         
         return response
+        
+    except HTTPException:
+        # Re-raise HTTPException (from persona resolution) without modification
+        raise
         
     except ProviderAuthenticationError as e:
         logger.error(f"Authentication error: {e}")
@@ -116,7 +200,7 @@ async def send_chat_message(request: ChatSendRequest) -> ChatSendResponse:
 
 
 @router.post("/stream")
-async def stream_chat_message(request: ChatSendRequest):
+async def stream_chat_message(request: ChatSendRequest, db: Session = Depends(get_db)):
     """
     Send a chat message and get a streaming response.
     
@@ -147,12 +231,22 @@ async def stream_chat_message(request: ChatSendRequest):
         raise HTTPException(status_code=400, detail=error.model_dump())
     
     try:
+        # Resolve system prompt from persona (if provided)
+        resolved_system_prompt = await resolve_system_prompt(request, db)
+        
+        # Debug logging for streaming
+        if request.persona_id:
+            logger.info(f"Streaming request with persona_id: {request.persona_id}")
+            logger.info(f"Resolved system prompt for streaming: '{resolved_system_prompt[:100]}...' ({len(resolved_system_prompt)} chars)")
+        else:
+            logger.info("Streaming request without persona_id")
+        
         # Create provider instance - convert ChatProvider to ProviderType
         provider_type = ProviderType.OLLAMA if request.provider == ChatProvider.OLLAMA else ProviderType.OPENAI
         provider = ProviderFactory.create_provider(provider_type)
         
-        # Convert to provider request (provider_settings are now included in request)
-        provider_request = request.to_provider_request()
+        # Convert to provider request with resolved system prompt
+        provider_request = request.to_provider_request(system_prompt=resolved_system_prompt)
         
         async def generate_stream():
             """Generate Server-Sent Events stream."""
@@ -188,6 +282,10 @@ async def stream_chat_message(request: ChatSendRequest):
                 "Connection": "keep-alive",
             }
         )
+        
+    except HTTPException:
+        # Re-raise HTTPException (from persona resolution) without modification
+        raise
         
     except ProviderAuthenticationError as e:
         logger.error(f"Authentication error in streaming: {e}")

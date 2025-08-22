@@ -26,6 +26,25 @@ from app.services.openai_service import (
 class TestOpenAIRequestBuilder:
     """Test OpenAI request building logic."""
     
+    def setup_method(self):
+        """Setup method to create mock service for each test."""
+        # Create a mock service that has the _build_base_messages method
+        from app.services.ai_providers import AIProvider
+        self.mock_service = Mock(spec=AIProvider)
+        
+        # Mock the _build_base_messages method to simulate the real behavior
+        def mock_build_messages(request):
+            messages = []
+            # Add system message if present
+            system_message = request.system_prompt or request.chat_controls.get("system_or_instructions")
+            if system_message:
+                messages.append({"role": "system", "content": system_message})
+            # Add user message
+            messages.append({"role": "user", "content": request.message})
+            return messages
+        
+        self.mock_service._build_base_messages.side_effect = mock_build_messages
+    
     def test_build_basic_request(self):
         """Test building a basic OpenAI request."""
         request = ChatRequest(
@@ -39,7 +58,7 @@ class TestOpenAIRequestBuilder:
             chat_controls={}
         )
         
-        builder = OpenAIRequestBuilder()
+        builder = OpenAIRequestBuilder(self.mock_service)
         openai_request = builder.build_request(request)
         
         assert openai_request["model"] == "gpt-4"
@@ -60,7 +79,7 @@ class TestOpenAIRequestBuilder:
             chat_controls={"system_or_instructions": "You are a helpful assistant."}
         )
         
-        builder = OpenAIRequestBuilder()
+        builder = OpenAIRequestBuilder(self.mock_service)
         openai_request = builder.build_request(request)
         
         expected_messages = [
@@ -90,7 +109,7 @@ class TestOpenAIRequestBuilder:
             }
         )
         
-        builder = OpenAIRequestBuilder()
+        builder = OpenAIRequestBuilder(self.mock_service)
         openai_request = builder.build_request(request)
         
         assert openai_request["temperature"] == 0.8
@@ -114,7 +133,7 @@ class TestOpenAIRequestBuilder:
             chat_controls={"stream": True}
         )
         
-        builder = OpenAIRequestBuilder()
+        builder = OpenAIRequestBuilder(self.mock_service)
         openai_request = builder.build_request(request)
         
         assert openai_request["stream"] is True
@@ -132,7 +151,7 @@ class TestOpenAIRequestBuilder:
             chat_controls={"json_mode": "json_object"}
         )
         
-        builder = OpenAIRequestBuilder()
+        builder = OpenAIRequestBuilder(self.mock_service)
         openai_request = builder.build_request(request)
         
         assert openai_request["response_format"]["type"] == "json_object"
@@ -155,7 +174,7 @@ class TestOpenAIRequestBuilder:
             }
         )
         
-        builder = OpenAIRequestBuilder()
+        builder = OpenAIRequestBuilder(self.mock_service)
         openai_request = builder.build_request(request)
         
         # When thinking is enabled, reasoning effort should be included
@@ -184,7 +203,7 @@ class TestOpenAIRequestBuilder:
             }
         )
         
-        builder = OpenAIRequestBuilder()
+        builder = OpenAIRequestBuilder(self.mock_service)
         openai_request = builder.build_request(request)
         
         # Standard model parameters
@@ -213,7 +232,7 @@ class TestOpenAIRequestBuilder:
             }
         )
         
-        builder = OpenAIRequestBuilder()
+        builder = OpenAIRequestBuilder(self.mock_service)
         openai_request = builder.build_request(request)
         
         # When thinking is disabled, reasoning effort should NOT be included
@@ -227,7 +246,7 @@ class TestOpenAIRequestBuilder:
     
     def test_build_headers(self):
         """Test header building logic."""
-        builder = OpenAIRequestBuilder()
+        builder = OpenAIRequestBuilder(self.mock_service)
         
         # Test basic headers
         headers = builder.build_headers("sk-test-key", None, None)
@@ -244,7 +263,7 @@ class TestOpenAIRequestBuilder:
     
     def test_build_url(self):
         """Test URL building logic."""
-        builder = OpenAIRequestBuilder()
+        builder = OpenAIRequestBuilder(self.mock_service)
         
         # Test default endpoint
         url = builder.build_url("https://api.openai.com/v1")

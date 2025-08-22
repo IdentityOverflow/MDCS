@@ -44,6 +44,7 @@ export interface ChatRequest {
   stream: boolean
   chat_controls: Record<string, any>
   provider_settings?: Record<string, any>
+  persona_id?: string
 }
 
 export interface ChatControls {
@@ -415,8 +416,8 @@ export function useChat() {
     }
   }
 
-  // Build chat controls from current settings and persona
-  const buildChatControls = (chatControls: ChatControls, personaTemplate?: string): Record<string, any> => {
+  // Build chat controls from current settings
+  const buildChatControls = (chatControls: ChatControls): Record<string, any> => {
     const controls: Record<string, any> = {
       temperature: chatControls.temperature,
       top_p: chatControls.top_p,
@@ -440,11 +441,7 @@ export function useChat() {
       verbosity: chatControls.verbosity
     }
     
-    // Add system prompt from persona template if available
-    if (personaTemplate && personaTemplate.trim()) {
-      controls.system_or_instructions = personaTemplate.trim()
-    }
-    
+    // Note: System prompt now comes from persona_id resolution on the backend
     return controls
   }
   
@@ -474,8 +471,8 @@ export function useChat() {
         throw new Error(`${freshControls.provider.toUpperCase()} connection settings not found. Please configure in Settings.`)
       }
 
-      // Get persona template (use provided one or get from selected persona)
-      const effectivePersonaTemplate = personaTemplate || getSelectedPersonaTemplate()
+      // Get selected persona ID for backend template resolution
+      const selectedPersonaId = localStorage.getItem('selectedPersonaId')
 
       // Add selected model to provider settings
       const enhancedProviderSettings = {
@@ -487,8 +484,9 @@ export function useChat() {
         message: userMessage,
         provider: freshControls.provider,
         stream: true,
-        chat_controls: buildChatControls(freshControls, effectivePersonaTemplate || undefined),
-        provider_settings: enhancedProviderSettings
+        chat_controls: buildChatControls(freshControls),
+        provider_settings: enhancedProviderSettings,
+        persona_id: selectedPersonaId || undefined
       }
 
       
@@ -607,8 +605,8 @@ export function useChat() {
         throw new Error(`${freshControls.provider.toUpperCase()} connection settings not found. Please configure in Settings.`)
       }
 
-      // Get persona template (use provided one or get from selected persona)
-      const effectivePersonaTemplate = personaTemplate || getSelectedPersonaTemplate()
+      // Get selected persona ID for backend template resolution
+      const selectedPersonaId = localStorage.getItem('selectedPersonaId')
 
       // Add selected model to provider settings
       const enhancedProviderSettings = {
@@ -620,8 +618,9 @@ export function useChat() {
         message: userMessage,
         provider: freshControls.provider,
         stream: false,
-        chat_controls: buildChatControls(freshControls, effectivePersonaTemplate || undefined),
-        provider_settings: enhancedProviderSettings
+        chat_controls: buildChatControls(freshControls),
+        provider_settings: enhancedProviderSettings,
+        persona_id: selectedPersonaId || undefined
       }
 
       

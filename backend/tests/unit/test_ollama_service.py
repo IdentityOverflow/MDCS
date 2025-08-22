@@ -26,6 +26,25 @@ from app.services.ollama_service import (
 class TestOllamaRequestBuilder:
     """Test Ollama request building logic."""
     
+    def setup_method(self):
+        """Setup method to create mock service for each test."""
+        # Create a mock service that has the _build_base_messages method
+        from app.services.ai_providers import AIProvider
+        self.mock_service = Mock(spec=AIProvider)
+        
+        # Mock the _build_base_messages method to simulate the real behavior
+        def mock_build_messages(request):
+            messages = []
+            # Add system message if present
+            system_message = request.system_prompt or request.chat_controls.get("system_or_instructions")
+            if system_message:
+                messages.append({"role": "system", "content": system_message})
+            # Add user message
+            messages.append({"role": "user", "content": request.message})
+            return messages
+        
+        self.mock_service._build_base_messages.side_effect = mock_build_messages
+    
     def test_build_basic_request(self):
         """Test building a basic Ollama request."""
         request = ChatRequest(
@@ -39,7 +58,7 @@ class TestOllamaRequestBuilder:
             chat_controls={}
         )
         
-        builder = OllamaRequestBuilder()
+        builder = OllamaRequestBuilder(self.mock_service)
         ollama_request = builder.build_request(request)
         
         assert ollama_request["model"] == "llama3:8b"
@@ -59,7 +78,7 @@ class TestOllamaRequestBuilder:
             chat_controls={"system_or_instructions": "You are a helpful assistant."}
         )
         
-        builder = OllamaRequestBuilder()
+        builder = OllamaRequestBuilder(self.mock_service)
         ollama_request = builder.build_request(request)
         
         expected_messages = [
@@ -87,7 +106,7 @@ class TestOllamaRequestBuilder:
             }
         )
         
-        builder = OllamaRequestBuilder()
+        builder = OllamaRequestBuilder(self.mock_service)
         ollama_request = builder.build_request(request)
         
         options = ollama_request["options"]
@@ -111,7 +130,7 @@ class TestOllamaRequestBuilder:
             chat_controls={"stream": True}
         )
         
-        builder = OllamaRequestBuilder()
+        builder = OllamaRequestBuilder(self.mock_service)
         ollama_request = builder.build_request(request)
         
         assert ollama_request["stream"] is True
@@ -129,7 +148,7 @@ class TestOllamaRequestBuilder:
             chat_controls={"json_mode": "json_object"}
         )
         
-        builder = OllamaRequestBuilder()
+        builder = OllamaRequestBuilder(self.mock_service)
         ollama_request = builder.build_request(request)
         
         assert ollama_request["format"] == "json"
@@ -146,7 +165,7 @@ class TestOllamaRequestBuilder:
             chat_controls={"thinking_enabled": True}
         )
         
-        builder = OllamaRequestBuilder()
+        builder = OllamaRequestBuilder(self.mock_service)
         ollama_request = builder.build_request(request)
         
         assert ollama_request["think"] is True
@@ -164,14 +183,14 @@ class TestOllamaRequestBuilder:
             chat_controls={"thinking_enabled": False}
         )
         
-        builder = OllamaRequestBuilder()
+        builder = OllamaRequestBuilder(self.mock_service)
         ollama_request = builder.build_request(request)
         
         assert "think" not in ollama_request
     
     def test_build_url(self):
         """Test URL building logic."""
-        builder = OllamaRequestBuilder()
+        builder = OllamaRequestBuilder(self.mock_service)
         
         # Test default route
         url = builder.build_url("http://localhost:11434", None)

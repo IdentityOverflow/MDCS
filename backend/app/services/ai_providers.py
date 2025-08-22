@@ -22,6 +22,7 @@ class ChatRequest(BaseModel):
     provider_type: ProviderType = Field(..., description="The AI provider to use")
     provider_settings: Dict[str, Any] = Field(..., description="Provider-specific settings")
     chat_controls: Dict[str, Any] = Field(default_factory=dict, description="Chat control parameters")
+    system_prompt: str = Field(default="", description="System prompt to use for the conversation")
     
     @field_validator('message')
     def validate_message(cls, v):
@@ -72,6 +73,48 @@ class AIProvider(ABC):
     async def send_message_stream(self, request: ChatRequest) -> AsyncIterator[StreamingChatResponse]:
         """Send a message and get a streaming response."""
         pass
+    
+    def _build_base_messages(self, request: ChatRequest) -> List[Dict[str, str]]:
+        """
+        Build base messages array with system prompt handling.
+        
+        This centralizes system prompt logic and provides a consistent
+        message format across all providers. Providers can override
+        this method if they need custom message formatting.
+        
+        Args:
+            request: Chat request with message and system prompt
+            
+        Returns:
+            List of message dictionaries in standard format
+        """
+        messages = []
+        
+        # Add system message if present (from resolved persona template or legacy chat controls)
+        system_message = request.system_prompt or request.chat_controls.get("system_or_instructions")
+        
+        # Debug logging for system prompt handling
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.info(f"Building messages - system_prompt: '{request.system_prompt[:100] if request.system_prompt else None}...', chat_controls system: '{request.chat_controls.get('system_or_instructions', 'None')[:50] if request.chat_controls.get('system_or_instructions') else None}...'")
+        
+        if system_message:
+            messages.append({
+                "role": "system",
+                "content": system_message
+            })
+            logger.info(f"Added system message with {len(system_message)} characters")
+        else:
+            logger.warning("No system message found in request")
+        
+        # Add user message
+        messages.append({
+            "role": "user",
+            "content": request.message
+        })
+        
+        logger.info(f"Built {len(messages)} messages total")
+        return messages
 
 
 # Placeholder class for backwards compatibility

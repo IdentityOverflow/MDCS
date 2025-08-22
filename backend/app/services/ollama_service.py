@@ -25,16 +25,26 @@ logger = logging.getLogger(__name__)
 class OllamaRequestBuilder:
     """Builds Ollama API requests from chat requests."""
     
+    def __init__(self, service: 'OllamaService'):
+        """Initialize with reference to parent service for base methods."""
+        self.service = service
+    
     def build_request(self, request: ChatRequest) -> Dict[str, Any]:
         """Build Ollama API request payload."""
         # Get model from either 'model' or 'default_model' field
         model = request.provider_settings.get("model") or request.provider_settings.get("default_model")
         logger.info(f"Using model: {model} (from provider_settings: {request.provider_settings})")
         
+        # Build messages first so we can log them
+        messages = self._build_messages(request)
+        logger.info(f"Built {len(messages)} messages for Ollama:")
+        for i, msg in enumerate(messages):
+            logger.info(f"  Message {i+1}: {msg['role']} - '{msg['content'][:100]}{'...' if len(msg['content']) > 100 else ''}'")
+        
         # Start with basic request structure
         ollama_request = {
             "model": model,
-            "messages": self._build_messages(request),
+            "messages": messages,
             "stream": self._get_stream_setting(request),
             "options": self._build_options(request.chat_controls)
         }
@@ -55,24 +65,8 @@ class OllamaRequestBuilder:
         return ollama_request
     
     def _build_messages(self, request: ChatRequest) -> List[Dict[str, str]]:
-        """Build messages array for Ollama."""
-        messages = []
-        
-        # Add system message if present
-        system_message = request.chat_controls.get("system_or_instructions")
-        if system_message:
-            messages.append({
-                "role": "system",
-                "content": system_message
-            })
-        
-        # Add user message
-        messages.append({
-            "role": "user",
-            "content": request.message
-        })
-        
-        return messages
+        """Build messages array for Ollama using base implementation."""
+        return self.service._build_base_messages(request)
     
     def _get_stream_setting(self, request: ChatRequest) -> bool:
         """Get streaming setting from request."""
@@ -202,7 +196,7 @@ class OllamaService(AIProvider):
     """Ollama AI provider implementation."""
     
     def __init__(self):
-        self.request_builder = OllamaRequestBuilder()
+        self.request_builder = OllamaRequestBuilder(self)
         self.response_parser = OllamaResponseParser()
         self.stream_parser = OllamaStreamParser()
     
@@ -228,7 +222,8 @@ class OllamaService(AIProvider):
             message=request.message,
             provider_type=request.provider_type,
             provider_settings=request.provider_settings,
-            chat_controls={**request.chat_controls, "stream": False}
+            chat_controls={**request.chat_controls, "stream": False},
+            system_prompt=request.system_prompt
         )
         
         payload = self.request_builder.build_request(request_copy)
@@ -271,7 +266,8 @@ class OllamaService(AIProvider):
             message=request.message,
             provider_type=request.provider_type,
             provider_settings=request.provider_settings,
-            chat_controls={**request.chat_controls, "stream": True}
+            chat_controls={**request.chat_controls, "stream": True},
+            system_prompt=request.system_prompt
         )
         
         payload = self.request_builder.build_request(request_copy)

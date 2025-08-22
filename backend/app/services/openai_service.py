@@ -24,6 +24,10 @@ logger = logging.getLogger(__name__)
 class OpenAIRequestBuilder:
     """Builds OpenAI API requests from chat requests."""
     
+    def __init__(self, service: 'OpenAIService'):
+        """Initialize with reference to parent service for base methods."""
+        self.service = service
+    
     def build_request(self, request: ChatRequest) -> Dict[str, Any]:
         """Build OpenAI API request payload."""
         # Use selected model from provider settings, falling back to default_model
@@ -42,24 +46,8 @@ class OpenAIRequestBuilder:
         return openai_request
     
     def _build_messages(self, request: ChatRequest) -> List[Dict[str, str]]:
-        """Build messages array for OpenAI."""
-        messages = []
-        
-        # Add system message if present
-        system_message = request.chat_controls.get("system_or_instructions")
-        if system_message:
-            messages.append({
-                "role": "system",
-                "content": system_message
-            })
-        
-        # Add user message
-        messages.append({
-            "role": "user",
-            "content": request.message
-        })
-        
-        return messages
+        """Build messages array for OpenAI using base implementation."""
+        return self.service._build_base_messages(request)
     
     def _get_stream_setting(self, request: ChatRequest) -> bool:
         """Get streaming setting from request."""
@@ -286,7 +274,7 @@ class OpenAIService(AIProvider):
     """OpenAI AI provider implementation."""
     
     def __init__(self):
-        self.request_builder = OpenAIRequestBuilder()
+        self.request_builder = OpenAIRequestBuilder(self)
         self.response_parser = OpenAIResponseParser()
         self.stream_parser = OpenAIStreamParser()
     
@@ -313,7 +301,8 @@ class OpenAIService(AIProvider):
             message=request.message,
             provider_type=request.provider_type,
             provider_settings=request.provider_settings,
-            chat_controls={**request.chat_controls, "stream": False}
+            chat_controls={**request.chat_controls, "stream": False},
+            system_prompt=request.system_prompt
         )
         
         payload = self.request_builder.build_request(request_copy)
@@ -363,7 +352,8 @@ class OpenAIService(AIProvider):
             message=request.message,
             provider_type=request.provider_type,
             provider_settings=request.provider_settings,
-            chat_controls={**request.chat_controls, "stream": True}
+            chat_controls={**request.chat_controls, "stream": True},
+            system_prompt=request.system_prompt
         )
         
         payload = self.request_builder.build_request(request_copy)

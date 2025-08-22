@@ -35,7 +35,10 @@ const emit = defineEmits<{
         <i class="fa-solid fa-door-open"></i>
         <span>Rooms</span>
       </button>
-      <button class="cyberpunk-btn small"></button>
+      <button class="cyberpunk-btn small" @click="emit('selectComponent', 'Debug')">
+        <i class="fa-solid fa-bug"></i>
+        <span>Debug</span>
+      </button>
       <button class="cyberpunk-btn small"></button>
     </div>
   </div>
