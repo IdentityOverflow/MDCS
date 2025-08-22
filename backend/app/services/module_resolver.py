@@ -306,12 +306,17 @@ def resolve_template(template: str, db_session: Optional[Session] = None) -> Tem
     """
     Convenience function to resolve a template.
     
-    Args:
-        template: Template string to resolve
-        db_session: Optional database session
-        
-    Returns:
-        TemplateResolutionResult with resolved content and warnings
+    If db_session is not provided, a new session will be obtained and closed.
     """
-    resolver = ModuleResolver(db_session)
-    return resolver.resolve_template(template)
+    local_db_session = None
+    try:
+        if db_session is None:
+            local_db_session = next(get_db())
+            resolver = ModuleResolver(local_db_session)
+        else:
+            resolver = ModuleResolver(db_session)
+        
+        return resolver.resolve_template(template)
+    finally:
+        if local_db_session:
+            local_db_session.close()
