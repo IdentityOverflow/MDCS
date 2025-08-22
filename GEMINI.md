@@ -530,7 +530,7 @@ The system treats persona templates as **living, modular heads-up displays** tha
 
 **Key Features**:
 - **Strict Naming Policy**: Module names must match `^[a-z][a-z0-9_]*$` (max 50 chars)
-- **Missing Module Handling**: Missing modules replaced with empty string + warning
+- **Missing Module Handling**: Keep @module_name string as is
 - **Maximum Recursion Depth**: Prevents infinite resolution with configurable depth limit (10)
 - **Active Module Filtering**: Only active modules are resolved, inactive ones treated as missing
 - **Comprehensive Warnings**: Detailed warning system for missing modules, circular dependencies, depth limits

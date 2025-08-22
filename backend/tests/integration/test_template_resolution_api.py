@@ -117,8 +117,8 @@ class TestTemplateResolutionAPI:
         assert response.status_code == 200
         data = response.json()
         
-        # Missing module should be replaced with empty string
-        expected_content = "AI assistant. Hello! "
+        # Missing module should keep the module name string
+        expected_content = "AI assistant. Hello! @missing_module"
         assert data["resolved_template"] == expected_content
         
         # Should have warning about missing module
@@ -271,7 +271,7 @@ class TestTemplateResolutionAPI:
         data = response.json()
         
         # Inactive module should be treated as missing
-        assert data["resolved_template"] == "Test  content"
+        assert data["resolved_template"] == "Test @inactive_module content"
         assert len(data["warnings"]) == 1
         assert data["warnings"][0]["warning_type"] == "module_not_found"
 

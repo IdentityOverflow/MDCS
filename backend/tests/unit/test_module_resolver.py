@@ -105,7 +105,7 @@ class TestModuleResolver:
         result = self.resolver.resolve_template(template)
         
         # Missing module should be replaced with empty string
-        expected_content = "AI assistant. Hello! "
+        expected_content = "AI assistant. Hello! @missing_module"
         assert result.resolved_template == expected_content
         assert len(result.warnings) == 1
         assert result.warnings[0].module_name == "missing_module"
