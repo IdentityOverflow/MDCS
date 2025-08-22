@@ -60,7 +60,7 @@ async function loadModuleForEditing(id: string) {
       formData.value = {
         name: module.name,
         description: module.description || '',
-        content: module.content,
+        content: module.content || '',
         type: module.type,
         trigger_pattern: module.trigger_pattern || '',
         script: module.script || '',
@@ -128,10 +128,7 @@ function validateForm(): boolean {
     return false
   }
   
-  if (!formData.value.content.trim()) {
-    notification.showError('Module content is required')
-    return false
-  }
+  // Content is now optional - no validation needed
   
   return true
 }
@@ -193,10 +190,10 @@ function formatDateTime(dateString: string): string {
 
         <!-- Content -->
         <div class="form-group">
-          <label>Content</label>
+          <label>Content (Optional)</label>
           <textarea 
             v-model="formData.content"
-            placeholder="Enter module content"
+            placeholder="Enter module content (leave empty for dynamic modules)"
             rows="6"
             class="form-textarea"
           ></textarea>

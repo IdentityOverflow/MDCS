@@ -18,7 +18,7 @@ export interface Module {
   id: string
   name: string
   description: string | null
-  content: string
+  content: string | null
   type: 'simple' | 'advanced'
   trigger_pattern: string | null
   script: string | null
@@ -31,7 +31,7 @@ export interface Module {
 export interface ModuleCreateRequest {
   name: string
   description?: string
-  content: string
+  content?: string
   type: 'simple' | 'advanced'
   trigger_pattern?: string
   script?: string

@@ -26,7 +26,7 @@ class ModuleCreateRequest(BaseModel):
     """Request model for creating a new module."""
     name: str = Field(..., min_length=1, max_length=255, description="Module name")
     description: Optional[str] = Field(None, description="Module description")
-    content: str = Field(..., min_length=1, description="Module content")
+    content: Optional[str] = Field(None, description="Module content")
     type: ModuleType = Field(..., description="Module type (simple or advanced)")
     
     # Advanced module fields (optional)
@@ -41,7 +41,7 @@ class ModuleUpdateRequest(BaseModel):
     """Request model for updating an existing module."""
     name: Optional[str] = Field(None, min_length=1, max_length=255, description="Module name")
     description: Optional[str] = Field(None, description="Module description")
-    content: Optional[str] = Field(None, min_length=1, description="Module content")
+    content: Optional[str] = Field(None, description="Module content")
     type: Optional[ModuleType] = Field(None, description="Module type (simple or advanced)")
     
     # Advanced module fields
@@ -57,7 +57,7 @@ class ModuleResponse(BaseModel):
     id: str
     name: str
     description: Optional[str]
-    content: str
+    content: Optional[str]
     type: str
     trigger_pattern: Optional[str]
     script: Optional[str]

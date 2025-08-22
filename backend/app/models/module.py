@@ -37,7 +37,7 @@ class Module(Base):
     description = Column(Text, nullable=True)
     
     # Module content
-    content = Column(Text, nullable=False)  # Static text for simple modules, Python code for advanced
+    content = Column(Text, nullable=True)  # Static text for simple modules, Python code for advanced
     
     # Module type and behavior
     type = Column(SQLEnum(ModuleType), nullable=False, default=ModuleType.SIMPLE)
