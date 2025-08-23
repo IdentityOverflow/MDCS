@@ -47,8 +47,13 @@ We can use something like:
 Where each module is defined separately, comes with all the necessay information and can be static or updated during the conversation by a script or by the AI sytem itself.
 
 ### Module System
-- **Simple Modules**: Static text templates (personality, static instructions, persisten information, etc.).
-- **Advanced Modules**: Can laverage python scripts that update the module content dynamically (memory, context, time, adaptive reasoning, etc.).
+- **Simple Modules**: Static text templates (personality, static instructions, persistent information, etc.).
+- **Advanced Modules**: Python scripts with secure sandbox execution that generate dynamic content using `${variable}` outputs.
+- **Dual Placeholder System**: 
+  - `@module_name` - References to other modules (recursive resolution)
+  - `${variable}` - Dynamic script outputs (result, memory, time, etc.)
+- **Plugin Framework**: Auto-discovery decorator system for extending script functionality
+- **Trigger System**: Keyword/regex patterns for conditional module activation
 - **Self-Modifying**: AI can update some of its own modules, creating evolving **personas**.
 
 ### Key Innovation
@@ -129,19 +134,30 @@ A model-agnostic platform where users can design, share, and evolve sophisticate
 - Use case: Personalities, static instructions, fixed context
 
 **Advanced Modules:**
-- Python scripted content with dynamic behavior
-- Conditional trigger system (keyword-based activation)
+- Python scripted content with secure RestrictedPython sandbox execution
+- Multiple named outputs using `${variable}` syntax (result, memory, time, etc.)
+- Conditional trigger system (keyword/regex pattern activation)
 - Multiple execution timing options:
-  - After AI Response
-  - Before AI Response  
-  - On demand
-- Access to conversation state, history, and helper functions
-- Use case examples: Memory management, dynamic context, self-modifying behavior
+  - BEFORE: Execute before AI response (update system prompt)
+  - AFTER: Execute after AI response (prepare for next exchange)
+  - CUSTOM: Execute on-demand via API calls
+  - ALWAYS: Execute on every template resolution (for timestamps, counters)
+- Rich execution context with full conversation/database access via plugin system
+- Plugin framework for extending functionality (time, conversation, AI processing, custom)
+- Use case examples: Dynamic memory, contextual awareness, self-modifying behavior, adaptive personas
 
 ### Template System
-- Uses placeholder syntax `@module_name` with existing modules suggestions
+- **Dual Placeholder Syntax**:
+  - `@module_name` - References to other modules (recursive resolution)
+  - `${variable}` - Dynamic script outputs to avoid naming collisions with modules
 - Template defines how modules are arranged in final prompt
-- Modules are resolved at runtime before/after sending to AI, or on demand determined by the script
+- **Resolution Process**:
+  1. Parse `@module_name` references in templates
+  2. Check trigger patterns for advanced modules
+  3. Execute Python scripts in secure sandbox with rich context
+  4. Resolve `${variable}` placeholders using script outputs  
+  5. Replace `@module_name` with final resolved content
+  6. Continue recursive resolution for nested dependencies
 - Support for saved/loaded template presets 
 
 ### Module Features Observed
@@ -264,6 +280,121 @@ project-2501/
 
 ---
 
+## 🚀 Advanced Modules Implementation Plan
+*Detailed TDD-based implementation strategy*
+
+### Phase 1: Core Script Engine (Foundation)
+
+**Files to create:**
+```
+backend/app/core/script_engine.py       # Main RestrictedPython execution engine
+backend/app/core/script_plugins.py      # Auto-discovery decorator registry  
+backend/app/core/script_context.py      # Rich execution context management
+backend/app/core/script_validator.py    # Security validation for scripts
+backend/app/core/trigger_matcher.py     # Simple keyword/regex trigger matching
+```
+
+**Key Components:**
+- **ScriptEngine**: RestrictedPython-based secure execution with timeout handling
+- **PluginRegistry**: Decorator-based auto-discovery system for plugin functions
+- **ScriptExecutionContext**: Rich context object with conversation/database access
+- **ScriptValidator**: AST-based validation for security (imports, attributes, functions)
+- **TriggerMatcher**: Simple pattern matching for keywords (`word1|word2`) and regex
+
+### Phase 2: Plugin System (Extensibility)
+
+**Files to create:**
+```
+backend/app/plugins/__init__.py              # Plugin package initialization
+backend/app/plugins/time_plugins.py         # Current time, relative time, business hours
+backend/app/plugins/conversation_plugins.py # Full conversation history, message counts
+backend/app/plugins/core_plugins.py         # Basic utility functions (len, str, etc.)
+```
+
+**Plugin Architecture:**
+- **Auto-Discovery**: Load all modules in `app/plugins/` directory automatically
+- **Decorator Registration**: `@plugin_registry.register("function_name")` 
+- **Database Session Injection**: Auto-inject `db_session` parameter for functions that need it
+- **Error Handling**: Graceful fallbacks for plugin function failures
+
+### Phase 3: Integration (Connect to Existing System)
+
+**Files to modify:**
+```
+backend/app/services/module_resolver.py     # Add ${variable} resolution and script execution
+backend/app/api/modules.py                  # Enhanced API for advanced module management
+backend/requirements.txt                    # Add RestrictedPython dependency
+```
+
+**Integration Points:**
+- **Enhanced ModuleResolver**: Add advanced module detection and script execution
+- **Variable Resolution**: `${variable}` pattern matching and replacement after script execution
+- **API Extensions**: New endpoints for advanced module creation, testing, and debugging
+- **Backward Compatibility**: Simple modules continue working without changes
+
+### Phase 4: Testing (TDD Implementation)
+
+**Files to create:**
+```
+backend/tests/unit/test_script_engine.py        # Script execution, validation, security tests
+backend/tests/unit/test_plugins.py              # Plugin registration and function tests  
+backend/tests/integration/test_advanced_modules.py # Full advanced module workflow tests
+```
+
+**Testing Strategy:**
+- **Write Tests First**: All functionality implemented following TDD approach
+- **Security Testing**: Validate sandbox restrictions and escape prevention
+- **Plugin Testing**: Verify auto-discovery, registration, and context injection
+- **Integration Testing**: Full workflow from template to resolved output
+- **Performance Testing**: Script execution timeouts and resource limits
+
+### Advanced Module Examples
+
+**Example 1: Dynamic Memory Module**
+```python
+# Script (trigger: "memory|remember|recall")
+messages = ctx.get_conversation_history(ctx.conversation_id, 20)
+total_count = ctx.get_message_count(ctx.conversation_id)
+
+if total_count > 50:
+    memory_summary = "We've had extensive discussions"
+elif total_count > 10:
+    memory_summary = "I recall our previous conversations"  
+else:
+    memory_summary = "We're building our conversation history"
+
+# Multiple named outputs
+result = memory_summary
+count = str(total_count)
+```
+
+**Content:**
+```
+${result}. Total messages: ${count}.
+```
+
+**Example 2: Time-Aware Greeting Module**
+```python  
+# Script (timing: ALWAYS - execute every resolution)
+current_time = ctx.get_current_time("%H:%M")
+is_business = ctx.is_business_hours()
+
+if is_business:
+    greeting = f"Good day! It's {current_time}"
+else:
+    greeting = f"Good evening! It's {current_time}"
+
+# Output
+result = greeting
+```
+
+**Content:**
+```
+${result}. How can I help you today?
+```
+
+---
+
 ## 🏗️ Development Approach
 *Learning from previous technical debt issues*
 
@@ -276,11 +407,15 @@ Previous implementation suffered from **AI context loss during development** - e
 
 ### Proposed Solutions
 
-**Test-Driven Development (TDD)**
-- Write tests first to define expected behavior
-- Comprehensive test coverage prevents regression
-- Tests serve as living documentation of system behavior
-- Forces modular, testable design
+**Test-Driven Development (TDD) for Advanced Modules**
+- **Write Tests First**: All advanced module functionality follows strict TDD approach
+- **Current Test Status**: 330/330 tests passing - maintain this standard
+- **Security-First Testing**: Sandbox restrictions and escape prevention tested before implementation
+- **Plugin Testing**: Auto-discovery, registration, and context injection verified
+- **Integration Testing**: Full workflow from script execution to template resolution
+- **Performance Testing**: Script timeouts, resource limits, and execution monitoring
+- **Comprehensive Coverage**: Tests serve as living documentation of system behavior
+- **Modular Design**: TDD forces clean interfaces and testable architecture
 
 **High Modularity Principles**
 - Clear separation of concerns

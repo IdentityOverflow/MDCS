@@ -36,16 +36,31 @@ Frontend (Vue 3) ←→ Backend (FastAPI) ←→ Database (PostgreSQL + pgvector
 
 ### 🧩 Module System Design
 
-**Template System**: Uses placeholder syntax `@module_name` - modules resolved at runtime before sending to AI
+**Template System**: Uses dual placeholder syntax for maximum flexibility:
+- `@module_name` - References to other modules (static/advanced)
+- `${variable}` - Dynamic script outputs (result, memory, time, etc.)
 
-**Advanced Module Features**:
-- **Trigger Words/Phrases**: Modules activate based on conversation content
-- **Conditional Logic**: Python scripts implement complex decision making
-- **State Management**: Access to conversation history, exchange counts, etc.
-- **Execution Timing**: After AI Response, Before AI Response, On demand
+**Simple Modules**: Static text content resolved directly into templates
+
+**Advanced Module Architecture**:
+- **Python Script Execution**: Secure RestrictedPython sandbox with plugin system
+- **Dynamic Content Generation**: Scripts produce multiple named outputs via `${variable}` syntax
+- **Trigger System**: Keyword/regex patterns activate modules based on conversation context
+- **Execution Timing**: BEFORE (pre-AI), AFTER (post-AI), CUSTOM (on-demand), ALWAYS (every resolution)
+- **Plugin Framework**: Auto-discovery decorator system for extending script functionality
+- **Full Context Access**: Scripts have access to conversation history, database, and helper functions
+
+**Module Resolution Flow**:
+1. Parse `@module_name` references in templates
+2. Load modules and check trigger patterns for advanced modules  
+3. Execute Python scripts in sandbox with rich execution context
+4. Resolve `${variable}` references in module content using script outputs
+5. Replace `@module_name` with final resolved content
+6. Continue recursive resolution for nested module references
 
 **Module Dependencies**: 
 - Modules reference other modules using `@module_name` syntax
+- Advanced modules use `${variable}` for script outputs to avoid naming collisions
 - Recursive call detection prevents infinite loops
 - Missing dependency validation with user warnings
 
@@ -66,7 +81,17 @@ project-2501/
 │   ├── app/
 │   │   ├── main.py      # FastAPI application entry
 │   │   ├── core/        # Core business logic
-│   │   │   ├── config.py        # Configuration management
+│   │   │   ├── config.py         # Configuration management
+│   │   │   ├── script_engine.py  # Advanced module script execution engine
+│   │   │   ├── script_plugins.py # Plugin registry and auto-discovery
+│   │   │   ├── script_context.py # Execution context management
+│   │   │   ├── script_validator.py # Security validation for scripts
+│   │   │   └── trigger_matcher.py # Simple trigger pattern matching
+│   │   ├── plugins/     # Extensible plugin system
+│   │   │   ├── __init__.py
+│   │   │   ├── time_plugins.py        # Time/date functions
+│   │   │   ├── conversation_plugins.py # Conversation access functions
+│   │   │   └── core_plugins.py        # Basic utility functions
 │   │   ├── models/      # Database models (SQLAlchemy)
 │   │   │   ├── persona.py       # AI personas
 │   │   │   ├── module.py        # Simple & Advanced modules
@@ -76,7 +101,9 @@ project-2501/
 │   │   │   └── database.py      # Database test/info endpoints
 │   │   ├── database/    # Database connection management
 │   │   │   └── connection.py    # Connection pooling & testing
-│   │   └── services/    # Business logic services (future)
+│   │   └── services/    # Business logic services
+│   │       ├── module_resolver.py      # Enhanced with advanced module support
+│   │       └── advanced_module_service.py # Advanced module coordination
 │   ├── tests/          # Comprehensive test suite
 │   │   ├── unit/       # Unit tests (55 tests, all passing)
 │   │   ├── integration/ # Integration tests with real DB
@@ -95,6 +122,7 @@ project-2501/
 - **Framework**: FastAPI 0.104.1
 - **Database**: PostgreSQL with SQLAlchemy 2.0.23
 - **Configuration**: Pydantic 2.11.7 + pydantic-settings 2.10.1
+- **Script Execution**: RestrictedPython for secure sandbox execution
 - **Testing**: pytest 7.4.3 with PostgreSQL integration
 - **Environment**: conda environment `project2501`
 
@@ -543,13 +571,39 @@ The system treats persona templates as **living, modular heads-up displays** tha
 - **Performance Optimized**: Efficient recursive resolution with proper cycle detection
 - **Error Resilient**: Graceful handling of all edge cases without breaking chat functionality
 
-### 🚧 **Next Development Priorities**:
-- **Advanced Modules**: Python script execution for dynamic content generation
-- **Module Sandbox**: Secure execution environment for user-provided scripts
-- **Frontend Integration**: Template editor with @module autocomplete and validation
-- **Debug Screen**: Visual display of resolved system prompts for development
-- **Import/Export System**: JSON and PNG-embedded persona sharing
+### 🚧 **Next Development Priority: Advanced Modules Implementation**
+
+**Phase 1: Core Script Engine (Foundation)**
+- `script_engine.py` - Main RestrictedPython execution engine with security validation
+- `script_plugins.py` - Auto-discovery decorator registry for plugin functions  
+- `script_context.py` - Rich execution context with conversation/database access
+- `script_validator.py` - Security validation for user-provided Python scripts
+- `trigger_matcher.py` - Simple keyword/regex trigger pattern matching
+
+**Phase 2: Plugin System (Extensibility)**
+- `plugins/time_plugins.py` - Current time, relative time, business hours functions
+- `plugins/conversation_plugins.py` - Full conversation history, message counts, persona info  
+- `plugins/core_plugins.py` - Basic utility functions for common script operations
+- Auto-discovery system loads plugins from `app/plugins/` directory automatically
+
+**Phase 3: Integration (Connect to Existing System)**
+- Enhance `module_resolver.py` with `${variable}` resolution and script execution
+- Extend modules API with advanced module creation and management endpoints
+- Add RestrictedPython to requirements.txt for secure sandbox execution
+
+**Phase 4: Testing (TDD Implementation)**
+- `test_script_engine.py` - Unit tests for script execution, validation, and security
+- `test_plugins.py` - Unit tests for plugin registration and function execution
+- `test_advanced_modules.py` - Integration tests for full advanced module workflow
+
+**Implementation Approach**: Following established TDD patterns - write failing tests first, then implement to make them pass. All 15 phases will maintain the current 330/330 test success rate.
+
+### 🚀 **Future Development Priorities**:
+- **Frontend Integration**: Template editor with @module autocomplete and ${variable} validation
+- **Debug Screen**: Visual display of resolved system prompts and script outputs
+- **Import/Export System**: JSON and PNG-embedded persona sharing with advanced modules
 - **Advanced Chat Features**: File uploads, tool calling, conversation memory
+- **Docker Sandbox**: Enhanced security for advanced module execution
 
 ### 💡 **Key Implementation Notes**:
 - **The core innovation** is the dynamic system prompt architecture - simple modules now fully operational! ✅
