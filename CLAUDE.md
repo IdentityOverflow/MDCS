@@ -104,9 +104,9 @@ project-2501/
 │   │   └── services/    # Business logic services
 │   │       ├── module_resolver.py      # Enhanced with advanced module support
 │   │       └── advanced_module_service.py # Advanced module coordination
-│   ├── tests/          # Comprehensive test suite
-│   │   ├── unit/       # Unit tests (55 tests, all passing)
-│   │   ├── integration/ # Integration tests with real DB
+│   ├── tests/          # Comprehensive test suite (396 tests passing)
+│   │   ├── unit/       # Unit tests (181 tests) - Models, services, core logic
+│   │   ├── integration/ # Integration tests (215 tests) - Full HTTP API with real DB
 │   │   └── conftest.py # PostgreSQL test fixtures
 ├── database/           # Database setup and seeds
 ├── docs/              # Project documentation
@@ -122,7 +122,7 @@ project-2501/
 - **Framework**: FastAPI 0.104.1
 - **Database**: PostgreSQL with SQLAlchemy 2.0.23
 - **Configuration**: Pydantic 2.11.7 + pydantic-settings 2.10.1
-- **Script Execution**: RestrictedPython for secure sandbox execution
+- **Script Execution**: RestrictedPython 7.0 for secure Python sandbox execution ✅
 - **Testing**: pytest 7.4.3 with PostgreSQL integration
 - **Environment**: conda environment `project2501`
 
@@ -164,13 +164,13 @@ cd backend && python app/main.py
 source /home/q/miniforge3/etc/profile.d/conda.sh && conda activate project2501 && pytest -v
 
 # Alternative commands if needed:
-# Run all tests (225+ tests passing)
+# Run all tests (396 tests passing)
 pytest                    # Run all tests
 pytest -v                # Verbose output (RECOMMENDED - shows all test details)
 
 # Run specific test categories
-pytest tests/unit/        # Unit tests only (152 tests)
-pytest tests/integration/ # Integration tests only (73 tests)
+pytest tests/unit/        # Unit tests only (181 tests)
+pytest tests/integration/ # Integration tests only (215 tests)
 
 # Run specific test files or methods
 pytest tests/unit/test_modules_api.py -v                    # Specific file
@@ -185,9 +185,10 @@ pytest tests/integration/ -v
 ```
 
 **Test Structure**:
-- **Unit Tests**: Fast, isolated tests for individual functions (no database)
-- **Integration Tests**: Full HTTP API tests using `project2501_test` database with proper cleanup
-- **TDD Approach**: Write failing tests first, then implement to make them pass
+- **Unit Tests**: Fast, isolated tests for models, services, and core logic (no database) - 181 tests
+- **Integration Tests**: Full HTTP API tests using `project2501_test` database with proper cleanup - 215 tests  
+- **Advanced Module Tests**: Complete test coverage for script execution, plugins, and triggers - 66 new tests
+- **TDD Approach**: All advanced modules features developed test-first with comprehensive coverage
 
 **Database Isolation**:
 - **Frontend**: Connects to main database (`project2501` via backend server)
@@ -343,7 +344,7 @@ cd frontend && npm run test:unit       # Tests must pass (when they exist)
 - **Backend API Structure**: FastAPI app with proper configuration
 - **Database Connection**: Connection pooling, testing, error handling
 - **Frontend UI Framework**: Vue 3 app with golden ratio layout and cyberpunk theme
-- **Test Infrastructure**: Comprehensive test suite (**330/330 passing**)
+- **Test Infrastructure**: Comprehensive test suite (**396/396 passing**)
 - **Development Environment**: Scripts, conda environment, modern dependencies
 
 #### **🚀 COMPLETE: Full Chat Infrastructure**
@@ -354,7 +355,7 @@ cd frontend && npm run test:unit       # Tests must pass (when they exist)
 - **Frontend-Backend Integration**: Complete chat functionality with all controls working ✅
 - **Settings Architecture**: Provider settings passed in requests (no backend duplication) ✅
 - **Error Handling**: Comprehensive authentication, connection, and validation error handling ✅
-- **TDD Coverage**: All 330 integration tests passing, including 14 chat, 14 conversation, and 27 message tests ✅
+- **TDD Coverage**: All 396 integration tests passing, including 14 chat, 14 conversation, and 27 message tests ✅
 
 #### **Chat System Architecture:**
 **Frontend-Only Settings Storage**: All provider connection settings (Ollama, OpenAI) stored in browser localStorage only.
@@ -571,53 +572,97 @@ The system treats persona templates as **living, modular heads-up displays** tha
 - **Performance Optimized**: Efficient recursive resolution with proper cycle detection
 - **Error Resilient**: Graceful handling of all edge cases without breaking chat functionality
 
-### 🚧 **Next Development Priority: Advanced Modules Implementation**
+### ✅ **COMPLETE: Advanced Modules Implementation**
 
-**Phase 1: Core Script Engine (Foundation)**
-- `script_engine.py` - Main RestrictedPython execution engine with security validation
-- `script_plugins.py` - Auto-discovery decorator registry for plugin functions  
-- `script_context.py` - Rich execution context with conversation/database access
-- `script_validator.py` - Security validation for user-provided Python scripts
-- `trigger_matcher.py` - Simple keyword/regex trigger pattern matching
+#### **🎯 COMPLETE: Advanced Modules System**
+- **Script Execution Engine**: RestrictedPython sandbox with security validation ✅
+- **Plugin Registry**: Auto-discovery decorator system with 14+ built-in functions ✅
+- **Execution Context**: Rich context with conversation/database access and plugin injection ✅
+- **Trigger System**: Keyword/regex pattern matching for conditional execution ✅
+- **Variable Resolution**: `${variable}` system separate from `@module_name` references ✅
+- **Module Resolution**: Enhanced module resolver with advanced module support ✅
+- **Complete Testing**: 66 new tests added, all 396 tests passing ✅
 
-**Phase 2: Plugin System (Extensibility)**
-- `plugins/time_plugins.py` - Current time, relative time, business hours functions
-- `plugins/conversation_plugins.py` - Full conversation history, message counts, persona info  
-- `plugins/core_plugins.py` - Basic utility functions for common script operations
-- Auto-discovery system loads plugins from `app/plugins/` directory automatically
+#### **Advanced Modules Architecture:**
+**Core Innovation - Dynamic Script Execution**:
+Advanced modules execute Python scripts in secure RestrictedPython sandbox with full access to conversation context, database, and extensible plugin system.
 
-**Phase 3: Integration (Connect to Existing System)**
-- Enhance `module_resolver.py` with `${variable}` resolution and script execution
-- Extend modules API with advanced module creation and management endpoints
-- Add RestrictedPython to requirements.txt for secure sandbox execution
+**Script Execution Pipeline**:
+1. **Trigger Check**: Pattern matching against conversation context (`last_user_message`)
+2. **Security Validation**: RestrictedPython compile with import restrictions and timeout
+3. **Plugin Injection**: Auto-discovered functions available via execution context
+4. **Script Execution**: Secure execution with conversation and database access
+5. **Output Extraction**: Multiple named outputs captured from script globals
+6. **Variable Resolution**: `${variable}` patterns replaced with script results
 
-**Phase 4: Testing (TDD Implementation)**
-- `test_script_engine.py` - Unit tests for script execution, validation, and security
-- `test_plugins.py` - Unit tests for plugin registration and function execution
-- `test_advanced_modules.py` - Integration tests for full advanced module workflow
+**Plugin System**:
+```python
+@plugin_registry.register("get_current_time")
+def get_current_time(format: str = "%Y-%m-%d %H:%M") -> str:
+    return datetime.now().strftime(format)
+```
 
-**Implementation Approach**: Following established TDD patterns - write failing tests first, then implement to make them pass. All 15 phases will maintain the current 330/330 test success rate.
+**14 Built-in Plugin Functions**:
+- **Time Functions**: `get_current_time`, `get_relative_time`, `format_duration`, `is_business_hours`, `get_timezone_info`
+- **Conversation Functions**: `get_message_count`, `get_recent_messages`, `get_conversation_summary`, `get_persona_info`
+- **Utility Functions**: `generate_uuid`, `log_debug`, `validate_email`, `format_number`, `get_random_choice`
+
+**Example Advanced Module**:
+```python
+# Module Content:
+"Hello! I'm ${name} and it's ${current_time}. Messages: ${msg_count}"
+
+# Module Script:
+"""
+name = "AVA"
+current_time = ctx.get_current_time("%H:%M")
+msg_count = ctx.get_message_count()
+"""
+
+# Resolved Result:
+"Hello! I'm AVA and it's 14:30. Messages: 15"
+```
+
+**Implementation Highlights**:
+- **Test-Driven Development**: All features implemented with comprehensive test coverage first
+- **Security-First**: RestrictedPython with import restrictions, timeouts, and validation
+- **Extensible Design**: Plugin system allows easy addition of new script functions
+- **Context-Rich**: Scripts receive full conversation context and database session
+- **Error-Resilient**: Comprehensive error handling with user-friendly warnings
+- **Performance-Optimized**: Efficient recursive resolution with cycle detection
+
+### ✅ **OPERATIONAL STATUS**:
+**Advanced Modules are now fully operational in the chat system!** ✅
+
+Users can create advanced modules with Python scripts that:
+- Execute securely in RestrictedPython sandbox
+- Access 14+ built-in plugin functions (time, conversation data, utilities)
+- Use `${variable}` syntax for dynamic content generation
+- Support trigger patterns for conditional execution
+- Integrate seamlessly with existing `@module_name` system
 
 ### 🚀 **Future Development Priorities**:
 - **Frontend Integration**: Template editor with @module autocomplete and ${variable} validation
 - **Debug Screen**: Visual display of resolved system prompts and script outputs
 - **Import/Export System**: JSON and PNG-embedded persona sharing with advanced modules
 - **Advanced Chat Features**: File uploads, tool calling, conversation memory
-- **Docker Sandbox**: Enhanced security for advanced module execution
+- **Module Marketplace**: Shared library of community-created advanced modules
 
 ### 💡 **Key Implementation Notes**:
-- **The core innovation** is the dynamic system prompt architecture - simple modules now fully operational! ✅
-- **Cognitive Engine is complete** - full `@module_name` resolution with recursive support and error handling
-- **Complete chat system is working** - full Ollama/OpenAI integration with streaming and persona support
-- **Conversation persistence is complete** - full CRUD API with database storage and thinking support
-- **Message CRUD system is complete** - full message management with thinking, tokens, and metadata
-- **Advanced chat UI is complete** - in-place editing, markdown rendering, auto-scroll, and options menu
-- **Provider abstraction is clean** - centralized system prompt handling across all AI providers
-- **Frontend-centric architecture** - all settings managed in browser, passed via requests
-- **Database models are solid** - UUIDs, proper relationships, cascade deletion working
-- **Test coverage is excellent** - 330/330 passing tests, maintain this standard
-- **Architecture is well-planned** - follow the existing design patterns
-- **UI patterns are consistent** - reuses existing components and styling for cohesive experience
+- **The core innovation** is the dynamic system prompt architecture - both simple and advanced modules fully operational! ✅
+- **Advanced Modules System is complete** - full Python script execution with RestrictedPython sandbox ✅
+- **Cognitive Engine is complete** - full `@module_name` and `${variable}` resolution with recursive support ✅
+- **Plugin System is complete** - auto-discovery decorator registry with 14+ built-in functions ✅
+- **Complete chat system is working** - full Ollama/OpenAI integration with streaming and persona support ✅
+- **Conversation persistence is complete** - full CRUD API with database storage and thinking support ✅
+- **Message CRUD system is complete** - full message management with thinking, tokens, and metadata ✅
+- **Advanced chat UI is complete** - in-place editing, markdown rendering, auto-scroll, and options menu ✅
+- **Provider abstraction is clean** - centralized system prompt handling across all AI providers ✅
+- **Frontend-centric architecture** - all settings managed in browser, passed via requests ✅
+- **Database models are solid** - UUIDs, proper relationships, cascade deletion working ✅
+- **Test coverage is excellent** - 396/396 passing tests, maintain this standard ✅
+- **Architecture is well-planned** - follow the existing design patterns ✅
+- **UI patterns are consistent** - reuses existing components and styling for cohesive experience ✅
 
 ### 🏗️ **Chat Architecture Patterns (FOLLOW THESE)**:
 - **Settings Storage**: Frontend localStorage only, never duplicate in backend

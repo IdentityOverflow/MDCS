@@ -21,6 +21,7 @@ from app.api.connections import router as connections_router
 from app.api.conversations import router as conversations_router
 from app.api.messages import router as messages_router
 from app.api.templates import router as templates_router
+from app.core.script_plugins import plugin_registry
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -56,6 +57,11 @@ async def lifespan(app: FastAPI):
         # Create tables if they don't exist
         Base.metadata.create_all(bind=db_manager.engine)
         logger.info("Database tables created/verified")
+        
+        # Load advanced module plugins
+        plugin_registry.load_all_plugins()
+        plugin_count = len(plugin_registry.get_registered_functions())
+        logger.info(f"Advanced module plugins loaded: {plugin_count} functions available")
         
     except Exception as e:
         logger.error(f"Failed to initialize database: {e}")

@@ -519,3 +519,75 @@ class TestChatTemplateIntegration:
             assert "resolved_system_prompt" in data
             expected_prompt = "System: Debug info: I'm in debug mode. Ready to help."
             assert data["resolved_system_prompt"] == expected_prompt
+
+    def test_chat_with_advanced_module_variable_resolution(self, client, db_session):
+        """Test chat with advanced module that uses ${variable} resolution."""
+        from app.models import ExecutionTiming
+        
+        # Create advanced module with script
+        advanced_module = Module(
+            name="ai_identity",
+            description="AI identity with dynamic content",
+            content="Hello! I'm ${name}. The time is ${current_time}.",
+            type=ModuleType.ADVANCED,
+            script="""
+name = "AVA"
+current_time = ctx.get_current_time()
+""",
+            trigger_pattern=None,  # Always execute
+            timing=ExecutionTiming.CUSTOM,
+            is_active=True
+        )
+        
+        db_session.add(advanced_module)
+        db_session.commit()
+        
+        # Create persona that uses the advanced module
+        persona = Persona(
+            name="Advanced Test Persona",
+            description="Persona with advanced module",
+            template="@ai_identity Nice to meet you!",
+            is_active=True
+        )
+        
+        db_session.add(persona)
+        db_session.commit()
+        
+        with patch('app.services.ollama_service.OllamaService.send_message') as mock_ollama:
+            from app.services.ai_providers import ChatResponse, ProviderType
+            mock_ollama.return_value = ChatResponse(
+                content="Nice to meet you too!",
+                model="llama3.2",
+                provider_type=ProviderType.OLLAMA,
+                metadata={},
+                thinking=None
+            )
+            
+            response = client.post(
+                "/api/chat/send",
+                json={
+                    "message": "Hello",
+                    "persona_id": str(persona.id),
+                    "provider": "ollama",
+                    "stream": False,
+                    "provider_settings": {
+                        "host": "http://localhost:11434",
+                        "model": "llama3.2"
+                    },
+                    "chat_controls": {}
+                }
+            )
+            
+            assert response.status_code == 200
+            
+            # Verify service was called with resolved system prompt
+            mock_ollama.assert_called_once()
+            call_args = mock_ollama.call_args[0][0]
+            
+            # Advanced module should be resolved with script variables
+            # The ${name} and ${current_time} should be replaced with actual values
+            system_prompt = call_args.system_prompt
+            assert system_prompt.startswith("Hello! I'm AVA. The time is ")
+            assert "Nice to meet you!" in system_prompt
+            assert "${name}" not in system_prompt  # Should be resolved
+            assert "${current_time}" not in system_prompt  # Should be resolved

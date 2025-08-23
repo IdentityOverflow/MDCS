@@ -383,11 +383,12 @@ class TestTemplateResolutionAPI:
 
     def test_resolve_template_with_persona_id(self, client, db_session):
         """Test template resolution with persona_id parameter."""
+        
         # This tests the optional persona_id parameter that might be used
         # for persona-specific module resolution in the future
         greeting_module = Module(
-            name="greeting",
-            description="Greeting",
+            name="greeting_api_test",
+            description="Greeting for API test",
             content="Hello from API",
             type=ModuleType.SIMPLE,
             is_active=True
@@ -396,7 +397,7 @@ class TestTemplateResolutionAPI:
         db_session.add(greeting_module)
         db_session.commit()
         
-        template = "@greeting"
+        template = "@greeting_api_test"
         
         response = client.post(
             "/api/templates/resolve",
@@ -408,5 +409,10 @@ class TestTemplateResolutionAPI:
         
         assert response.status_code == 200
         data = response.json()
+        
+        # Debug: Print the actual response
+        print(f"Expected: 'Hello from API', Got: '{data['resolved_template']}'")
+        print(f"Warnings: {data.get('warnings', [])}")
+        print(f"Resolved modules: {data.get('resolved_modules', [])}")
         
         assert data["resolved_template"] == "Hello from API"

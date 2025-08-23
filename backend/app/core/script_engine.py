@@ -206,11 +206,9 @@ class ScriptEngine:
             'title', 'description', 'summary', 'info', 'text'
         }
         
-        # Skip these temporary/internal variable patterns
-        skip_patterns = {
-            'temp_', 'tmp_', 'internal_', '_temp', '_tmp', '_internal',
-            'x', 'y', 'z', 'i', 'j', 'k', 'n'  # Common temporary variable names
-        }
+        # Skip these temporary/internal variable patterns  
+        skip_prefixes = {'temp_', 'tmp_', 'internal_', '_temp', '_tmp', '_internal'}
+        skip_exact = {'x', 'y', 'z', 'i', 'j', 'k', 'n'}  # Single letter variables
         
         # Filter out internal variables and extract user outputs
         for name, value in execution_locals.items():
@@ -226,8 +224,8 @@ class ScriptEngine:
                 continue
             
             # Skip known temporary variable patterns
-            if any(name.startswith(pattern) or name == pattern 
-                   for pattern in skip_patterns):
+            if (any(name.startswith(prefix) for prefix in skip_prefixes) or 
+                name in skip_exact):
                 continue
             
             # Include output names or variables that look like outputs

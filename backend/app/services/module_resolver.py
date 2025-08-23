@@ -7,12 +7,15 @@ to their actual content with proper error handling and circular dependency detec
 
 import re
 import logging
-from typing import List, Dict, Set, Optional
+from typing import List, Dict, Set, Optional, Any
 from dataclasses import dataclass
 from sqlalchemy.orm import Session
 
-from app.models import Module
+from app.models import Module, ModuleType, ExecutionTiming
 from app.database.connection import get_db
+from app.core.script_engine import ScriptEngine
+from app.core.script_context import ScriptExecutionContext
+from app.core.trigger_matcher import TriggerMatcher
 
 logger = logging.getLogger(__name__)
 
@@ -20,6 +23,7 @@ logger = logging.getLogger(__name__)
 MAX_RECURSION_DEPTH = 10
 MODULE_NAME_PATTERN = r'(?<!\\)@([a-z][a-z0-9_]{0,49})'  # Negative lookbehind to exclude escaped @
 ESCAPED_MODULE_PATTERN = r'\\@([a-z][a-z0-9_]{0,49})'  # Pattern for escaped modules
+VARIABLE_PATTERN = r'\$\{([a-zA-Z_][a-zA-Z0-9_]*)\}'  # Pattern for ${variable_name}
 MODULE_NAME_MAX_LENGTH = 50
 
 
@@ -57,12 +61,23 @@ class ModuleResolver:
         self.db_session = db_session
         self._resolution_stack: Set[str] = set()  # Track modules being resolved to detect cycles
     
-    def resolve_template(self, template: str) -> TemplateResolutionResult:
+    def resolve_template(
+        self, 
+        template: str,
+        conversation_id: Optional[str] = None,
+        persona_id: Optional[str] = None,
+        db_session: Optional[Session] = None,
+        trigger_context: Optional[Dict[str, Any]] = None
+    ) -> TemplateResolutionResult:
         """
-        Resolve all @module_name references in a template.
+        Resolve all @module_name references in a template, with support for advanced modules.
         
         Args:
             template: The template string containing @module_name references
+            conversation_id: Optional conversation ID for advanced module context
+            persona_id: Optional persona ID for advanced module context
+            db_session: Optional database session for advanced module context
+            trigger_context: Optional trigger context for advanced modules
             
         Returns:
             TemplateResolutionResult with resolved content and any warnings
@@ -100,7 +115,11 @@ class ModuleResolver:
                 template_with_placeholders, 
                 warnings, 
                 resolved_modules, 
-                depth=0
+                depth=0,
+                conversation_id=conversation_id,
+                persona_id=persona_id,
+                db_session=db_session or self.db_session,
+                trigger_context=trigger_context or {}
             )
             
             # Restore escaped modules (remove backslash)
@@ -132,16 +151,24 @@ class ModuleResolver:
         template: str, 
         warnings: List[ModuleResolutionWarning], 
         resolved_modules: List[str], 
-        depth: int
+        depth: int,
+        conversation_id: Optional[str] = None,
+        persona_id: Optional[str] = None,
+        db_session: Optional[Session] = None,
+        trigger_context: Optional[Dict[str, Any]] = None
     ) -> str:
         """
-        Recursively resolve module references in template.
+        Recursively resolve module references in template with advanced module support.
         
         Args:
             template: Template to resolve
             warnings: List to collect warnings
             resolved_modules: List to collect successfully resolved module names
             depth: Current recursion depth
+            conversation_id: Conversation ID for advanced module context
+            persona_id: Persona ID for advanced module context
+            db_session: Database session for advanced module context
+            trigger_context: Trigger context for advanced modules
             
         Returns:
             Template with module references resolved
@@ -203,12 +230,28 @@ class ModuleResolver:
                 module = modules_by_name[module_name]
                 module_content = module.content or ""  # Handle None content
                 
+                # Handle advanced modules with script execution
+                if module.type == ModuleType.ADVANCED:
+                    module_content = self._process_advanced_module(
+                        module, 
+                        module_content,
+                        conversation_id,
+                        persona_id,
+                        db_session,
+                        trigger_context,
+                        warnings
+                    )
+                
                 # Recursively resolve the module content
                 resolved_content = self._resolve_recursive(
                     module_content, 
                     warnings, 
                     resolved_modules, 
-                    depth + 1
+                    depth + 1,
+                    conversation_id=conversation_id,
+                    persona_id=persona_id,
+                    db_session=db_session,
+                    trigger_context=trigger_context
                 )
                 
                 # Replace module reference with resolved content
@@ -273,6 +316,123 @@ class ModuleResolver:
         except Exception as e:
             logger.error(f"Database error retrieving modules: {e}")
             return []
+    
+    def _process_advanced_module(
+        self,
+        module: Module,
+        module_content: str,
+        conversation_id: Optional[str],
+        persona_id: Optional[str],
+        db_session: Optional[Session],
+        trigger_context: Optional[Dict[str, Any]],
+        warnings: List[ModuleResolutionWarning]
+    ) -> str:
+        """
+        Process advanced module with script execution and ${variable} resolution.
+        
+        Args:
+            module: The advanced module to process
+            module_content: The module's content template
+            conversation_id: Conversation ID for script context
+            persona_id: Persona ID for script context  
+            db_session: Database session for script context
+            trigger_context: Trigger context for script execution
+            warnings: List to collect warnings
+            
+        Returns:
+            Module content with ${variable} references resolved
+        """
+        try:
+            # Check trigger pattern if specified
+            if module.trigger_pattern:
+                should_execute = TriggerMatcher.should_execute(
+                    module.trigger_pattern, 
+                    trigger_context or {}
+                )
+                if not should_execute:
+                    logger.debug(f"Advanced module '{module.name}' trigger not matched")
+                    return module_content  # Return content with unresolved variables
+            
+            # Skip script execution if no script is provided
+            if not module.script or not module.script.strip():
+                logger.debug(f"Advanced module '{module.name}' has no script")
+                return module_content
+            
+            # Create execution context
+            if not conversation_id or not persona_id or not db_session:
+                logger.warning(f"Advanced module '{module.name}' missing required context")
+                warnings.append(ModuleResolutionWarning(
+                    module_name=module.name,
+                    warning_type="missing_context",
+                    message=f"Advanced module '{module.name}' requires conversation context"
+                ))
+                return module_content
+            
+            context = ScriptExecutionContext(
+                conversation_id=conversation_id,
+                persona_id=persona_id,
+                db_session=db_session,
+                trigger_data=trigger_context or {}
+            )
+            
+            # Execute script
+            script_engine = ScriptEngine()
+            result = script_engine.execute_script(
+                module.script,
+                {"ctx": context}
+            )
+            
+            if not result.success:
+                logger.error(f"Script execution failed for module '{module.name}': {result.error_message}")
+                warnings.append(ModuleResolutionWarning(
+                    module_name=module.name,
+                    warning_type="script_execution_failed",
+                    message=f"Script execution failed: {result.error_message}"
+                ))
+                return module_content  # Return content with unresolved variables
+            
+            # Resolve ${variable} references in module content
+            resolved_content = self._resolve_variables(module_content, result.outputs)
+            
+            logger.debug(f"Advanced module '{module.name}' processed successfully")
+            return resolved_content
+            
+        except Exception as e:
+            logger.error(f"Unexpected error processing advanced module '{module.name}': {e}")
+            warnings.append(ModuleResolutionWarning(
+                module_name=module.name,
+                warning_type="processing_error",
+                message=f"Unexpected error: {str(e)}"
+            ))
+            return module_content
+    
+    def _resolve_variables(self, content: str, script_outputs: Dict[str, Any]) -> str:
+        """
+        Resolve ${variable} references in content using script outputs.
+        
+        Args:
+            content: Content with ${variable} references
+            script_outputs: Dictionary of variable names and values from script
+            
+        Returns:
+            Content with variables resolved
+        """
+        if not script_outputs:
+            return content
+        
+        resolved_content = content
+        
+        # Find all ${variable} patterns
+        variable_matches = re.findall(VARIABLE_PATTERN, content)
+        
+        for var_name in variable_matches:
+            if var_name in script_outputs:
+                variable_ref = f"${{{var_name}}}"
+                variable_value = str(script_outputs[var_name])
+                resolved_content = resolved_content.replace(variable_ref, variable_value)
+                logger.debug(f"Resolved variable {variable_ref} -> {variable_value}")
+        
+        return resolved_content
     
     @staticmethod
     def validate_module_name(name: str) -> bool:

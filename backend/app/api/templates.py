@@ -68,8 +68,14 @@ def resolve_template(
         # Create module resolver with database session
         resolver = ModuleResolver(db_session=db)
         
-        # Resolve the template
-        result: TemplateResolutionResult = resolver.resolve_template(request.template)
+        # Resolve the template with optional context for advanced modules
+        result: TemplateResolutionResult = resolver.resolve_template(
+            request.template,
+            conversation_id="api-template-resolution",  # Placeholder for API usage
+            persona_id=request.persona_id,
+            db_session=db,
+            trigger_context={}  # No trigger context for template API
+        )
         
         # Convert warnings to response format
         warnings = [

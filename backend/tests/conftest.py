@@ -11,6 +11,7 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from app.models import Base
+from app.core.script_plugins import plugin_registry
 
 # Load test environment variables from .env.test
 test_env_path = Path(__file__).parent.parent / ".env.test"
@@ -58,6 +59,15 @@ def test_engine(test_database_url):
         echo=False  # Set to True for SQL debugging
     )
     return engine
+
+
+@pytest.fixture(scope="session", autouse=True)
+def setup_plugins():
+    """Load advanced module plugins once per test session."""
+    plugin_registry.load_all_plugins()
+    yield
+    # Cleanup: clear plugins after test session
+    plugin_registry.clear()
 
 
 @pytest.fixture(scope="session")

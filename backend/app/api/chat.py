@@ -79,9 +79,23 @@ async def resolve_system_prompt(request: ChatSendRequest, db: Session) -> str:
         if not persona.template:
             return ""
         
-        # Resolve template using ModuleResolver
+        # Build trigger context from user message for advanced modules
+        trigger_context = {"last_user_message": request.message}
+        
+        # Get or create conversation for this persona
+        # For now, we'll use a placeholder conversation_id - this should be enhanced
+        # to get the actual conversation from the request or create one
+        conversation_id = "temp-conversation-id"  # TODO: Get actual conversation ID
+        
+        # Resolve template using ModuleResolver with full context
         resolver = ModuleResolver(db_session=db)
-        result = resolver.resolve_template(persona.template)
+        result = resolver.resolve_template(
+            persona.template,
+            conversation_id=conversation_id,
+            persona_id=request.persona_id,
+            db_session=db,
+            trigger_context=trigger_context
+        )
         
         # Log warnings for debugging
         if result.warnings:
