@@ -7,10 +7,10 @@
 
 ## 🎯 Project Vision
 
-**Project 2501** is a cognitive systems framework that revolutionizes how we interact with AI by solving the fundamental limitations of static system prompts and context rot.
+**Project 2501** is a cognitive systems framework that reimagines how we interact with AI by solving some common limitations of static system prompts and context rot.
 
 ### The Problem
-Traditional LLM interactions use static system prompts that get buried or lost as conversations grow, leading to:
+Traditional AI systems use static system prompts providing a rigid set of instructions limiting adaptibility and may even get buried as conversations grow depending on how it's inserted. This approach tends to lead to:
 - **Context rot**: This is a subtle yet critical phenomenon in large language models (LLMs), where the model's performance begins to deteriorate as the amount of input increases.
 - **Memory loss**: AI forgets crucial information or instructions from earlier in conversation.
 - **Inflexibility**: Cannot adapt behavior dynamically based on conversation state
@@ -52,7 +52,7 @@ Where each module is defined separately, comes with all the necessay information
 - **Self-Modifying**: AI can update some of its own modules, creating evolving **personas**.
 
 ### Key Innovation
-This enables **infinite conversations with adaptive memory**, **composable AI personas**, and **self-evolving cognitive architectures** - essentially creating a framework for building any type of AI agent or interactive system imaginable.
+This enables **virtually infinite conversations with adaptive memory**, **composable AI personas**, and **self-evolving cognitive architectures** - essentially creating a framework for building any type of AI agent or interactive system you can think of.
 
 ### Vision
 A model-agnostic platform where users can design, share, and evolve sophisticated AI personas through an intuitive web interface, powered by a modular Python backend.
@@ -67,8 +67,8 @@ A model-agnostic platform where users can design, share, and evolve sophisticate
 - **Database**: PostgreSQL (with pgvector extension)
   - **Relational data**: personas, modules, templates, conversations
   - **Vector storage**: Semantic search capabilities (future plans)
-  - **ACID compliance** for data integrity
-  - **Excellent Python ecosystem support**
+  - **ACID compliance**: for data integrity
+  - **Excellent Python ecosystem support**: Through SQLAlchemy
 
 **Backend Layer (Python)**
 - **Framework**: FastAPI for REST API development
@@ -101,10 +101,9 @@ A model-agnostic platform where users can design, share, and evolve sophisticate
 - Inter-module communication
 
 **3. Model Abstraction Layer**
-- Unified interface for AI providers (OpenAI, Anthropic, local models)
+- Unified interface for AI providers ( Ollama, LMStudion, OpenAI, Anthropic etc.)
 - Token counting and rate limiting
 - Response streaming and error handling
-- Model-specific optimizations
 
 **4. Import/Export System**
 - **JSON Format**: Standard persona serialization
@@ -140,21 +139,21 @@ A model-agnostic platform where users can design, share, and evolve sophisticate
 - Use case examples: Memory management, dynamic context, self-modifying behavior
 
 ### Template System
-- Uses placeholder syntax: `{module_name}` (will be change to @module_name )
+- Uses placeholder syntax `@module_name` with existing modules suggestions
 - Template defines how modules are arranged in final prompt
-- Modules are resolved at runtime before sending to AI
-- Available modules shown as a list of drag-and-drop insetable items (will be cahanged to a suggestion system based on available modules)
-- Support for saved/loaded template presets
+- Modules are resolved at runtime before/after sending to AI, or on demand determined by the script
+- Support for saved/loaded template presets 
 
 ### Module Features Observed
 - **Trigger Words/Phrases**: Modules can activate based on conversation content
 - **Conditional Logic**: Python scripts can implement complex decision making
 - **State Management**: Access to conversation history, exchange counts, etc.
 - **Helper Functions**: Built-in utilities for common operations
+- **Plugin system**: For making aditional helper function available for scripting
 - **Execution Control**: Fine-grained control over when modules update
 
 ### Module Dependencies & Execution
-- Modules can reference other modules using `{module_name}` syntax (will be @module_name )
+- Modules can reference other modules using `@module_name`
 - Recursive call detection prevents infinite loops
 - Missing dependency validation with user warnings
 - User responsibility for architectural coherence
@@ -166,7 +165,7 @@ A model-agnostic platform where users can design, share, and evolve sophisticate
 
 ---
 
-## 📁 Project Structure
+## 📁 Project Structure Plan (will change over time)
 
 ```
 project-2501/

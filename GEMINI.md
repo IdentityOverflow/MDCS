@@ -1,6 +1,6 @@
 # GEMINI.md
 
-This file provides guidance to Gemini when working with code in this repository.
+This file provides guidance to GEMINI when working with code in this repository.
 
 ## 🎯 Project Vision: Project 2501 - Cognitive Systems Framework
 
@@ -36,7 +36,7 @@ Frontend (Vue 3) ←→ Backend (FastAPI) ←→ Database (PostgreSQL + pgvector
 
 ### 🧩 Module System Design
 
-**Template System**: Uses placeholder syntax `{module_name}` - modules resolved at runtime before sending to AI
+**Template System**: Uses placeholder syntax `@module_name` - modules resolved at runtime before sending to AI
 
 **Advanced Module Features**:
 - **Trigger Words/Phrases**: Modules activate based on conversation content
@@ -45,7 +45,7 @@ Frontend (Vue 3) ←→ Backend (FastAPI) ←→ Database (PostgreSQL + pgvector
 - **Execution Timing**: After AI Response, Before AI Response, On demand
 
 **Module Dependencies**: 
-- Modules reference other modules using `{module_name}` syntax
+- Modules reference other modules using `@module_name` syntax
 - Recursive call detection prevents infinite loops
 - Missing dependency validation with user warnings
 
@@ -106,8 +106,8 @@ project-2501/
 - **Testing**: Vitest 3.2.4
 - **Build**: Vite 7.0.6
 
-### Database
-- **Primary**: PostgreSQL with pgvector extension
+### Database (PostgreSQL with pgvector extension)
+- **Primary**: project2501 (owned by project2501 user) 
 - **Test DB**: project2501_test (owned by project2501 user)
 - **Models**: Persona, Module, Conversation, Message (all with UUIDs)
 
@@ -169,7 +169,7 @@ pytest tests/integration/ -v
 **Database**:
 - Main DB: `project2501` 
 - Test DB: `project2501_test`
-- User: `project2501` with password in `.env`
+- User: `project2501` with password in `.env` and `.env.test`
 - Connection test available at: `GET /api/database/test`
 
 ### Frontend Development
@@ -188,9 +188,9 @@ npm run format     # Format code with Prettier
 - Golden ratio 4-panel grid layout
 - MainChat (Area A), DisplayArea (Area B), ControlPanel (Area C), Info (Area D)
 - Cyberpunk theme with custom styling
-- Components: Personas, Modules, Settings, Tools, Files, Scratchpad views
+- Components: Personas, Modules, Settings, Tools, Files, Scratchpad, Debug views
 
-## 🚨 Critical Development Principles (Anti-Technical Debt)
+## 🚨  CRITICAL DEVELOPMENT PRINCIPLES (Anti-Technical Debt)
 
 ### 1. **Check Before You Code - Avoid Reimplementation**
 - **ALWAYS SEARCH FIRST**: Before implementing ANY feature, search the entire codebase for related functionality:
@@ -209,6 +209,7 @@ npm run format     # Format code with Prettier
 - **Dependency Injection**: Pass dependencies rather than hard-coding them
 - **Event-Driven**: Use events/signals instead of direct coupling where possible
 - **Configuration Over Code**: Make behavior configurable rather than hardcoded
+- **AVOID HARDCODING VALUES**: See previous line
 - **Avoid Backend Logic in Frontend**: Keep business logic in the backend
 
 ### 3. **Architectural Awareness**
@@ -225,7 +226,7 @@ npm run format     # Format code with Prettier
 - **Test with real database** - integration tests preferred over complex mocking
 
 ### 5. **Module System Understanding**
-- **Template Resolution**: `{module_name}` placeholders get resolved at runtime
+- **Template Resolution**: `@module_name` placeholders get resolved at runtime
 - **Advanced Modules**: Python scripts with trigger patterns and execution timing
 - **Dependency Chain**: Modules can reference other modules - avoid circular dependencies
 
@@ -314,10 +315,10 @@ cd frontend && npm run test:unit       # Tests must pass (when they exist)
 - **Backend API Structure**: FastAPI app with proper configuration
 - **Database Connection**: Connection pooling, testing, error handling
 - **Frontend UI Framework**: Vue 3 app with golden ratio layout and cyberpunk theme
-- **Test Infrastructure**: Comprehensive test suite (**294/294 passing**)
+- **Test Infrastructure**: Comprehensive test suite (**330/330 passing**)
 - **Development Environment**: Scripts, conda environment, modern dependencies
 
-#### **🚀 COMPLETE: Full Chat Infrastructure (Phase 2 - DONE)**
+#### **🚀 COMPLETE: Full Chat Infrastructure**
 - **Chat API Endpoints**: `/api/chat/send` and `/api/chat/stream` with Server-Sent Events ✅
 - **Connection Testing**: `/api/connections/ollama/test` and `/api/connections/openai/test` ✅
 - **AI Provider Services**: Full Ollama and OpenAI integration with streaming support ✅
@@ -325,7 +326,7 @@ cd frontend && npm run test:unit       # Tests must pass (when they exist)
 - **Frontend-Backend Integration**: Complete chat functionality with all controls working ✅
 - **Settings Architecture**: Provider settings passed in requests (no backend duplication) ✅
 - **Error Handling**: Comprehensive authentication, connection, and validation error handling ✅
-- **TDD Coverage**: All 294 integration tests passing, including 14 chat, 14 conversation, and 27 message tests ✅
+- **TDD Coverage**: All 330 integration tests passing, including 14 chat, 14 conversation, and 27 message tests ✅
 
 #### **Chat System Architecture:**
 **Frontend-Only Settings Storage**: All provider connection settings (Ollama, OpenAI) stored in browser localStorage only.
@@ -370,7 +371,7 @@ Messages:      GET  /api/messages/by-conversation/{id}   # List messages in conv
   "message": "Hello!",
   "provider": "ollama" | "openai", 
   "stream": true | false,
-  "persona_id": "uuid-string",         // Optional: persona for system prompt resolution
+  "persona_id": "uuid-string",         // Persona for system prompt resolution
   "provider_settings": {
     "host": "http://localhost:11434",  // From localStorage
     "model": "dolphin-llama3"          // From frontend connection settings
@@ -391,7 +392,7 @@ Messages:      GET  /api/messages/by-conversation/{id}   # List messages in conv
 - **Persona Integration**: System prompts from selected personas ✅
 - **Real-time Chat**: Full bidirectional streaming chat interface ✅
 
-#### **🗃️ COMPLETE: Conversation Persistence System (Phase 3 - DONE)**
+#### **🗃️ COMPLETE: Conversation Persistence System**
 - **Conversation Storage**: Full CRUD API for persistent conversations with database storage ✅
 - **Message Storage**: Messages stored with thinking content, token counts, and metadata ✅
 - **Persona-Conversation Relationships**: Each persona has an ongoing conversation ✅
@@ -449,7 +450,7 @@ Messages:      GET  /api/messages/by-conversation/{id}   # List messages in conv
 - **Database Migration**: Converted from integer to UUID primary keys for security
 - **Cascade Integration**: Messages properly integrate with conversation lifecycle
 
-#### **🎯 COMPLETE: Advanced Chat UI Features (Phase 4 - DONE)**
+#### **🎯 COMPLETE: Advanced Chat UI Features**
 - **Frontend Chat Integration**: Complete connection between UI and conversation persistence systems ✅
 - **In-Place Message Editing**: Full UI for editing message content and thinking sections with save/cancel ✅
 - **Edit/Delete Message Actions**: Contextual buttons with existing card styling, positioned in message corners ✅
@@ -497,7 +498,7 @@ Messages:      GET  /api/messages/by-conversation/{id}   # List messages in conv
 - **Markdown Library**: `marked@16.2.0` with `@types/marked@5.0.2` for TypeScript support
 - **CSS Architecture**: `:deep()` selectors for scoped style penetration of dynamically generated content
 
-#### **🧠 COMPLETE: Cognitive Engine - Dynamic System Prompt Architecture (Phase 5 - DONE)**
+#### **🧠 COMPLETE: Cognitive Engine - Dynamic System Prompt Architecture**
 - **Module Resolution Service**: Core engine for resolving `@module_name` references in templates ✅
 - **Template Resolution API**: REST endpoints for template validation and resolution ✅
 - **Chat Integration**: Full integration with Ollama/OpenAI providers using resolved system prompts ✅
@@ -536,13 +537,13 @@ The system treats persona templates as **living, modular heads-up displays** tha
 - **Comprehensive Warnings**: Detailed warning system for missing modules, circular dependencies, depth limits
 
 **Implementation Highlights**:
-- **Test-Driven Development**: All features implemented following TDD with comprehensive test coverage
+- **Test-Driven Development**: All backend features implemented following TDD with comprehensive test coverage
 - **Clean Architecture**: Proper separation between template parsing, database access, and provider integration  
 - **Future-Ready**: Architecture prepared for advanced modules (Python scripts, dynamic content)
 - **Performance Optimized**: Efficient recursive resolution with proper cycle detection
 - **Error Resilient**: Graceful handling of all edge cases without breaking chat functionality
 
-### 🚧 **Next Development Priorities (Phase 6)**:
+### 🚧 **Next Development Priorities**:
 - **Advanced Modules**: Python script execution for dynamic content generation
 - **Module Sandbox**: Secure execution environment for user-provided scripts
 - **Frontend Integration**: Template editor with @module autocomplete and validation
@@ -551,7 +552,7 @@ The system treats persona templates as **living, modular heads-up displays** tha
 - **Advanced Chat Features**: File uploads, tool calling, conversation memory
 
 ### 💡 **Key Implementation Notes**:
-- **The core innovation** is the dynamic system prompt architecture - now fully operational! ✅
+- **The core innovation** is the dynamic system prompt architecture - simple modules now fully operational! ✅
 - **Cognitive Engine is complete** - full `@module_name` resolution with recursive support and error handling
 - **Complete chat system is working** - full Ollama/OpenAI integration with streaming and persona support
 - **Conversation persistence is complete** - full CRUD API with database storage and thinking support
