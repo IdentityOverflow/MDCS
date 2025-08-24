@@ -175,23 +175,12 @@ async def send_chat_message(request: ChatSendRequest, db: Session = Depends(get_
         response_timestamp = time.time()
         response_time = response_timestamp - start_time
         
-        # Create debug data for the request/response
+        # Create debug data for the request/response - use actual API format
         from .chat_models import DebugData
+        
         debug_data = DebugData(
-            provider_request={
-                "message": provider_request.message,
-                "provider_type": provider_request.provider_type.value,
-                "provider_settings": provider_request.provider_settings,
-                "chat_controls": provider_request.chat_controls,
-                "system_prompt": provider_request.system_prompt
-            },
-            provider_response={
-                "content": provider_response.content,
-                "model": provider_response.model,
-                "provider_type": provider_response.provider_type.value,
-                "metadata": provider_response.metadata,
-                "thinking": provider_response.thinking
-            },
+            provider_request=provider_response.metadata.get("debug_api_request", {}),
+            provider_response=provider_response.metadata.get("debug_api_response", {}),
             request_timestamp=request_timestamp,
             response_timestamp=response_timestamp
         )
@@ -305,26 +294,15 @@ async def stream_chat_message(request: ChatSendRequest, db: Session = Depends(ge
                     if provider_chunk.done:
                         final_metadata = provider_chunk.metadata
                     
-                    # Prepare debug data for final chunk
+                    # Prepare debug data for final chunk - use actual API format
                     debug_data = None
                     if provider_chunk.done:
                         response_timestamp = time.time()
                         from .chat_models import DebugData
+                        
                         debug_data = DebugData(
-                            provider_request={
-                                "message": provider_request.message,
-                                "provider_type": provider_request.provider_type.value,
-                                "provider_settings": provider_request.provider_settings,
-                                "chat_controls": provider_request.chat_controls,
-                                "system_prompt": provider_request.system_prompt
-                            },
-                            provider_response={
-                                "content": accumulated_content,
-                                "model": provider_chunk.model,
-                                "provider_type": provider_chunk.provider_type.value,
-                                "metadata": final_metadata or {},
-                                "thinking": accumulated_thinking or None
-                            },
+                            provider_request=provider_chunk.metadata.get("debug_api_request", {}),
+                            provider_response=provider_chunk.metadata.get("debug_api_response", {}),
                             request_timestamp=request_timestamp,
                             response_timestamp=response_timestamp
                         )

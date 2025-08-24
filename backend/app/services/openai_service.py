@@ -321,7 +321,14 @@ class OpenAIService(AIProvider):
                         raise ProviderConnectionError(error_msg)
                     
                     response_data = json.loads(response_text)
-                    return self.response_parser.parse_response(response_data)
+                    parsed_response = self.response_parser.parse_response(response_data)
+                    
+                    # Add debug information - actual API request payload and response
+                    parsed_response.metadata["debug_api_request"] = payload
+                    parsed_response.metadata["debug_api_response"] = response_data
+                    parsed_response.metadata["debug_api_url"] = url
+                    
+                    return parsed_response
         
         except ClientConnectorError as e:
             logger.error(f"Failed to connect to OpenAI: {e}")
@@ -380,6 +387,20 @@ class OpenAIService(AIProvider):
                                 if line:
                                     parsed_chunk = self.stream_parser.parse_chunk(line)
                                     if parsed_chunk:
+                                        # Add debug information to the final chunk
+                                        if parsed_chunk.done:
+                                            parsed_chunk.metadata["debug_api_request"] = payload
+                                            # Parse the line to get the actual response data
+                                            if line.startswith("data: ") and not line[6:].strip() == "[DONE]":
+                                                try:
+                                                    chunk_data = json.loads(line[6:].strip())
+                                                    parsed_chunk.metadata["debug_api_response"] = chunk_data
+                                                except json.JSONDecodeError:
+                                                    parsed_chunk.metadata["debug_api_response"] = {"raw_line": line}
+                                            else:
+                                                parsed_chunk.metadata["debug_api_response"] = {"raw_line": line}
+                                            parsed_chunk.metadata["debug_api_url"] = url
+                                        
                                         yield parsed_chunk
         
         except ClientConnectorError as e:

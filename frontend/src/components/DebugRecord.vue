@@ -8,7 +8,6 @@ const props = defineProps<{
 
 // Component state
 const isExpanded = ref(false)
-const showRawRequest = ref(false)
 const activeTab = ref<'request' | 'response'>('request')
 
 // Computed properties
@@ -37,31 +36,15 @@ const formatJson = (obj: any): string => {
   return JSON.stringify(obj, null, 2)
 }
 
-// Get clean request data for display
-const getCleanRequestData = computed(() => {
-  if (showRawRequest.value) {
-    return formatJson(props.record.request)
-  }
-  
-  // Formatted view - show key information nicely
-  return {
-    message: props.record.request.message,
-    provider: props.record.provider,
-    model: props.record.model,
-    system_prompt: props.record.resolved_system_prompt || props.record.request.system_prompt,
-    chat_controls: props.record.request.chat_controls,
-    provider_settings: props.record.request.provider_settings
-  }
+// Get request/response data for display
+const getRequestData = computed(() => {
+  // Always show the actual provider request (what gets sent to Ollama/OpenAI)
+  return props.record.request
 })
 
-const getCleanResponseData = computed(() => {
-  return {
-    content: props.record.response.content,
-    model: props.record.response.model,
-    provider: props.record.response.provider_type,
-    thinking: props.record.response.thinking || 'No thinking content',
-    metadata: props.record.response.metadata
-  }
+const getResponseData = computed(() => {
+  // Always show raw response data
+  return props.record.response
 })
 </script>
 
@@ -95,16 +78,7 @@ const getCleanResponseData = computed(() => {
         </div>
       </div>
 
-      <!-- Controls -->
-      <div class="record-controls">
-        <label class="toggle-raw">
-          <input 
-            type="checkbox" 
-            v-model="showRawRequest"
-          />
-          <span>Show Raw Request</span>
-        </label>
-      </div>
+      <!-- No controls needed - always show provider format -->
 
       <!-- Tabs -->
       <div class="record-tabs">
@@ -127,44 +101,15 @@ const getCleanResponseData = computed(() => {
 
         <!-- Request Tab -->
         <div v-if="activeTab === 'request'" class="tab-content">
-          <div v-if="showRawRequest" class="raw-content">
-            <pre>{{ formatJson(record.request) }}</pre>
-          </div>
-          <div v-else class="formatted-content">
-            <div class="data-section">
-              <h5>Message</h5>
-              <div class="data-value">{{ record.request.message }}</div>
-            </div>
-            
-            <div class="data-section">
-              <h5>Provider Settings</h5>
-              <pre class="json-content">{{ formatJson(record.request.provider_settings) }}</pre>
-            </div>
-            
-            <div class="data-section">
-              <h5>Chat Controls</h5>
-              <pre class="json-content">{{ formatJson(record.request.chat_controls) }}</pre>
-            </div>
+          <div class="raw-content">
+            <pre>{{ formatJson(getRequestData) }}</pre>
           </div>
         </div>
 
         <!-- Response Tab -->
         <div v-if="activeTab === 'response'" class="tab-content">
-          <div class="formatted-content">
-            <div class="data-section">
-              <h5>Content</h5>
-              <div class="response-content">{{ record.response.content }}</div>
-            </div>
-            
-            <div v-if="record.response.thinking" class="data-section">
-              <h5>Thinking</h5>
-              <div class="thinking-content">{{ record.response.thinking }}</div>
-            </div>
-            
-            <div class="data-section">
-              <h5>Metadata</h5>
-              <pre class="json-content">{{ formatJson(record.response.metadata) }}</pre>
-            </div>
+          <div class="raw-content">
+            <pre>{{ formatJson(getResponseData) }}</pre>
           </div>
         </div>
       </div>
@@ -278,28 +223,7 @@ const getCleanResponseData = computed(() => {
   word-break: break-word;
 }
 
-.record-controls {
-  margin-bottom: 16px;
-  padding-bottom: 16px;
-  border-bottom: 1px solid var(--border);
-}
-
-.toggle-raw {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  cursor: pointer;
-  font-size: 0.85em;
-  color: var(--fg);
-}
-
-.toggle-raw input[type="checkbox"] {
-  margin: 0;
-}
-
-.record-tabs {
-  /* Tab styling */
-}
+/* Tab styling */
 
 .tab-headers {
   display: flex;
@@ -339,46 +263,7 @@ const getCleanResponseData = computed(() => {
   min-height: 200px;
 }
 
-.formatted-content {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-}
-
-.data-section h5 {
-  color: var(--accent);
-  font-size: 0.8em;
-  font-weight: 600;
-  margin-bottom: 6px;
-  text-transform: uppercase;
-  letter-spacing: 0.3px;
-}
-
-.data-value,
-.response-content,
-.thinking-content {
-  background: var(--bg);
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  padding: 10px;
-  color: var(--fg);
-  font-size: 0.85em;
-  line-height: 1.4;
-  white-space: pre-wrap;
-  word-break: break-word;
-}
-
-.response-content {
-  max-height: 300px;
-  overflow-y: auto;
-}
-
-.thinking-content {
-  max-height: 200px;
-  overflow-y: auto;
-  font-style: italic;
-  opacity: 0.8;
-}
+/* Raw content is now the only content display */
 
 .json-content,
 .raw-content pre {

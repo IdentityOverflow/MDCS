@@ -34,6 +34,6 @@ export function handleImageError(event: Event): void {
  * Counts template components in a template string
  */
 export function countComponents(template: string): number {
-  const matches = template.match(/\{[^}]*_module\}/g) || template.match(/\{[^}]*module[^}]*\}/g)
+  const matches = template.match(/@([a-z][a-z0-9_]{0,49})/g)
   return matches ? matches.length : 0
 }

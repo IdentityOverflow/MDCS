@@ -3,6 +3,7 @@ import { ref, onMounted } from 'vue'
 import { useModules } from '@/composables/useModules'
 import { useNotification } from '@/composables/storage'
 import type { ModuleCreateRequest, ModuleUpdateRequest, Module } from '@/types'
+import CodeEditor from '@/components/CodeEditor.vue'
 
 const props = defineProps<{
   editingModuleId?: string | null
@@ -268,12 +269,10 @@ function formatDateTime(dateString: string): string {
           <!-- Script -->
           <div class="form-group">
             <label>Script</label>
-            <textarea 
+            <CodeEditor 
               v-model="formData.script"
-              placeholder="Enter script content"
-              rows="4"
-              class="form-textarea"
-            ></textarea>
+              placeholder="Enter Python script content"
+            />
           </div>
 
           <!-- Timing -->

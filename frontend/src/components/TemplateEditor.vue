@@ -26,6 +26,7 @@ const autocompleteOptions = ref<Array<{ name: string; description?: string }>>([
 const selectedOptionIndex = ref(0)
 const autocompletePosition = ref({ top: 0, left: 0 })
 const currentModuleSearch = ref('')
+const isNavigatingWithKeys = ref(false)
 
 // Use modules composable
 const { modules, fetchModules, activeModules } = useModules()
@@ -74,6 +75,12 @@ function handleInput(event: Event) {
 // Check for @module reference at cursor
 function checkForModuleReference() {
   if (!textarea.value) return
+  
+  // Skip if we're currently navigating with keys
+  if (isNavigatingWithKeys.value) {
+    isNavigatingWithKeys.value = false
+    return
+  }
   
   const cursorPosition = textarea.value.selectionStart
   const text = content.value.substring(0, cursorPosition)
@@ -144,6 +151,7 @@ function hideAutocomplete() {
   showAutocomplete.value = false
   currentModuleSearch.value = ''
   selectedOptionIndex.value = 0
+  isNavigatingWithKeys.value = false
 }
 
 // Handle keydown events
@@ -157,11 +165,15 @@ function handleKeydown(event: KeyboardEvent) {
         selectedOptionIndex.value + 1,
         autocompleteOptions.value.length - 1
       )
+      // Set flag to prevent checkForModuleReference from resetting
+      isNavigatingWithKeys.value = true
       break
       
     case 'ArrowUp':
       event.preventDefault()
       selectedOptionIndex.value = Math.max(selectedOptionIndex.value - 1, 0)
+      // Set flag to prevent checkForModuleReference from resetting
+      isNavigatingWithKeys.value = true
       break
       
     case 'Tab':

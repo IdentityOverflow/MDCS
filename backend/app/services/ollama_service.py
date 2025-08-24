@@ -239,7 +239,14 @@ class OllamaService(AIProvider):
                         raise ProviderConnectionError(error_msg)
                     
                     response_data = await response.json()
-                    return self.response_parser.parse_response(response_data)
+                    parsed_response = self.response_parser.parse_response(response_data)
+                    
+                    # Add debug information - actual API request payload and response
+                    parsed_response.metadata["debug_api_request"] = payload
+                    parsed_response.metadata["debug_api_response"] = response_data
+                    parsed_response.metadata["debug_api_url"] = url
+                    
+                    return parsed_response
         
         except ClientConnectorError as e:
             logger.error(f"Failed to connect to Ollama: {e}")
@@ -290,7 +297,15 @@ class OllamaService(AIProvider):
                                 if line.strip():
                                     try:
                                         chunk_data = json.loads(line)
-                                        yield self.stream_parser.parse_chunk(chunk_data)
+                                        parsed_chunk = self.stream_parser.parse_chunk(chunk_data)
+                                        
+                                        # Add debug information to the final chunk
+                                        if parsed_chunk.done:
+                                            parsed_chunk.metadata["debug_api_request"] = payload
+                                            parsed_chunk.metadata["debug_api_response"] = chunk_data
+                                            parsed_chunk.metadata["debug_api_url"] = url
+                                        
+                                        yield parsed_chunk
                                     except json.JSONDecodeError:
                                         # Skip invalid JSON lines
                                         continue

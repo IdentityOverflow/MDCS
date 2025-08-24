@@ -59,7 +59,7 @@ async function handlePersonaSelect(persona: Persona) {
 <template>
   <div class="container">
     <MainChat />
-    <DisplayArea :selected-component="selectedComponent" @select-persona="handlePersonaSelect" />
+    <DisplayArea :selected-component="selectedComponent" @select-persona="handlePersonaSelect" @select-component="handleComponentSelect" />
     <ControlPanel @select-component="handleComponentSelect" />
     <Info 
       :selected-persona="selectedPersona" 
