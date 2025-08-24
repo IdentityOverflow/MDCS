@@ -31,6 +31,16 @@ const moduleMetadata = ref<{
   updated_at?: string
 } | null>(null)
 
+// Script testing state
+const testingScript = ref(false)
+const testResult = ref<{
+  success: boolean
+  resolved_content?: string
+  outputs?: Record<string, any>
+  error?: string
+  traceback?: string
+} | null>(null)
+
 // Module name validation
 const nameValidation = ref({
   isValid: true,
@@ -179,6 +189,58 @@ function formatDateTime(dateString: string): string {
     return dateString
   }
 }
+
+async function testScript() {
+  if (!formData.value.script?.trim()) {
+    notification.showError('Please enter a script to test')
+    return
+  }
+  
+  testingScript.value = true
+  testResult.value = null
+  clearError()
+  
+  try {
+    const response = await fetch('http://localhost:8000/api/modules/test-script', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        script: formData.value.script,
+        content: formData.value.content || ''
+      })
+    })
+    
+    if (!response.ok) {
+      const errorData = await response.text()
+      throw new Error(`HTTP ${response.status}: ${errorData}`)
+    }
+    
+    const result = await response.json()
+    testResult.value = result
+    
+    if (result.success) {
+      notification.showSuccess('Script executed successfully!')
+    } else {
+      notification.showError('Script execution failed')
+    }
+    
+  } catch (err) {
+    const errorMessage = err instanceof Error ? err.message : 'Unknown error'
+    notification.showError(`Failed to test script: ${errorMessage}`)
+    testResult.value = {
+      success: false,
+      error: errorMessage
+    }
+  } finally {
+    testingScript.value = false
+  }
+}
+
+function clearTestResult() {
+  testResult.value = null
+}
 </script>
 
 <template>
@@ -268,11 +330,77 @@ function formatDateTime(dateString: string): string {
 
           <!-- Script -->
           <div class="form-group">
-            <label>Script</label>
+            <div class="script-header">
+              <label>Script</label>
+              <button 
+                type="button" 
+                class="test-script-btn"
+                @click="testScript"
+                :disabled="testingScript || !formData.script?.trim()"
+                title="Test the Python script"
+              >
+                <i v-if="testingScript" class="fa-solid fa-spinner fa-spin"></i>
+                <i v-else class="fa-solid fa-play"></i>
+                {{ testingScript ? 'Testing...' : 'Test Script' }}
+              </button>
+            </div>
             <CodeEditor 
               v-model="formData.script"
               placeholder="Enter Python script content"
             />
+            
+            <!-- Test Results -->
+            <div v-if="testResult" class="test-result-container">
+              <div class="test-result-header">
+                <div class="result-status" :class="{ 'success': testResult.success, 'error': !testResult.success }">
+                  <i :class="testResult.success ? 'fa-solid fa-check-circle' : 'fa-solid fa-exclamation-triangle'"></i>
+                  {{ testResult.success ? 'Script Valid' : 'Script Error' }}
+                </div>
+                <button 
+                  type="button" 
+                  class="close-result-btn"
+                  @click="clearTestResult"
+                  title="Clear test results"
+                >
+                  <i class="fa-solid fa-times"></i>
+                </button>
+              </div>
+              
+              <!-- Success Results -->
+              <div v-if="testResult.success" class="success-result">
+                <div v-if="testResult.outputs && Object.keys(testResult.outputs).length > 0" class="outputs-section">
+                  <h4>Script Outputs:</h4>
+                  <div class="outputs-grid">
+                    <div 
+                      v-for="[key, value] in Object.entries(testResult.outputs)" 
+                      :key="key"
+                      class="output-item"
+                    >
+                      <span class="output-key">${{ key }}</span>
+                      <span class="output-value">{{ String(value) }}</span>
+                    </div>
+                  </div>
+                </div>
+                
+                <div v-if="testResult.resolved_content && testResult.resolved_content !== formData.content" class="resolved-content-section">
+                  <h4>Resolved Content:</h4>
+                  <pre class="resolved-content">{{ testResult.resolved_content }}</pre>
+                </div>
+              </div>
+              
+              <!-- Error Results -->
+              <div v-if="!testResult.success" class="error-result">
+                <div v-if="testResult.error" class="error-message">
+                  <h4>Error:</h4>
+                  <pre>{{ testResult.error }}</pre>
+                </div>
+                
+                <div v-if="testResult.traceback" class="traceback">
+                  <h4>Traceback:</h4>
+                  <pre>{{ testResult.traceback }}</pre>
+                </div>
+              </div>
+            </div>
           </div>
 
           <!-- Timing -->
@@ -408,5 +536,178 @@ function formatDateTime(dateString: string): string {
   font-size: 0.75em;
   margin-top: 4px;
   font-style: italic;
+}
+
+/* Script testing styles */
+.script-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.test-script-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  background: linear-gradient(135deg, var(--accent) 0%, #ff4757 100%);
+  border: 1px solid var(--accent);
+  color: white;
+  border-radius: 2px;
+  font-size: 0.8em;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  clip-path: polygon(0 0, calc(100% - 8px) 0, 100% 50%, calc(100% - 8px) 100%, 0 100%);
+}
+
+.test-script-btn:hover:not(:disabled) {
+  background: linear-gradient(135deg, #ff4757 0%, var(--accent) 100%);
+  box-shadow: 0 0 8px rgba(255, 0, 110, 0.4);
+  transform: translateY(-1px);
+}
+
+.test-script-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.test-result-container {
+  margin-top: 12px;
+  background: var(--surface);
+  border: 1px solid rgba(0, 212, 255, 0.2);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.test-result-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 12px;
+  background: rgba(0, 212, 255, 0.05);
+  border-bottom: 1px solid rgba(0, 212, 255, 0.1);
+}
+
+.result-status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 600;
+  font-size: 0.85em;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.result-status.success {
+  color: #00ff41;
+}
+
+.result-status.error {
+  color: #ff4757;
+}
+
+.close-result-btn {
+  background: none;
+  border: none;
+  color: var(--fg);
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 2px;
+  transition: all 0.2s ease;
+  opacity: 0.6;
+}
+
+.close-result-btn:hover {
+  background: rgba(255, 71, 87, 0.2);
+  color: #ff4757;
+  opacity: 1;
+}
+
+.success-result, .error-result {
+  padding: 12px;
+}
+
+.outputs-section h4, .resolved-content-section h4, .error-message h4, .traceback h4 {
+  color: var(--accent);
+  font-size: 0.8em;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 8px;
+}
+
+.outputs-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.output-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  background: rgba(0, 0, 0, 0.2);
+  padding: 8px;
+  border-radius: 2px;
+  border: 1px solid rgba(0, 212, 255, 0.1);
+}
+
+.output-key {
+  color: var(--accent);
+  font-size: 0.8em;
+  font-weight: 600;
+  font-family: monospace;
+}
+
+.output-value {
+  color: var(--fg);
+  font-size: 0.85em;
+  font-family: monospace;
+  background: rgba(0, 0, 0, 0.2);
+  padding: 4px;
+  border-radius: 2px;
+  border: 1px solid rgba(0, 212, 255, 0.05);
+  word-break: break-word;
+}
+
+.resolved-content, .error-message pre, .traceback pre {
+  background: rgba(0, 0, 0, 0.3);
+  padding: 12px;
+  border-radius: 2px;
+  border: 1px solid rgba(0, 212, 255, 0.1);
+  color: var(--fg);
+  font-size: 0.8em;
+  font-family: 'Fira Code', monospace;
+  line-height: 1.4;
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow-x: auto;
+  margin: 0;
+}
+
+.error-message pre, .traceback pre {
+  color: #ff4757;
+  border-color: rgba(255, 71, 87, 0.2);
+  background: rgba(255, 71, 87, 0.05);
+}
+
+.resolved-content {
+  color: #00ff41;
+  border-color: rgba(0, 255, 65, 0.2);
+  background: rgba(0, 255, 65, 0.05);
+}
+
+.error-result {
+  border-top: 1px solid rgba(255, 71, 87, 0.2);
+}
+
+.success-result {
+  border-top: 1px solid rgba(0, 255, 65, 0.2);
 }
 </style>

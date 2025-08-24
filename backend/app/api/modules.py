@@ -14,6 +14,8 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from app.database.connection import get_db
 from app.models import Module, ModuleType, ExecutionTiming
+from app.core.script_engine import ScriptEngine
+from app.core.script_context import ScriptExecutionContext
 
 logger = logging.getLogger(__name__)
 
@@ -84,6 +86,23 @@ class ModuleResponse(BaseModel):
             created_at=module.created_at.isoformat(),
             updated_at=module.updated_at.isoformat()
         )
+
+
+class ScriptTestRequest(BaseModel):
+    """Request model for testing a script."""
+    script: str = Field(..., description="Python script to test")
+    content: Optional[str] = Field("", description="Module content template")
+    
+    model_config = ConfigDict(use_enum_values=True)
+
+
+class ScriptTestResponse(BaseModel):
+    """Response model for script test results."""
+    success: bool = Field(..., description="Whether the script executed successfully")
+    resolved_content: Optional[str] = Field(None, description="Resolved module content if successful")
+    outputs: Optional[dict] = Field(None, description="Script output variables")
+    error: Optional[str] = Field(None, description="Error message if failed")
+    traceback: Optional[str] = Field(None, description="Full traceback if failed")
 
 
 # CRUD endpoints
@@ -327,4 +346,75 @@ def delete_module(
         raise HTTPException(
             status_code=500,
             detail=f"Failed to delete module: {str(e)}"
+        )
+
+
+@router.post("/modules/test-script", response_model=ScriptTestResponse)
+def test_script(
+    test_request: ScriptTestRequest,
+    db: Session = Depends(get_db)
+) -> ScriptTestResponse:
+    """
+    Test a Python script for advanced modules.
+    
+    Args:
+        test_request: Script and content to test
+        db: Database session
+        
+    Returns:
+        Test results including success status, resolved content, or error details
+    """
+    logger.info("Testing advanced module script")
+    
+    try:
+        # Create script engine
+        script_engine = ScriptEngine()
+        
+        # Create execution context object
+        ctx_obj = ScriptExecutionContext(
+            conversation_id="test-conversation",
+            persona_id="test-persona", 
+            db_session=db,
+            trigger_data={"test_mode": True}
+        )
+        
+        # Create context dictionary for script execution
+        context = {
+            'ctx': ctx_obj,
+            '__builtins__': {}  # Required for RestrictedPython
+        }
+        
+        # Execute the script
+        result = script_engine.execute_script(
+            script=test_request.script,
+            context=context
+        )
+        
+        # If script executed successfully, try to resolve the content template
+        resolved_content = None
+        if result.success and test_request.content:
+            # Simple variable substitution for testing
+            resolved_content = test_request.content
+            if result.outputs:
+                for var_name, var_value in result.outputs.items():
+                    placeholder = f"${{{var_name}}}"
+                    if placeholder in resolved_content:
+                        resolved_content = resolved_content.replace(placeholder, str(var_value))
+        
+        return ScriptTestResponse(
+            success=result.success,
+            resolved_content=resolved_content or test_request.content,
+            outputs=result.outputs,
+            error=result.error_message,
+            traceback=None  # ScriptExecutionResult doesn't include traceback
+        )
+        
+    except Exception as e:
+        logger.error(f"Unexpected error testing script: {e}")
+        return ScriptTestResponse(
+            success=False,
+            resolved_content=None,
+            outputs=None,
+            error=f"Unexpected error: {str(e)}",
+            traceback=None
         )
