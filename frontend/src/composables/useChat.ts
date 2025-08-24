@@ -5,6 +5,7 @@
 import { ref, computed, type Ref } from 'vue'
 import { useApiConfig } from './apiConfig'
 import { usePersonas } from './usePersonas'
+import { useDebug } from './useDebug'
 
 export interface ChatMessage {
   id: string
@@ -87,6 +88,7 @@ const isSavingMessage = ref(false)
 export function useChat() {
   const { apiRequest } = useApiConfig()
   const { getPersonaById } = usePersonas()
+  const { addDebugRecord } = useDebug()
   
   // Computed values
   const chatHistory = computed(() => messages.value)
@@ -548,6 +550,18 @@ export function useChat() {
                   
                   // If this is the final chunk, save the complete message
                   if (chunk.done) {
+                    // Capture debug data if available
+                    if (chunk.debug_data) {
+                      const personaName = selectedPersonaId ? getPersonaById(selectedPersonaId)?.name : undefined
+                      addDebugRecord({
+                        debugData: chunk.debug_data,
+                        personaName,
+                        personaId: selectedPersonaId || undefined,
+                        resolvedSystemPrompt: chunk.resolved_system_prompt,
+                        responseTime: chunk.metadata?.response_time
+                      })
+                    }
+                    
                     await addAssistantMessage(
                       currentStreamingMessage.value,
                       chunk.metadata,
@@ -636,6 +650,18 @@ export function useChat() {
       }
       
       const data = await response.json()
+      
+      // Capture debug data if available
+      if (data.debug_data) {
+        const personaName = selectedPersonaId ? getPersonaById(selectedPersonaId)?.name : undefined
+        addDebugRecord({
+          debugData: data.debug_data,
+          personaName,
+          personaId: selectedPersonaId || undefined,
+          resolvedSystemPrompt: data.resolved_system_prompt,
+          responseTime: data.metadata?.response_time
+        })
+      }
       
       // Add assistant response
       await addAssistantMessage(

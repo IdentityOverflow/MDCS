@@ -165,17 +165,43 @@ async def send_chat_message(request: ChatSendRequest, db: Session = Depends(get_
         # Convert to provider request with resolved system prompt
         provider_request = request.to_provider_request(system_prompt=resolved_system_prompt)
         
+        # Capture request timestamp for debug data
+        request_timestamp = time.time()
+        
         # Send message to provider
         provider_response = await provider.send_message(provider_request)
         
-        # Calculate response time
-        response_time = time.time() - start_time
+        # Capture response timestamp for debug data
+        response_timestamp = time.time()
+        response_time = response_timestamp - start_time
         
-        # Convert to API response with resolved system prompt for debugging
+        # Create debug data for the request/response
+        from .chat_models import DebugData
+        debug_data = DebugData(
+            provider_request={
+                "message": provider_request.message,
+                "provider_type": provider_request.provider_type.value,
+                "provider_settings": provider_request.provider_settings,
+                "chat_controls": provider_request.chat_controls,
+                "system_prompt": provider_request.system_prompt
+            },
+            provider_response={
+                "content": provider_response.content,
+                "model": provider_response.model,
+                "provider_type": provider_response.provider_type.value,
+                "metadata": provider_response.metadata,
+                "thinking": provider_response.thinking
+            },
+            request_timestamp=request_timestamp,
+            response_timestamp=response_timestamp
+        )
+        
+        # Convert to API response with resolved system prompt and debug data
         response = ChatSendResponse.from_provider_response(
             provider_response=provider_response,
             response_time=response_time,
-            resolved_system_prompt=resolved_system_prompt
+            resolved_system_prompt=resolved_system_prompt,
+            debug_data=debug_data
         )
         
         return response
@@ -265,14 +291,51 @@ async def stream_chat_message(request: ChatSendRequest, db: Session = Depends(ge
         async def generate_stream():
             """Generate Server-Sent Events stream."""
             start_time = time.time()
+            request_timestamp = time.time()
+            accumulated_content = ""
+            accumulated_thinking = ""
+            final_metadata = None
             
             try:
                 async for provider_chunk in provider.send_message_stream(provider_request):
+                    # Accumulate content and metadata for debug data
+                    accumulated_content += provider_chunk.content
+                    if provider_chunk.thinking:
+                        accumulated_thinking += provider_chunk.thinking
+                    if provider_chunk.done:
+                        final_metadata = provider_chunk.metadata
+                    
+                    # Prepare debug data for final chunk
+                    debug_data = None
+                    if provider_chunk.done:
+                        response_timestamp = time.time()
+                        from .chat_models import DebugData
+                        debug_data = DebugData(
+                            provider_request={
+                                "message": provider_request.message,
+                                "provider_type": provider_request.provider_type.value,
+                                "provider_settings": provider_request.provider_settings,
+                                "chat_controls": provider_request.chat_controls,
+                                "system_prompt": provider_request.system_prompt
+                            },
+                            provider_response={
+                                "content": accumulated_content,
+                                "model": provider_chunk.model,
+                                "provider_type": provider_chunk.provider_type.value,
+                                "metadata": final_metadata or {},
+                                "thinking": accumulated_thinking or None
+                            },
+                            request_timestamp=request_timestamp,
+                            response_timestamp=response_timestamp
+                        )
+                    
                     # Convert provider chunk to API chunk
                     response_time = time.time() - start_time if provider_chunk.done else None
                     api_chunk = StreamingChatResponse.from_provider_chunk(
                         provider_chunk=provider_chunk,
-                        response_time=response_time
+                        response_time=response_time,
+                        resolved_system_prompt=resolved_system_prompt if provider_chunk.done else None,
+                        debug_data=debug_data
                     )
                     
                     # Format as Server-Sent Event

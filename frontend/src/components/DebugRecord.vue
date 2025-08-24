@@ -1,0 +1,402 @@
+<script setup lang="ts">
+import { ref, computed } from 'vue'
+import type { DebugRecord } from '@/composables/useDebug'
+
+const props = defineProps<{
+  record: DebugRecord
+}>()
+
+// Component state
+const isExpanded = ref(false)
+const showRawRequest = ref(false)
+const activeTab = ref<'request' | 'response'>('request')
+
+// Computed properties
+const formattedTimestamp = computed(() => {
+  return new Date(props.record.timestamp).toLocaleString()
+})
+
+const responseTimeMs = computed(() => {
+  return Math.round(props.record.response_time * 1000)
+})
+
+const systemPromptPreview = computed(() => {
+  const prompt = props.record.resolved_system_prompt || props.record.request.system_prompt
+  if (!prompt) return 'No system prompt'
+  if (prompt.length <= 100) return prompt
+  return prompt.substring(0, 100) + '...'
+})
+
+// Toggle expanded state
+const toggleExpanded = () => {
+  isExpanded.value = !isExpanded.value
+}
+
+// Format JSON for display
+const formatJson = (obj: any): string => {
+  return JSON.stringify(obj, null, 2)
+}
+
+// Get clean request data for display
+const getCleanRequestData = computed(() => {
+  if (showRawRequest.value) {
+    return formatJson(props.record.request)
+  }
+  
+  // Formatted view - show key information nicely
+  return {
+    message: props.record.request.message,
+    provider: props.record.provider,
+    model: props.record.model,
+    system_prompt: props.record.resolved_system_prompt || props.record.request.system_prompt,
+    chat_controls: props.record.request.chat_controls,
+    provider_settings: props.record.request.provider_settings
+  }
+})
+
+const getCleanResponseData = computed(() => {
+  return {
+    content: props.record.response.content,
+    model: props.record.response.model,
+    provider: props.record.response.provider_type,
+    thinking: props.record.response.thinking || 'No thinking content',
+    metadata: props.record.response.metadata
+  }
+})
+</script>
+
+<template>
+  <div class="debug-record">
+    <!-- Record Header -->
+    <div class="record-header" @click="toggleExpanded">
+      <div class="record-title">
+        <i :class="['fa-solid', isExpanded ? 'fa-chevron-down' : 'fa-chevron-right']"></i>
+        <span class="timestamp">{{ formattedTimestamp }}</span>
+      </div>
+      
+      <div class="record-meta">
+        <span v-if="record.persona_name" class="persona">{{ record.persona_name }}</span>
+        <span class="provider">{{ record.provider }}</span>
+        <span class="model">{{ record.model }}</span>
+        <span class="response-time">{{ responseTimeMs }}ms</span>
+      </div>
+    </div>
+
+    <!-- Expanded Content -->
+    <div v-if="isExpanded" class="record-content">
+      <!-- System Prompt Highlight -->
+      <div class="system-prompt-section">
+        <h4>
+          <i class="fa-solid fa-terminal"></i>
+          System Prompt
+        </h4>
+        <div class="system-prompt">
+          <pre>{{ record.resolved_system_prompt || record.request.system_prompt || 'No system prompt' }}</pre>
+        </div>
+      </div>
+
+      <!-- Controls -->
+      <div class="record-controls">
+        <label class="toggle-raw">
+          <input 
+            type="checkbox" 
+            v-model="showRawRequest"
+          />
+          <span>Show Raw Request</span>
+        </label>
+      </div>
+
+      <!-- Tabs -->
+      <div class="record-tabs">
+        <div class="tab-headers">
+          <button 
+            :class="['tab-header', { active: activeTab === 'request' }]"
+            @click="activeTab = 'request'"
+          >
+            <i class="fa-solid fa-arrow-right"></i>
+            Request
+          </button>
+          <button 
+            :class="['tab-header', { active: activeTab === 'response' }]"
+            @click="activeTab = 'response'"
+          >
+            <i class="fa-solid fa-arrow-left"></i>
+            Response
+          </button>
+        </div>
+
+        <!-- Request Tab -->
+        <div v-if="activeTab === 'request'" class="tab-content">
+          <div v-if="showRawRequest" class="raw-content">
+            <pre>{{ formatJson(record.request) }}</pre>
+          </div>
+          <div v-else class="formatted-content">
+            <div class="data-section">
+              <h5>Message</h5>
+              <div class="data-value">{{ record.request.message }}</div>
+            </div>
+            
+            <div class="data-section">
+              <h5>Provider Settings</h5>
+              <pre class="json-content">{{ formatJson(record.request.provider_settings) }}</pre>
+            </div>
+            
+            <div class="data-section">
+              <h5>Chat Controls</h5>
+              <pre class="json-content">{{ formatJson(record.request.chat_controls) }}</pre>
+            </div>
+          </div>
+        </div>
+
+        <!-- Response Tab -->
+        <div v-if="activeTab === 'response'" class="tab-content">
+          <div class="formatted-content">
+            <div class="data-section">
+              <h5>Content</h5>
+              <div class="response-content">{{ record.response.content }}</div>
+            </div>
+            
+            <div v-if="record.response.thinking" class="data-section">
+              <h5>Thinking</h5>
+              <div class="thinking-content">{{ record.response.thinking }}</div>
+            </div>
+            
+            <div class="data-section">
+              <h5>Metadata</h5>
+              <pre class="json-content">{{ formatJson(record.response.metadata) }}</pre>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</template>
+
+<style scoped>
+.debug-record {
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  margin-bottom: 12px;
+  background: var(--surface);
+}
+
+.record-header {
+  padding: 12px 16px;
+  cursor: pointer;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  transition: background-color 0.2s ease;
+}
+
+.record-header:hover {
+  background: rgba(0, 212, 255, 0.05);
+}
+
+.record-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.record-title i {
+  color: var(--accent);
+  font-size: 0.8em;
+}
+
+.timestamp {
+  font-family: 'Fira Code', monospace;
+  font-size: 0.9em;
+  color: var(--fg);
+  font-weight: 600;
+}
+
+.record-meta {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 0.8em;
+}
+
+.persona {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.provider {
+  color: var(--fg);
+  opacity: 0.8;
+}
+
+.model {
+  color: var(--fg);
+  opacity: 0.7;
+  font-family: 'Fira Code', monospace;
+}
+
+.response-time {
+  color: #2ed573;
+  font-family: 'Fira Code', monospace;
+  font-weight: 600;
+}
+
+.record-content {
+  border-top: 1px solid var(--border);
+  padding: 16px;
+}
+
+.system-prompt-section {
+  margin-bottom: 20px;
+}
+
+.system-prompt-section h4 {
+  color: var(--accent);
+  font-size: 0.9em;
+  font-weight: 600;
+  margin-bottom: 8px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.system-prompt {
+  background: rgba(0, 212, 255, 0.03);
+  border: 1px solid rgba(0, 212, 255, 0.2);
+  border-radius: 4px;
+  padding: 12px;
+}
+
+.system-prompt pre {
+  margin: 0;
+  color: var(--accent);
+  font-family: 'Fira Code', monospace;
+  font-size: 0.8em;
+  line-height: 1.4;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.record-controls {
+  margin-bottom: 16px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--border);
+}
+
+.toggle-raw {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  font-size: 0.85em;
+  color: var(--fg);
+}
+
+.toggle-raw input[type="checkbox"] {
+  margin: 0;
+}
+
+.record-tabs {
+  /* Tab styling */
+}
+
+.tab-headers {
+  display: flex;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 16px;
+}
+
+.tab-header {
+  background: none;
+  border: none;
+  padding: 8px 16px;
+  color: var(--fg);
+  opacity: 0.6;
+  cursor: pointer;
+  font-size: 0.85em;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  transition: all 0.2s ease;
+}
+
+.tab-header:hover {
+  opacity: 0.8;
+  background: rgba(0, 212, 255, 0.05);
+}
+
+.tab-header.active {
+  opacity: 1;
+  color: var(--accent);
+  border-bottom: 2px solid var(--accent);
+}
+
+.tab-content {
+  min-height: 200px;
+}
+
+.formatted-content {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.data-section h5 {
+  color: var(--accent);
+  font-size: 0.8em;
+  font-weight: 600;
+  margin-bottom: 6px;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
+.data-value,
+.response-content,
+.thinking-content {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 10px;
+  color: var(--fg);
+  font-size: 0.85em;
+  line-height: 1.4;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.response-content {
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.thinking-content {
+  max-height: 200px;
+  overflow-y: auto;
+  font-style: italic;
+  opacity: 0.8;
+}
+
+.json-content,
+.raw-content pre {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 10px;
+  margin: 0;
+  color: var(--fg);
+  font-family: 'Fira Code', monospace;
+  font-size: 0.75em;
+  line-height: 1.3;
+  overflow-x: auto;
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.raw-content {
+  margin-top: 8px;
+}
+</style>

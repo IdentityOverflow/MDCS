@@ -27,13 +27,13 @@ const emit = defineEmits<{
         <i class="fa-solid fa-folder"></i>
         <span>Files</span>
       </button>
-      <button class="cyberpunk-btn small" @click="emit('selectComponent', 'Settings')">
-        <i class="fa-solid fa-gear"></i>
-        <span>Settings</span>
-      </button>
       <button class="cyberpunk-btn small" @click="emit('selectComponent', 'Rooms')">
         <i class="fa-solid fa-door-open"></i>
         <span>Rooms</span>
+      </button>
+      <button class="cyberpunk-btn small" @click="emit('selectComponent', 'Settings')">
+        <i class="fa-solid fa-gear"></i>
+        <span>Settings</span>
       </button>
       <button class="cyberpunk-btn small" @click="emit('selectComponent', 'Debug')">
         <i class="fa-solid fa-bug"></i>

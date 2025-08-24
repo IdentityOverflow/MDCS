@@ -86,17 +86,26 @@ class ChatMetadata(BaseModel):
         )
 
 
+class DebugData(BaseModel):
+    """Debug information for AI provider requests/responses."""
+    provider_request: Dict[str, Any] = Field(..., description="Full request sent to AI provider")
+    provider_response: Dict[str, Any] = Field(..., description="Full response from AI provider")
+    request_timestamp: float = Field(..., description="Timestamp when request was sent")
+    response_timestamp: float = Field(..., description="Timestamp when response was received")
+
 class ChatSendResponse(BaseModel):
     """Response model for chat messages."""
     content: str = Field(..., description="The response content")
     metadata: ChatMetadata = Field(..., description="Response metadata")
     thinking: Optional[str] = Field(None, description="The model's reasoning/thinking process")
     resolved_system_prompt: Optional[str] = Field(None, description="The resolved system prompt used for debugging")
+    debug_data: Optional[DebugData] = Field(None, description="Debug information for AI provider interaction")
     
     @classmethod
     def from_provider_response(cls, provider_response: ChatResponse, 
                              response_time: Optional[float] = None,
-                             resolved_system_prompt: Optional[str] = None) -> "ChatSendResponse":
+                             resolved_system_prompt: Optional[str] = None,
+                             debug_data: Optional[DebugData] = None) -> "ChatSendResponse":
         """Create response from provider response."""
         provider = ChatProvider.OLLAMA if provider_response.provider_type == ProviderType.OLLAMA else ChatProvider.OPENAI
         
@@ -111,7 +120,8 @@ class ChatSendResponse(BaseModel):
             content=provider_response.content,
             metadata=metadata,
             thinking=provider_response.thinking,
-            resolved_system_prompt=resolved_system_prompt
+            resolved_system_prompt=resolved_system_prompt,
+            debug_data=debug_data
         )
 
 
@@ -121,10 +131,14 @@ class StreamingChatResponse(BaseModel):
     done: bool = Field(..., description="Whether this is the final chunk")
     metadata: Optional[ChatMetadata] = Field(None, description="Metadata (only present in final chunk)")
     thinking: Optional[str] = Field(None, description="The model's reasoning/thinking process (if available)")
+    resolved_system_prompt: Optional[str] = Field(None, description="The resolved system prompt (only in final chunk)")
+    debug_data: Optional[DebugData] = Field(None, description="Debug information (only in final chunk)")
     
     @classmethod
     def from_provider_chunk(cls, provider_chunk: ProviderStreamingResponse, 
-                          response_time: Optional[float] = None) -> "StreamingChatResponse":
+                          response_time: Optional[float] = None,
+                          resolved_system_prompt: Optional[str] = None,
+                          debug_data: Optional[DebugData] = None) -> "StreamingChatResponse":
         """Create from provider streaming response."""
         metadata = None
         
@@ -142,7 +156,9 @@ class StreamingChatResponse(BaseModel):
             content=provider_chunk.content,
             done=provider_chunk.done,
             metadata=metadata,
-            thinking=provider_chunk.thinking
+            thinking=provider_chunk.thinking,
+            resolved_system_prompt=resolved_system_prompt if provider_chunk.done else None,
+            debug_data=debug_data if provider_chunk.done else None
         )
 
 
