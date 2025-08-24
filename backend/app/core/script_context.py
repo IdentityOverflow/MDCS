@@ -64,14 +64,16 @@ class ScriptExecutionContext:
         if name in self._plugin_functions:
             func = self._plugin_functions[name]
             
-            # Create wrapper function that auto-injects db_session if needed
+            # Create wrapper function that auto-injects db_session and script context if needed
             def wrapper(*args, **kwargs):
-                """Wrapper function that handles db_session injection."""
+                """Wrapper function that handles db_session and script context injection."""
                 try:
-                    # Check if function accepts db_session parameter
+                    # Check if function accepts db_session or _script_context parameters
                     sig = inspect.signature(func)
                     if 'db_session' in sig.parameters and 'db_session' not in kwargs:
                         kwargs['db_session'] = self.db_session
+                    if '_script_context' in sig.parameters and '_script_context' not in kwargs:
+                        kwargs['_script_context'] = self
                     
                     return func(*args, **kwargs)
                     

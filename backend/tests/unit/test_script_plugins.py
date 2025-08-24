@@ -297,3 +297,136 @@ class TestPluginFunctionExamples:
         assert func("hello world", "title") == "Hello World"
         assert func("hello", "reverse") == "olleh"
         assert func("test", "unknown") == "test"  # Unknown operation returns original
+
+
+class TestAIPlugins:
+    """Test cases for AI text processing plugin functions."""
+
+    def setup_method(self):
+        """Set up test fixtures before each test method."""
+        # Use global registry to access actual AI plugins
+        from app.core.script_plugins import plugin_registry
+        plugin_registry.load_all_plugins()
+        self.plugin_context = plugin_registry.get_context()
+
+    def test_ai_plugins_loaded(self):
+        """Test that AI processing plugins are loaded correctly."""
+        expected_ai_functions = [
+            "ai_process_text",
+            "ai_summarize", 
+            "ai_extract_topics",
+            "ai_analyze_sentiment",
+            "ai_extract_questions"
+        ]
+        
+        for func_name in expected_ai_functions:
+            assert func_name in self.plugin_context, f"AI function {func_name} not loaded"
+            assert callable(self.plugin_context[func_name]), f"AI function {func_name} not callable"
+
+    def test_ai_process_text_function_signature(self):
+        """Test that ai_process_text function exists and handles parameters correctly."""
+        ai_process_text = self.plugin_context["ai_process_text"]
+        
+        # Test with minimal parameters (should not crash)
+        result = ai_process_text("test text", "summarize this")
+        
+        # Should return a string (even if it's an error message or placeholder)
+        assert isinstance(result, str)
+        assert len(result) > 0
+
+    def test_ai_summarize_function_signature(self):
+        """Test that ai_summarize function exists and handles parameters correctly.""" 
+        ai_summarize = self.plugin_context["ai_summarize"]
+        
+        # Test with minimal parameters
+        result = ai_summarize("This is a long text that needs to be summarized for testing purposes.")
+        
+        # Should return a string
+        assert isinstance(result, str)
+        assert len(result) > 0
+
+    def test_ai_functions_handle_empty_input(self):
+        """Test that AI functions handle empty/invalid input gracefully."""
+        ai_process_text = self.plugin_context["ai_process_text"]
+        
+        # Test with empty text
+        result = ai_process_text("", "summarize")
+        assert isinstance(result, str)
+        assert result == ""  # Should return empty string for empty input
+        
+        # Test with empty instruction
+        result = ai_process_text("some text", "")
+        assert isinstance(result, str)
+        assert result == "some text"  # Should return original text for empty instruction
+
+    def test_ai_functions_parameter_validation(self):
+        """Test that AI functions validate parameters correctly."""
+        ai_process_text = self.plugin_context["ai_process_text"]
+        
+        # Test with invalid provider
+        result = ai_process_text("test", "summarize", provider="invalid_provider")
+        assert isinstance(result, str)
+        assert "Unsupported provider" in result or "Error" in result
+
+
+class TestConversationPlugins:
+    """Test cases for conversation access plugin functions."""
+
+    def setup_method(self):
+        """Set up test fixtures before each test method."""
+        from app.core.script_plugins import plugin_registry
+        plugin_registry.load_all_plugins()
+        self.plugin_context = plugin_registry.get_context()
+
+    def test_conversation_plugins_loaded(self):
+        """Test that conversation plugins are loaded correctly."""
+        expected_conv_functions = [
+            "get_message_count",
+            "get_recent_messages",
+            "get_conversation_summary", 
+            "get_persona_info",
+            "get_conversation_history"
+        ]
+        
+        for func_name in expected_conv_functions:
+            assert func_name in self.plugin_context, f"Conversation function {func_name} not loaded"
+            assert callable(self.plugin_context[func_name]), f"Conversation function {func_name} not callable"
+
+    def test_get_message_count_without_session(self):
+        """Test get_message_count handles missing database session gracefully."""
+        get_message_count = self.plugin_context["get_message_count"]
+        
+        # Without db_session should return 0
+        result = get_message_count()
+        assert result == 0
+
+    def test_get_recent_messages_without_session(self):
+        """Test get_recent_messages handles missing database session gracefully."""
+        get_recent_messages = self.plugin_context["get_recent_messages"]
+        
+        # Without db_session should return empty list
+        result = get_recent_messages()
+        assert result == []
+        assert isinstance(result, list)
+
+    def test_conversation_functions_handle_parameters(self):
+        """Test that conversation functions accept and handle their parameters correctly."""
+        # Test get_message_count with conversation_id
+        get_message_count = self.plugin_context["get_message_count"]
+        result = get_message_count("test-conversation-id")
+        assert isinstance(result, int)
+        
+        # Test get_recent_messages with limit
+        get_recent_messages = self.plugin_context["get_recent_messages"]
+        result = get_recent_messages(limit=5)
+        assert isinstance(result, list)
+        
+        # Test get_conversation_summary
+        get_conversation_summary = self.plugin_context["get_conversation_summary"]
+        result = get_conversation_summary()
+        assert isinstance(result, dict)
+        
+        # Test get_persona_info
+        get_persona_info = self.plugin_context["get_persona_info"]
+        result = get_persona_info()
+        assert isinstance(result, dict)
