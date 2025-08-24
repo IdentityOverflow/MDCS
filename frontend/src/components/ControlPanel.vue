@@ -2,6 +2,10 @@
 const emit = defineEmits<{
   selectComponent: [componentName: string]
 }>()
+
+const openScriptingDocs = () => {
+  window.open('/docs/scripting', '_blank')
+}
 </script>
 
 <template>
@@ -39,7 +43,10 @@ const emit = defineEmits<{
         <i class="fa-solid fa-bug"></i>
         <span>Debug</span>
       </button>
-      <button class="cyberpunk-btn small"></button>
+      <button class="cyberpunk-btn small" @click="openScriptingDocs">
+        <i class="fa-solid fa-code"></i>
+        <span>Scripting</span>
+      </button>
     </div>
   </div>
 </template>

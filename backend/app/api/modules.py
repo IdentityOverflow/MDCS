@@ -4,7 +4,7 @@ Provides full CRUD operations for cognitive system modules.
 """
 
 import logging
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, Depends, Query
@@ -16,6 +16,8 @@ from app.database.connection import get_db
 from app.models import Module, ModuleType, ExecutionTiming
 from app.core.script_engine import ScriptEngine
 from app.core.script_context import ScriptExecutionContext
+from app.core.script_plugins import plugin_registry
+import inspect
 
 logger = logging.getLogger(__name__)
 
@@ -103,6 +105,21 @@ class ScriptTestResponse(BaseModel):
     outputs: Optional[dict] = Field(None, description="Script output variables")
     error: Optional[str] = Field(None, description="Error message if failed")
     traceback: Optional[str] = Field(None, description="Full traceback if failed")
+
+
+class PluginFunctionInfo(BaseModel):
+    """Information about a plugin function."""
+    name: str = Field(..., description="Function name")
+    signature: str = Field(..., description="Function signature")
+    docstring: Optional[str] = Field(None, description="Function documentation")
+    category: str = Field(..., description="Function category (time, conversation, utility)")
+    parameters: List[Dict[str, Any]] = Field(default_factory=list, description="Parameter information")
+
+
+class PluginFunctionsResponse(BaseModel):
+    """Response model for plugin functions list."""
+    functions: List[PluginFunctionInfo] = Field(..., description="List of available plugin functions")
+    total_count: int = Field(..., description="Total number of functions")
 
 
 # CRUD endpoints
@@ -202,6 +219,89 @@ def list_modules(
         raise HTTPException(
             status_code=500,
             detail=f"Failed to list modules: {str(e)}"
+        )
+
+
+@router.get("/modules/plugin-functions", response_model=PluginFunctionsResponse)
+def get_plugin_functions() -> PluginFunctionsResponse:
+    """
+    Get information about all available plugin functions for scripting.
+    
+    Returns:
+        Information about all plugin functions including signatures and documentation
+    """
+    logger.info("Getting plugin functions information")
+    
+    try:
+        # Get all registered plugin functions
+        plugin_functions = plugin_registry.get_context()
+        functions_info = []
+        
+        for func_name, func in plugin_functions.items():
+            try:
+                # Get function signature
+                sig = inspect.signature(func)
+                signature_str = f"ctx.{func_name}{sig}"
+                
+                # Get docstring
+                docstring = func.__doc__ or "No description available"
+                
+                # Get parameter information
+                parameters = []
+                for param_name, param in sig.parameters.items():
+                    # Skip db_session as it's auto-injected
+                    if param_name == 'db_session':
+                        continue
+                        
+                    param_info = {
+                        "name": param_name,
+                        "type": str(param.annotation) if param.annotation != inspect.Parameter.empty else "Any",
+                        "default": str(param.default) if param.default != inspect.Parameter.empty else None,
+                        "required": param.default == inspect.Parameter.empty
+                    }
+                    parameters.append(param_info)
+                
+                # Categorize functions based on name patterns
+                category = "utility"  # default
+                if any(keyword in func_name.lower() for keyword in ['time', 'date', 'hour', 'business']):
+                    category = "time"
+                elif any(keyword in func_name.lower() for keyword in ['message', 'conversation', 'persona']):
+                    category = "conversation"
+                
+                function_info = PluginFunctionInfo(
+                    name=func_name,
+                    signature=signature_str,
+                    docstring=docstring,
+                    category=category,
+                    parameters=parameters
+                )
+                functions_info.append(function_info)
+                
+            except Exception as e:
+                logger.warning(f"Error processing function {func_name}: {e}")
+                # Add basic info even if signature processing fails
+                function_info = PluginFunctionInfo(
+                    name=func_name,
+                    signature=f"ctx.{func_name}(...)",
+                    docstring=getattr(func, '__doc__', None) or "No description available",
+                    category="utility",
+                    parameters=[]
+                )
+                functions_info.append(function_info)
+        
+        # Sort functions by category then name
+        functions_info.sort(key=lambda f: (f.category, f.name))
+        
+        return PluginFunctionsResponse(
+            functions=functions_info,
+            total_count=len(functions_info)
+        )
+        
+    except Exception as e:
+        logger.error(f"Error getting plugin functions: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to get plugin functions: {str(e)}"
         )
 
 

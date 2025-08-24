@@ -9,6 +9,7 @@ import Files from './views/Files.vue'
 import Settings from './views/Settings.vue'
 import Rooms from './views/Rooms.vue'
 import Debug from './views/Debug.vue'
+import Scripting from './views/Scripting.vue'
 
 const props = defineProps<{
   selectedComponent: string
@@ -32,6 +33,7 @@ const currentComponent = computed(() => {
     case 'Settings': return Settings
     case 'Rooms': return Rooms
     case 'Debug': return Debug
+    case 'Scripting': return Scripting
     default: return Personas
   }
 })
