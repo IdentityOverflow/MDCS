@@ -20,7 +20,7 @@ const openScriptingDocs = () => {
         <span>Modules</span>
       </button>
       <button class="cyberpunk-btn small" @click="emit('selectComponent', 'Scratchpad')">
-        <i class="fa-solid fa-code"></i>
+        <i class="fa-solid fa-file"></i>
         <span>Scratchpad</span>
       </button>
       <button class="cyberpunk-btn small" @click="emit('selectComponent', 'Tools')">

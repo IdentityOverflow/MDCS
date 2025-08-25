@@ -7,6 +7,7 @@ that can be used in advanced module script execution contexts.
 
 import importlib
 import pkgutil
+import threading
 from typing import Dict, Callable, Any, Set
 import logging
 
@@ -24,6 +25,7 @@ class ScriptPluginRegistry:
         """Initialize the plugin registry."""
         self._functions: Dict[str, Callable] = {}
         self._loaded_plugins: Set[str] = set()
+        self._loading_lock = threading.Lock()
     
     def register(self, name: str):
         """
@@ -63,28 +65,30 @@ class ScriptPluginRegistry:
         
         Walks through all modules in the app.plugins package and imports them,
         which triggers the @register decorators to register plugin functions.
+        Thread-safe implementation prevents concurrent loading issues.
         """
-        try:
-            plugins_package = importlib.import_module("app.plugins")
-            
-            # Walk through all modules in plugins package
-            for importer, modname, ispkg in pkgutil.walk_packages(
-                plugins_package.__path__, 
-                plugins_package.__name__ + "."
-            ):
-                if modname not in self._loaded_plugins:
-                    try:
-                        importlib.import_module(modname)
-                        self._loaded_plugins.add(modname)
-                        logger.info(f"Loaded plugin module: {modname}")
-                    except Exception as e:
-                        logger.error(f"Failed to load plugin {modname}: {e}")
-                        # Continue loading other plugins even if one fails
-                        continue
-                        
-        except ImportError:
-            # app.plugins package doesn't exist yet - this is fine during development
-            logger.warning("app.plugins package not found - no plugins loaded")
+        with self._loading_lock:
+            try:
+                plugins_package = importlib.import_module("app.plugins")
+                
+                # Walk through all modules in plugins package
+                for importer, modname, ispkg in pkgutil.walk_packages(
+                    plugins_package.__path__, 
+                    plugins_package.__name__ + "."
+                ):
+                    if modname not in self._loaded_plugins:
+                        try:
+                            importlib.import_module(modname)
+                            self._loaded_plugins.add(modname)
+                            logger.info(f"Loaded plugin module: {modname}")
+                        except Exception as e:
+                            logger.error(f"Failed to load plugin {modname}: {e}")
+                            # Continue loading other plugins even if one fails
+                            continue
+                            
+            except ImportError:
+                # app.plugins package doesn't exist yet - this is fine during development
+                logger.warning("app.plugins package not found - no plugins loaded")
     
     def clear(self):
         """

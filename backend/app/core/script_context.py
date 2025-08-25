@@ -43,6 +43,10 @@ class ScriptExecutionContext:
         self.db_session = db_session
         self.trigger_data = trigger_data or {}
         
+        # Auto-load plugins if not already loaded (make it truly automatic)
+        if not plugin_registry._functions:
+            plugin_registry.load_all_plugins()
+        
         # Load plugin functions
         self._plugin_functions = plugin_registry.get_context()
         
