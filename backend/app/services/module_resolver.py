@@ -383,6 +383,11 @@ class ModuleResolver:
             # Skip script execution if no script is provided
             if not module.script or not module.script.strip():
                 logger.debug(f"Advanced module '{module.name}' has no script")
+                # For AFTER timing, still resolve variables with previous state or empty
+                if module.timing == ExecutionTiming.AFTER:
+                    return self._resolve_variables_with_previous_state(
+                        module_content, module, conversation_id
+                    )
                 return module_content
             
             # Create execution context - allow some scripts to run without full context
@@ -407,24 +412,36 @@ class ModuleResolver:
                 current_chat_controls=current_chat_controls
             )
             
-            # Execute script
-            script_engine = ScriptEngine()
-            result = script_engine.execute_script(
-                module.script,
-                {"ctx": context}
-            )
-            
-            if not result.success:
-                logger.error(f"Script execution failed for module '{module.name}': {result.error_message}")
-                warnings.append(ModuleResolutionWarning(
-                    module_name=module.name,
-                    warning_type="script_execution_failed",
-                    message=f"Script execution failed: {result.error_message}"
-                ))
-                return module_content  # Return content with unresolved variables
-            
-            # Resolve ${variable} references in module content
-            resolved_content = self._resolve_variables(module_content, result.outputs)
+            # Handle AFTER timing differently - use previous state during template resolution
+            if module.timing == ExecutionTiming.AFTER:
+                # During template resolution, use previous execution results
+                resolved_content = self._resolve_variables_with_previous_state(
+                    module_content, module, conversation_id
+                )
+                
+                # Store context and script for later execution (after AI response)
+                # This would need to be implemented in the chat API to execute after AI responds
+                logger.debug(f"Advanced module '{module.name}' with AFTER timing - using previous state")
+                return resolved_content
+            else:
+                # BEFORE and CUSTOM timing - execute immediately
+                script_engine = ScriptEngine()
+                result = script_engine.execute_script(
+                    module.script,
+                    {"ctx": context}
+                )
+                
+                if not result.success:
+                    logger.error(f"Script execution failed for module '{module.name}': {result.error_message}")
+                    warnings.append(ModuleResolutionWarning(
+                        module_name=module.name,
+                        warning_type="script_execution_failed",
+                        message=f"Script execution failed: {result.error_message}"
+                    ))
+                    return module_content  # Return content with unresolved variables
+                
+                # Resolve ${variable} references in module content
+                resolved_content = self._resolve_variables(module_content, result.outputs)
             
             logger.debug(f"Advanced module '{module.name}' processed successfully")
             return resolved_content
@@ -438,6 +455,37 @@ class ModuleResolver:
             ))
             return module_content
     
+    def _resolve_variables_with_previous_state(
+        self, 
+        content: str, 
+        module: Module, 
+        conversation_id: Optional[str]
+    ) -> str:
+        """
+        Resolve ${variable} references using previous execution state for AFTER timing modules.
+        
+        Args:
+            content: Content with ${variable} references
+            module: The module being processed
+            conversation_id: ID of the conversation for state lookup
+            
+        Returns:
+            Content with variables resolved using previous state or empty strings
+        """
+        # Get previous execution state from module's extra_data
+        previous_outputs = {}
+        if (module.extra_data and 
+            isinstance(module.extra_data, dict) and 
+            conversation_id and
+            'conversation_states' in module.extra_data):
+            
+            conversation_states = module.extra_data['conversation_states']
+            if conversation_id in conversation_states:
+                previous_outputs = conversation_states[conversation_id]
+                logger.debug(f"Using previous state for AFTER module '{module.name}' in conversation {conversation_id}")
+        
+        return self._resolve_variables(content, previous_outputs)
+    
     def _resolve_variables(self, content: str, script_outputs: Dict[str, Any]) -> str:
         """
         Resolve ${variable} references in content using script outputs.
@@ -449,8 +497,8 @@ class ModuleResolver:
         Returns:
             Content with variables resolved
         """
-        if not script_outputs:
-            return content
+        # Always process variables, even if script_outputs is empty
+        # This ensures unresolved variables become empty strings
         
         resolved_content = content
         
@@ -458,13 +506,164 @@ class ModuleResolver:
         variable_matches = re.findall(VARIABLE_PATTERN, content)
         
         for var_name in variable_matches:
+            variable_ref = f"${{{var_name}}}"
             if var_name in script_outputs:
-                variable_ref = f"${{{var_name}}}"
                 variable_value = str(script_outputs[var_name])
                 resolved_content = resolved_content.replace(variable_ref, variable_value)
                 logger.debug(f"Resolved variable {variable_ref} -> {variable_value}")
+            else:
+                # Replace unresolved variables with empty strings
+                resolved_content = resolved_content.replace(variable_ref, "")
+                logger.debug(f"Resolved unresolved variable {variable_ref} -> (empty string)")
         
         return resolved_content
+    
+    def execute_after_timing_modules(
+        self,
+        persona_id: Optional[str],
+        conversation_id: Optional[str],
+        db_session: Optional[Session] = None,
+        trigger_context: Optional[Dict[str, Any]] = None,
+        current_provider: Optional[str] = None,
+        current_provider_settings: Optional[Dict[str, Any]] = None,
+        current_chat_controls: Optional[Dict[str, Any]] = None
+    ) -> None:
+        """
+        Execute all AFTER timing modules for a persona and store their results.
+        
+        This should be called after the AI response is generated to update
+        the stored state for AFTER timing modules.
+        
+        Args:
+            persona_id: ID of the persona to get modules for
+            conversation_id: ID of the conversation for context
+            db_session: Database session
+            trigger_context: Trigger context for script execution
+            current_provider: Current provider for AI generation
+            current_provider_settings: Current provider settings
+            current_chat_controls: Current chat controls
+        """
+        if not persona_id or not db_session:
+            logger.warning("Cannot execute AFTER timing modules without persona_id and db_session")
+            return
+        
+        try:
+            # Get all AFTER timing modules for this persona
+            # First we need to get the persona and its template, then find AFTER modules
+            from app.models import Persona
+            persona = db_session.query(Persona).filter(
+                Persona.id == persona_id,
+                Persona.is_active == True
+            ).first()
+            
+            if not persona or not persona.template:
+                return
+            
+            # Find all module references in the persona template
+            module_names = self._parse_module_references(persona.template)
+            if not module_names:
+                return
+            
+            # Get modules from database
+            modules = self._get_modules_by_names(module_names)
+            after_modules = [m for m in modules if m.type == ModuleType.ADVANCED and m.timing == ExecutionTiming.AFTER]
+            
+            if not after_modules:
+                return
+            
+            logger.info(f"Executing {len(after_modules)} AFTER timing modules for persona {persona_id}")
+            
+            # Execute each AFTER module and store results
+            for module in after_modules:
+                try:
+                    self._execute_and_store_after_module(
+                        module, conversation_id, persona_id, db_session, trigger_context,
+                        current_provider, current_provider_settings, current_chat_controls
+                    )
+                except Exception as e:
+                    logger.error(f"Error executing AFTER module '{module.name}': {e}")
+                    continue
+                    
+        except Exception as e:
+            logger.error(f"Error in execute_after_timing_modules: {e}")
+    
+    def _execute_and_store_after_module(
+        self,
+        module: Module,
+        conversation_id: Optional[str],
+        persona_id: Optional[str],
+        db_session: Session,
+        trigger_context: Optional[Dict[str, Any]],
+        current_provider: Optional[str],
+        current_provider_settings: Optional[Dict[str, Any]],
+        current_chat_controls: Optional[Dict[str, Any]]
+    ) -> None:
+        """Execute a single AFTER timing module and store its results."""
+        try:
+            # Check trigger pattern if specified
+            if module.trigger_pattern:
+                should_execute = TriggerMatcher.should_execute(
+                    module.trigger_pattern, 
+                    trigger_context or {}
+                )
+                if not should_execute:
+                    logger.debug(f"AFTER module '{module.name}' trigger not matched")
+                    return
+            
+            # Skip if no script
+            if not module.script or not module.script.strip():
+                return
+            
+            # Create execution context
+            context = ScriptExecutionContext(
+                conversation_id=conversation_id,
+                persona_id=persona_id,
+                db_session=db_session,
+                trigger_data=trigger_context or {},
+                current_provider=current_provider,
+                current_provider_settings=current_provider_settings,
+                current_chat_controls=current_chat_controls
+            )
+            
+            # Execute script
+            script_engine = ScriptEngine()
+            result = script_engine.execute_script(
+                module.script,
+                {"ctx": context}
+            )
+            
+            logger.debug(f"AFTER module '{module.name}' executed - Success: {result.success}, Outputs: {len(result.outputs) if result.outputs else 0} variables")
+            
+            if result.success:
+                if result.outputs:
+                    # Store the results in module's extra_data
+                    if not module.extra_data:
+                        module.extra_data = {}
+                    if 'conversation_states' not in module.extra_data:
+                        module.extra_data['conversation_states'] = {}
+                    
+                    # Store outputs for this conversation
+                    if conversation_id:
+                        module.extra_data['conversation_states'][conversation_id] = result.outputs
+                        
+                        # Force SQLAlchemy to detect JSON field changes
+                        from sqlalchemy.orm.attributes import flag_modified
+                        flag_modified(module, 'extra_data')
+                        
+                        # Commit the changes to database
+                        db_session.add(module)
+                        db_session.flush()  # Ensure changes are written
+                        db_session.commit()
+                        db_session.refresh(module)  # Refresh to ensure we see the committed data
+                        
+                        logger.debug(f"Stored AFTER module '{module.name}' results for conversation {conversation_id}")
+                else:
+                    logger.warning(f"AFTER module '{module.name}' produced no outputs")
+            else:
+                logger.error(f"AFTER module '{module.name}' execution failed: {getattr(result, 'error_message', 'Unknown error')}")
+                
+        except Exception as e:
+            logger.error(f"Error executing and storing AFTER module '{module.name}': {e}")
     
     @staticmethod
     def validate_module_name(name: str) -> bool:

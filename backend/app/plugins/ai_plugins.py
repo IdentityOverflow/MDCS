@@ -21,7 +21,9 @@ logger = logging.getLogger(__name__)
 
 def _run_async_ai_call(provider: str, chat_request: ChatRequest) -> str:
     """
-    Run an async AI call, handling both sync and async contexts.
+    Run an async AI call using a simple synchronous HTTP approach.
+    
+    This bypasses all the async/threading complexity by making direct HTTP calls.
     
     Args:
         provider: Provider type ("ollama" or "openai")
@@ -31,44 +33,82 @@ def _run_async_ai_call(provider: str, chat_request: ChatRequest) -> str:
         AI response content
     """
     try:
-        # Check if we're in an async context
-        try:
-            loop = asyncio.get_event_loop()
-            if loop.is_running():
-                # We're in an async context - run AI call in separate thread
-                
-                # Create a thread to run the async call
-                def run_in_thread():
-                    # Create new event loop in thread
-                    new_loop = asyncio.new_event_loop()
-                    asyncio.set_event_loop(new_loop)
-                    try:
-                        return new_loop.run_until_complete(_async_ai_call(provider, chat_request))
-                    finally:
-                        new_loop.close()
-                
-                # Run in thread and wait for result
-                with concurrent.futures.ThreadPoolExecutor() as executor:
-                    future = executor.submit(run_in_thread)
-                    result = future.result(timeout=30)  # 30 second timeout
-                    return result
-            else:
-                # Loop exists but not running
-                return loop.run_until_complete(_async_ai_call(provider, chat_request))
-        except RuntimeError:
-            # No event loop exists, create one
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-            try:
-                result = loop.run_until_complete(_async_ai_call(provider, chat_request))
-                return result
-            finally:
-                loop.close()
-                asyncio.set_event_loop(None)
-                
+        if provider == "ollama":
+            return _sync_ollama_call(chat_request)
+        else:
+            return _sync_openai_call(chat_request)
     except Exception as e:
         logger.error(f"Error in sync AI call: {e}")
         return f"Error processing with AI: {str(e)}"
+
+
+def _sync_ollama_call(chat_request: ChatRequest) -> str:
+    """Make a synchronous HTTP call to Ollama."""
+    import requests
+    import json
+    
+    # Extract settings
+    settings = chat_request.provider_settings
+    host = settings.get("host", "http://localhost:11434")
+    model = settings.get("model", "tinydolphin")
+    
+    # Build request
+    messages = []
+    if chat_request.system_prompt:
+        messages.append({"role": "system", "content": chat_request.system_prompt})
+    messages.append({"role": "user", "content": chat_request.message})
+    
+    payload = {
+        "model": model,
+        "messages": messages,
+        "stream": False,
+        "options": {
+            "temperature": chat_request.chat_controls.get("temperature", 0.1),
+            "num_predict": chat_request.chat_controls.get("max_tokens", 1000)
+        }
+    }
+    
+    # Make request
+    url = f"{host.rstrip('/')}/api/chat"
+    response = requests.post(url, json=payload, timeout=30)
+    response.raise_for_status()
+    
+    result = response.json()
+    return result.get("message", {}).get("content", "")
+
+
+def _sync_openai_call(chat_request: ChatRequest) -> str:
+    """Make a synchronous HTTP call to OpenAI."""
+    import requests
+    import json
+    
+    # Extract settings
+    settings = chat_request.provider_settings
+    api_key = settings.get("api_key", "")
+    model = settings.get("model", "gpt-3.5-turbo")
+    base_url = settings.get("base_url", "https://api.openai.com/v1")
+    
+    # Build request
+    messages = []
+    if chat_request.system_prompt:
+        messages.append({"role": "system", "content": chat_request.system_prompt})
+    messages.append({"role": "user", "content": chat_request.message})
+    
+    payload = {
+        "model": model,
+        "messages": messages,
+        "temperature": chat_request.chat_controls.get("temperature", 0.1),
+        "max_tokens": chat_request.chat_controls.get("max_tokens", 1000)
+    }
+    
+    # Make request
+    headers = {"Authorization": f"Bearer {api_key}"}
+    url = f"{base_url.rstrip('/')}/chat/completions"
+    response = requests.post(url, json=payload, headers=headers, timeout=30)
+    response.raise_for_status()
+    
+    result = response.json()
+    return result.get("choices", [{}])[0].get("message", {}).get("content", "")
 
 
 async def _async_ai_call(provider: str, chat_request: ChatRequest) -> str:
@@ -245,7 +285,7 @@ Input:
             system_prompt=""  # No system prompt for generation tasks
         )
         
-        logger.info(f"Generating with {provider}: instructions='{instructions[:50]}...', input_length={len(input_text) if input_text else 0}")
+        logger.debug(f"AI generation: {provider} - {instructions[:30]}...")
         
         # Use synchronous wrapper to call AI provider
         result = _run_async_ai_call(provider, chat_request)

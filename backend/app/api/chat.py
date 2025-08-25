@@ -200,6 +200,37 @@ async def send_chat_message(request: ChatSendRequest, db: Session = Depends(get_
             debug_data=debug_data
         )
         
+        # Execute AFTER timing modules asynchronously (don't block response)
+        if request.persona_id:
+            import asyncio
+            
+            async def run_after_modules():
+                """Run AFTER timing modules in background without blocking response."""
+                try:
+                    # Extract session context for AFTER modules
+                    current_provider = request.provider.value if request.provider else None
+                    current_provider_settings = request.provider_settings
+                    current_chat_controls = request.chat_controls
+                    
+                    resolver = ModuleResolver(db_session=db)
+                    trigger_context = {"last_ai_message": provider_response.content}
+                    
+                    resolver.execute_after_timing_modules(
+                        persona_id=request.persona_id,
+                        conversation_id=request.conversation_id,
+                        db_session=db,
+                        trigger_context=trigger_context,
+                        current_provider=current_provider,
+                        current_provider_settings=current_provider_settings,
+                        current_chat_controls=current_chat_controls
+                    )
+                except Exception as e:
+                    # Don't fail the response if AFTER modules fail
+                    logger.error(f"Error executing AFTER timing modules: {e}")
+            
+            # Schedule AFTER modules to run in background without waiting
+            asyncio.create_task(run_after_modules())
+        
         return response
         
     except HTTPException:
@@ -329,6 +360,37 @@ async def stream_chat_message(request: ChatSendRequest, db: Session = Depends(ge
                 
                 # Send final [DONE] message
                 yield "data: [DONE]\n\n"
+                
+                # Execute AFTER timing modules asynchronously (don't block streaming completion)
+                if request.persona_id:
+                    import asyncio
+                    
+                    async def run_after_modules_streaming():
+                        """Run AFTER timing modules in background without blocking streaming."""
+                        try:
+                            # Extract session context for AFTER modules
+                            current_provider = request.provider.value if request.provider else None
+                            current_provider_settings = request.provider_settings
+                            current_chat_controls = request.chat_controls
+                            
+                            resolver = ModuleResolver(db_session=db)
+                            trigger_context = {"last_ai_message": accumulated_content}
+                            
+                            resolver.execute_after_timing_modules(
+                                persona_id=request.persona_id,
+                                conversation_id=request.conversation_id,
+                                db_session=db,
+                                trigger_context=trigger_context,
+                                current_provider=current_provider,
+                                current_provider_settings=current_provider_settings,
+                                current_chat_controls=current_chat_controls
+                            )
+                        except Exception as e:
+                            # Don't fail the streaming if AFTER modules fail
+                            logger.error(f"Error executing AFTER timing modules in streaming: {e}")
+                    
+                    # Schedule AFTER modules to run in background without waiting
+                    asyncio.create_task(run_after_modules_streaming())
                 
             except Exception as e:
                 # Send error as SSE
