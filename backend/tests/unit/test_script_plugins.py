@@ -310,63 +310,71 @@ class TestAIPlugins:
         self.plugin_context = plugin_registry.get_context()
 
     def test_ai_plugins_loaded(self):
-        """Test that AI processing plugins are loaded correctly."""
-        expected_ai_functions = [
-            "ai_process_text",
-            "ai_summarize", 
-            "ai_extract_topics",
-            "ai_analyze_sentiment",
-            "ai_extract_questions"
-        ]
-        
-        for func_name in expected_ai_functions:
-            assert func_name in self.plugin_context, f"AI function {func_name} not loaded"
-            assert callable(self.plugin_context[func_name]), f"AI function {func_name} not callable"
+        """Test that AI generation plugin is loaded correctly."""
+        # The new AI plugins system uses a single 'generate' function
+        assert "generate" in self.plugin_context, "AI generate function not loaded"
+        assert callable(self.plugin_context["generate"]), "AI generate function not callable"
 
-    def test_ai_process_text_function_signature(self):
-        """Test that ai_process_text function exists and handles parameters correctly."""
-        ai_process_text = self.plugin_context["ai_process_text"]
+    def test_generate_function_basic_signatures(self):
+        """Test that generate function handles basic signatures correctly."""
+        generate = self.plugin_context["generate"]
         
-        # Test with minimal parameters (should not crash)
-        result = ai_process_text("test text", "summarize this")
+        # Test signature 1: ctx.generate('Instructions')
+        result = generate("Summarize the key points")
+        assert isinstance(result, str)
+        assert len(result) > 0
         
-        # Should return a string (even if it's an error message or placeholder)
+        # Test signature 2: ctx.generate('Instructions', 'input_text')
+        result = generate("Summarize this text", "This is test input")
         assert isinstance(result, str)
         assert len(result) > 0
 
-    def test_ai_summarize_function_signature(self):
-        """Test that ai_summarize function exists and handles parameters correctly.""" 
-        ai_summarize = self.plugin_context["ai_summarize"]
+    def test_generate_function_provider_signatures(self):
+        """Test that generate function handles provider-specific signatures."""
+        generate = self.plugin_context["generate"]
         
-        # Test with minimal parameters
-        result = ai_summarize("This is a long text that needs to be summarized for testing purposes.")
+        # Test signature 3: ctx.generate('provider_name', 'model_id', 'instructions')
+        result = generate("ollama", "llama3.2:3b", "Generate a short response")
+        assert isinstance(result, str)
+        assert len(result) > 0
         
-        # Should return a string
+        # Test signature 4: ctx.generate('provider_name', 'model_id', 'instructions', 'input_text')
+        result = generate("ollama", "llama3.2:3b", "Analyze this text", "Sample input text")
         assert isinstance(result, str)
         assert len(result) > 0
 
-    def test_ai_functions_handle_empty_input(self):
-        """Test that AI functions handle empty/invalid input gracefully."""
-        ai_process_text = self.plugin_context["ai_process_text"]
+    def test_generate_function_error_handling(self):
+        """Test that generate function handles errors gracefully."""
+        generate = self.plugin_context["generate"]
         
-        # Test with empty text
-        result = ai_process_text("", "summarize")
+        # Test with no arguments
+        result = generate()
         assert isinstance(result, str)
-        assert result == ""  # Should return empty string for empty input
+        assert "Error" in result or "error" in result
         
-        # Test with empty instruction
-        result = ai_process_text("some text", "")
-        assert isinstance(result, str)
-        assert result == "some text"  # Should return original text for empty instruction
-
-    def test_ai_functions_parameter_validation(self):
-        """Test that AI functions validate parameters correctly."""
-        ai_process_text = self.plugin_context["ai_process_text"]
+        # Test with empty instructions
+        result = generate("")
+        assert isinstance(result, str) 
+        assert "Error" in result or "error" in result
         
         # Test with invalid provider
-        result = ai_process_text("test", "summarize", provider="invalid_provider")
+        result = generate("invalid_provider", "model", "instruction")
         assert isinstance(result, str)
-        assert "Unsupported provider" in result or "Error" in result
+        assert "Error" in result or "error" in result
+
+    def test_generate_function_with_kwargs(self):
+        """Test that generate function handles keyword arguments correctly."""
+        generate = self.plugin_context["generate"]
+        
+        # Test with temperature parameter
+        result = generate("Write a creative story", temperature=0.8)
+        assert isinstance(result, str)
+        assert len(result) > 0
+        
+        # Test with max_tokens parameter
+        result = generate("Generate a response", max_tokens=100)
+        assert isinstance(result, str)
+        assert len(result) > 0
 
 
 class TestConversationPlugins:
@@ -404,10 +412,10 @@ class TestConversationPlugins:
         """Test get_recent_messages handles missing database session gracefully."""
         get_recent_messages = self.plugin_context["get_recent_messages"]
         
-        # Without db_session should return empty list
+        # Without db_session should return error message string
         result = get_recent_messages()
-        assert result == []
-        assert isinstance(result, list)
+        assert isinstance(result, str)
+        assert "No conversation history available" in result
 
     def test_conversation_functions_handle_parameters(self):
         """Test that conversation functions accept and handle their parameters correctly."""
@@ -416,10 +424,19 @@ class TestConversationPlugins:
         result = get_message_count("test-conversation-id")
         assert isinstance(result, int)
         
-        # Test get_recent_messages with limit
+        # Test get_recent_messages with limit (now returns formatted string)
         get_recent_messages = self.plugin_context["get_recent_messages"]
         result = get_recent_messages(limit=5)
+        assert isinstance(result, str)
+        # Should contain error message since there's no db session in unit test
+        assert "No conversation history available" in result
+        
+        # Test get_raw_recent_messages with limit (returns list)
+        get_raw_recent_messages = self.plugin_context["get_raw_recent_messages"]
+        result = get_raw_recent_messages(limit=5)
         assert isinstance(result, list)
+        # Should return empty list since there's no db session in unit test
+        assert result == []
         
         # Test get_conversation_summary
         get_conversation_summary = self.plugin_context["get_conversation_summary"]

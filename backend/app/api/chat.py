@@ -86,14 +86,22 @@ async def resolve_system_prompt(request: ChatSendRequest, db: Session) -> str:
         # When None, advanced modules that need conversation context will return empty/default values
         conversation_id = request.conversation_id
         
-        # Resolve template using ModuleResolver with full context
+        # Extract current session context from request for advanced modules
+        current_provider = request.provider.value if request.provider else None
+        current_provider_settings = request.provider_settings
+        current_chat_controls = request.chat_controls
+        
+        # Resolve template using ModuleResolver with full context including session info
         resolver = ModuleResolver(db_session=db)
         result = resolver.resolve_template(
             persona.template,
             conversation_id=conversation_id,
             persona_id=request.persona_id,
             db_session=db,
-            trigger_context=trigger_context
+            trigger_context=trigger_context,
+            current_provider=current_provider,
+            current_provider_settings=current_provider_settings,
+            current_chat_controls=current_chat_controls
         )
         
         # Log warnings for debugging

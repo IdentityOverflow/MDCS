@@ -27,7 +27,10 @@ class ScriptExecutionContext:
         conversation_id: str, 
         persona_id: str, 
         db_session: Session,
-        trigger_data: Optional[Dict[str, Any]] = None
+        trigger_data: Optional[Dict[str, Any]] = None,
+        current_provider: Optional[str] = None,
+        current_provider_settings: Optional[Dict[str, Any]] = None,
+        current_chat_controls: Optional[Dict[str, Any]] = None
     ):
         """
         Initialize script execution context.
@@ -37,11 +40,19 @@ class ScriptExecutionContext:
             persona_id: ID of the persona using this module
             db_session: Database session for accessing conversation data
             trigger_data: Information about what triggered this module execution
+            current_provider: Current chat session provider ("ollama" or "openai")
+            current_provider_settings: Current provider connection settings
+            current_chat_controls: Current chat control parameters (temperature, max_tokens, etc.)
         """
         self.conversation_id = conversation_id
         self.persona_id = persona_id
         self.db_session = db_session
         self.trigger_data = trigger_data or {}
+        
+        # Current chat session context
+        self.current_provider = current_provider
+        self.current_provider_settings = current_provider_settings or {}
+        self.current_chat_controls = current_chat_controls or {}
         
         # Auto-load plugins if not already loaded (make it truly automatic)
         if not plugin_registry._functions:

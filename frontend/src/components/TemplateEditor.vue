@@ -52,7 +52,7 @@ const filteredModules = computed(() => {
   if (!currentModuleSearch.value) {
     return activeModules.value.map(module => ({
       name: module.name,
-      description: module.description
+      description: module.description || undefined
     }))
   }
   
@@ -61,7 +61,7 @@ const filteredModules = computed(() => {
     .filter(module => module.name.toLowerCase().includes(search))
     .map(module => ({
       name: module.name,
-      description: module.description
+      description: module.description || undefined
     }))
 })
 

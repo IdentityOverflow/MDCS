@@ -121,15 +121,15 @@ def get_message_count(conversation_id: Optional[str] = None, db_session: Session
         return 0
 
 
-@plugin_registry.register("get_recent_messages")
-def get_recent_messages(
+@plugin_registry.register("get_raw_recent_messages")
+def get_raw_recent_messages(
     limit: int = 10,
     conversation_id: Optional[str] = None,
     db_session: Session = None,
     _script_context: Any = None
 ) -> List[Dict[str, Any]]:
     """
-    Get recent messages from a conversation.
+    Get recent messages from a conversation as raw data dictionaries.
     
     Args:
         limit: Maximum number of messages to retrieve (default: 10)
@@ -140,12 +140,12 @@ def get_recent_messages(
         List of message dictionaries with role, content, and metadata
         
     Example:
-        recent = ctx.get_recent_messages(5)
-        older_messages = ctx.get_recent_messages(20, "other-conversation-id")
+        recent = ctx.get_raw_recent_messages(5)
+        older_messages = ctx.get_raw_recent_messages(20, "other-conversation-id")
     """
     try:
         if db_session is None:
-            logger.warning("get_recent_messages called without database session")
+            logger.warning("get_raw_recent_messages called without database session")
             return []
             
         # Use current conversation if none specified
@@ -153,7 +153,7 @@ def get_recent_messages(
             if _script_context and hasattr(_script_context, 'conversation_id'):
                 conversation_id = _script_context.conversation_id
             else:
-                logger.warning("get_recent_messages called without conversation_id and no script context")
+                logger.warning("get_raw_recent_messages called without conversation_id and no script context")
                 return []
         
         # Get recent messages ordered by creation time (newest first)
@@ -182,6 +182,99 @@ def get_recent_messages(
     except Exception as e:
         logger.error(f"Error getting recent messages: {e}")
         return []
+
+
+@plugin_registry.register("get_recent_messages")
+def get_recent_messages(
+    limit: int = 5,
+    conversation_id: Optional[str] = None,
+    db_session: Session = None,
+    _script_context: Any = None
+) -> str:
+    """
+    Get recent messages from a conversation formatted for AI memory/context.
+    
+    Returns a nicely formatted string containing who said what and when,
+    ready to be inserted directly into AI prompts for conversation memory.
+    
+    Args:
+        limit: Maximum number of messages to retrieve (default: 5)
+        conversation_id: ID of conversation to get messages from (optional, uses current conversation if not provided)
+        db_session: Database session (auto-injected)
+        _script_context: Script execution context (auto-injected)
+        
+    Returns:
+        Formatted string with recent conversation history for AI context
+        
+    Example:
+        memory = ctx.get_recent_messages(3)
+        # Returns:
+        # "Recent conversation:
+        # [2025-08-25 10:30] User: How do I create a new module?
+        # [2025-08-25 10:31] Assistant: To create a new module, you can use the Modules section...
+        # [2025-08-25 10:32] User: Thanks! What about advanced modules?"
+    """
+    try:
+        if db_session is None:
+            logger.warning("get_recent_messages called without database session")
+            return "No conversation history available (no database session)"
+            
+        # Use current conversation if none specified
+        if conversation_id is None:
+            if _script_context and hasattr(_script_context, 'conversation_id'):
+                conversation_id = _script_context.conversation_id
+            else:
+                logger.warning("get_recent_messages called without conversation_id and no script context")
+                return "No conversation history available (no conversation context)"
+        
+        # Check if conversation_id is still None (no conversation context available)
+        if conversation_id is None:
+            logger.debug("get_recent_messages called with None conversation_id - no conversation context available")
+            return "No conversation history available (no active conversation)"
+        
+        # Get recent messages ordered by creation time (newest first, then reverse for chronological order)
+        messages = db_session.query(Message).filter(
+            Message.conversation_id == conversation_id
+        ).order_by(Message.created_at.desc()).limit(limit).all()
+        
+        if not messages:
+            return "No conversation history available (no messages found)"
+        
+        # Format messages for AI memory
+        formatted_lines = []
+        
+        # Reverse to get chronological order (oldest to newest)
+        for message in reversed(messages):
+            # Format timestamp
+            try:
+                timestamp = message.created_at.strftime("%H:%M")
+            except:
+                timestamp = "??:??"
+            
+            # Format role (User/Assistant/System)
+            role = message.role.capitalize() if message.role else "Unknown"
+            
+            # Clean and truncate content for memory
+            content = message.content.strip() if message.content else "[empty message]"
+            
+            # Truncate very long messages for memory efficiency
+            if len(content) > 200:
+                content = content[:197] + "..."
+            
+            # Replace newlines with spaces for single-line format
+            content = content.replace('\n', ' ').replace('\r', ' ')
+            
+            # Format the message line
+            formatted_lines.append(f"[{timestamp}] {role}: {content}")
+        
+        result = "\n".join(formatted_lines)
+        
+        logger.debug(f"Formatted {len(messages)} recent messages for conversation {conversation_id}")
+        return result
+        
+    except Exception as e:
+        logger.error(f"Error getting formatted recent messages: {e}")
+        return f"Error retrieving conversation history: {str(e)}"
 
 
 @plugin_registry.register("get_conversation_summary")
@@ -329,10 +422,11 @@ def get_persona_info(persona_id: Optional[str] = None, db_session: Session = Non
 
 @plugin_registry.register("get_conversation_history")
 def get_conversation_history(
-    conversation_id: str,
+    conversation_id: Optional[str] = None,
     limit: int = 50,
     offset: int = 0,
-    db_session: Session = None
+    db_session: Session = None,
+    _script_context: Any = None
 ) -> List[Dict[str, Any]]:
     """
     Get conversation message history with pagination.
@@ -352,8 +446,21 @@ def get_conversation_history(
     """
     try:
         if db_session is None:
-            logger.warning("get_conversation_history called without database session")
-            return []
+            logger.warning("get_conversation_summary called without database session")
+            return {}
+            
+        if conversation_id is None:
+            if _script_context and hasattr(_script_context, 'conversation_id'):
+                conversation_id = _script_context.conversation_id
+            else:
+                logger.warning("get_conversation_summary called without conversation_id and no script context")
+                return {}
+        
+        # Check if conversation_id is still None (no conversation context available)
+        if conversation_id is None:
+            logger.debug("get_conversation_summary called with None conversation_id - no conversation context available")
+            return {"error": "No conversation context available", "message_count": 0}
+        
         
         # Get messages with pagination, ordered chronologically
         messages = db_session.query(Message).filter(

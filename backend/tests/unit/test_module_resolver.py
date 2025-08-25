@@ -608,12 +608,15 @@ time = "14:30"
                 trigger_context=trigger_context
             )
             
-            # Verify context was created with correct parameters
+            # Verify context was created with correct parameters including new session context
             mock_context_class.assert_called_once_with(
                 conversation_id=conversation_id,
                 persona_id=persona_id,
                 db_session=mock_db_session,
-                trigger_data=trigger_context
+                trigger_data=trigger_context,
+                current_provider=None,
+                current_provider_settings=None,
+                current_chat_controls=None
             )
             
             # Verify script was executed with context

@@ -67,7 +67,10 @@ class ModuleResolver:
         conversation_id: Optional[str] = None,
         persona_id: Optional[str] = None,
         db_session: Optional[Session] = None,
-        trigger_context: Optional[Dict[str, Any]] = None
+        trigger_context: Optional[Dict[str, Any]] = None,
+        current_provider: Optional[str] = None,
+        current_provider_settings: Optional[Dict[str, Any]] = None,
+        current_chat_controls: Optional[Dict[str, Any]] = None
     ) -> TemplateResolutionResult:
         """
         Resolve all @module_name references in a template, with support for advanced modules.
@@ -78,6 +81,9 @@ class ModuleResolver:
             persona_id: Optional persona ID for advanced module context
             db_session: Optional database session for advanced module context
             trigger_context: Optional trigger context for advanced modules
+            current_provider: Current chat session provider ("ollama" or "openai")
+            current_provider_settings: Current provider connection settings  
+            current_chat_controls: Current chat control parameters
             
         Returns:
             TemplateResolutionResult with resolved content and any warnings
@@ -119,7 +125,10 @@ class ModuleResolver:
                 conversation_id=conversation_id,
                 persona_id=persona_id,
                 db_session=db_session or self.db_session,
-                trigger_context=trigger_context or {}
+                trigger_context=trigger_context or {},
+                current_provider=current_provider,
+                current_provider_settings=current_provider_settings,
+                current_chat_controls=current_chat_controls
             )
             
             # Restore escaped modules (remove backslash)
@@ -155,7 +164,10 @@ class ModuleResolver:
         conversation_id: Optional[str] = None,
         persona_id: Optional[str] = None,
         db_session: Optional[Session] = None,
-        trigger_context: Optional[Dict[str, Any]] = None
+        trigger_context: Optional[Dict[str, Any]] = None,
+        current_provider: Optional[str] = None,
+        current_provider_settings: Optional[Dict[str, Any]] = None,
+        current_chat_controls: Optional[Dict[str, Any]] = None
     ) -> str:
         """
         Recursively resolve module references in template with advanced module support.
@@ -169,6 +181,9 @@ class ModuleResolver:
             persona_id: Persona ID for advanced module context
             db_session: Database session for advanced module context
             trigger_context: Trigger context for advanced modules
+            current_provider: Current chat session provider ("ollama" or "openai")
+            current_provider_settings: Current provider connection settings
+            current_chat_controls: Current chat control parameters
             
         Returns:
             Template with module references resolved
@@ -239,7 +254,10 @@ class ModuleResolver:
                         persona_id,
                         db_session,
                         trigger_context,
-                        warnings
+                        warnings,
+                        current_provider,
+                        current_provider_settings,
+                        current_chat_controls
                     )
                 
                 # Recursively resolve the module content
@@ -251,7 +269,10 @@ class ModuleResolver:
                     conversation_id=conversation_id,
                     persona_id=persona_id,
                     db_session=db_session,
-                    trigger_context=trigger_context
+                    trigger_context=trigger_context,
+                    current_provider=current_provider,
+                    current_provider_settings=current_provider_settings,
+                    current_chat_controls=current_chat_controls
                 )
                 
                 # Replace module reference with resolved content
@@ -325,7 +346,10 @@ class ModuleResolver:
         persona_id: Optional[str],
         db_session: Optional[Session],
         trigger_context: Optional[Dict[str, Any]],
-        warnings: List[ModuleResolutionWarning]
+        warnings: List[ModuleResolutionWarning],
+        current_provider: Optional[str] = None,
+        current_provider_settings: Optional[Dict[str, Any]] = None,
+        current_chat_controls: Optional[Dict[str, Any]] = None
     ) -> str:
         """
         Process advanced module with script execution and ${variable} resolution.
@@ -338,6 +362,9 @@ class ModuleResolver:
             db_session: Database session for script context
             trigger_context: Trigger context for script execution
             warnings: List to collect warnings
+            current_provider: Current chat session provider ("ollama" or "openai")
+            current_provider_settings: Current provider connection settings
+            current_chat_controls: Current chat control parameters
             
         Returns:
             Module content with ${variable} references resolved
@@ -374,7 +401,10 @@ class ModuleResolver:
                 conversation_id=conversation_id,  # May be None
                 persona_id=persona_id,  # May be None
                 db_session=db_session,
-                trigger_data=trigger_context or {}
+                trigger_data=trigger_context or {},
+                current_provider=current_provider,
+                current_provider_settings=current_provider_settings,
+                current_chat_controls=current_chat_controls
             )
             
             # Execute script

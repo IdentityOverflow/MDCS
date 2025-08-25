@@ -361,7 +361,7 @@ async function savePersona() {
             v-model="formData.template"
             @input="onTemplateChange"
             placeholder="Enter persona template (use @module_name to reference modules)"
-            rows="8"
+            :rows="8"
             :invalid="!templateValidation.isValid && formData.template.length > 0"
           />
           <div v-if="templateValidation.warnings.length > 0" class="template-validation">
