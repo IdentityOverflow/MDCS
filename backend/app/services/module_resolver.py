@@ -358,19 +358,21 @@ class ModuleResolver:
                 logger.debug(f"Advanced module '{module.name}' has no script")
                 return module_content
             
-            # Create execution context
-            if not conversation_id or not persona_id or not db_session:
-                logger.warning(f"Advanced module '{module.name}' missing required context")
+            # Create execution context - allow some scripts to run without full context
+            # We need at least a db_session to run any script
+            if not db_session:
+                logger.warning(f"Advanced module '{module.name}' missing database session")
                 warnings.append(ModuleResolutionWarning(
                     module_name=module.name,
-                    warning_type="missing_context",
-                    message=f"Advanced module '{module.name}' requires conversation context"
+                    warning_type="missing_context", 
+                    message=f"Advanced module '{module.name}' requires database session"
                 ))
                 return module_content
             
+            # Create context with whatever we have - scripts will handle missing context gracefully
             context = ScriptExecutionContext(
-                conversation_id=conversation_id,
-                persona_id=persona_id,
+                conversation_id=conversation_id,  # May be None
+                persona_id=persona_id,  # May be None
                 db_session=db_session,
                 trigger_data=trigger_context or {}
             )

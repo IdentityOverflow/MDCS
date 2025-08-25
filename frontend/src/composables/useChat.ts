@@ -46,6 +46,7 @@ export interface ChatRequest {
   chat_controls: Record<string, any>
   provider_settings?: Record<string, any>
   persona_id?: string
+  conversation_id?: string
 }
 
 export interface ChatControls {
@@ -488,7 +489,8 @@ export function useChat() {
         stream: true,
         chat_controls: buildChatControls(freshControls),
         provider_settings: enhancedProviderSettings,
-        persona_id: selectedPersonaId || undefined
+        persona_id: selectedPersonaId || undefined,
+        conversation_id: currentConversation.value?.id || undefined
       }
 
       
@@ -634,7 +636,8 @@ export function useChat() {
         stream: false,
         chat_controls: buildChatControls(freshControls),
         provider_settings: enhancedProviderSettings,
-        persona_id: selectedPersonaId || undefined
+        persona_id: selectedPersonaId || undefined,
+        conversation_id: currentConversation.value?.id || undefined
       }
 
       

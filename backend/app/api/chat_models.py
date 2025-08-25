@@ -27,6 +27,7 @@ class ChatSendRequest(BaseModel):
     chat_controls: Dict[str, Any] = Field(default_factory=dict, description="Chat control parameters")
     provider_settings: Optional[Dict[str, Any]] = Field(None, description="Provider connection settings")
     persona_id: Optional[str] = Field(None, description="ID of the persona to use for system prompts")
+    conversation_id: Optional[str] = Field(None, description="ID of the conversation for context in advanced modules")
     
     @field_validator('message')
     def validate_message(cls, v):

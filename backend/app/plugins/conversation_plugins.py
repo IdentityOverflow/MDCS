@@ -15,6 +15,64 @@ from app.models import Conversation, Message, Persona
 logger = logging.getLogger(__name__)
 
 
+class DictObject:
+    """
+    A wrapper that provides both dictionary and attribute access to data.
+    
+    Allows both persona_info.name and persona_info['name'] or persona_info.get('name') syntax.
+    """
+    
+    def __init__(self, data: Dict[str, Any]):
+        """Initialize with dictionary data."""
+        self._data = data
+    
+    def __getattr__(self, name: str) -> Any:
+        """Provide attribute access to dictionary keys."""
+        if name.startswith('_'):
+            # Don't interfere with internal attributes
+            raise AttributeError(f"'{self.__class__.__name__}' object has no attribute '{name}'")
+        
+        if name in self._data:
+            return self._data[name]
+        raise AttributeError(f"'{self.__class__.__name__}' object has no attribute '{name}'")
+    
+    def __getitem__(self, key: str) -> Any:
+        """Provide dictionary-style access."""
+        return self._data[key]
+    
+    def get(self, key: str, default: Any = None) -> Any:
+        """Provide dict.get() method."""
+        return self._data.get(key, default)
+    
+    def keys(self):
+        """Provide dict.keys() method."""
+        return self._data.keys()
+    
+    def values(self):
+        """Provide dict.values() method."""
+        return self._data.values()
+    
+    def items(self):
+        """Provide dict.items() method."""
+        return self._data.items()
+    
+    def __contains__(self, key: str) -> bool:
+        """Provide 'in' operator support."""
+        return key in self._data
+    
+    def __len__(self) -> int:
+        """Provide len() support."""
+        return len(self._data)
+    
+    def __str__(self) -> str:
+        """String representation."""
+        return str(self._data)
+    
+    def __repr__(self) -> str:
+        """Developer representation."""
+        return f"DictObject({self._data!r})"
+
+
 @plugin_registry.register("get_message_count")
 def get_message_count(conversation_id: Optional[str] = None, db_session: Session = None, _script_context: Any = None) -> int:
     """
@@ -44,6 +102,11 @@ def get_message_count(conversation_id: Optional[str] = None, db_session: Session
             else:
                 logger.warning("get_message_count called without conversation_id and no script context")
                 return 0
+        
+        # Check if conversation_id is still None (no conversation context available)
+        if conversation_id is None:
+            logger.debug("get_message_count called with None conversation_id - no conversation context available")
+            return 0
         
         # Count messages in the specified conversation
         count = db_session.query(Message).filter(
@@ -149,6 +212,11 @@ def get_conversation_summary(conversation_id: Optional[str] = None, db_session: 
                 logger.warning("get_conversation_summary called without conversation_id and no script context")
                 return {}
         
+        # Check if conversation_id is still None (no conversation context available)
+        if conversation_id is None:
+            logger.debug("get_conversation_summary called with None conversation_id - no conversation context available")
+            return {"error": "No conversation context available", "message_count": 0}
+        
         # Get conversation
         conversation = db_session.query(Conversation).filter(
             Conversation.id == conversation_id
@@ -172,6 +240,13 @@ def get_conversation_summary(conversation_id: Optional[str] = None, db_session: 
             if persona:
                 persona_name = persona.name
         
+        # Extract provider and model information
+        provider = getattr(conversation, 'provider_type', None) or "unknown"
+        model = "unknown"
+        if hasattr(conversation, 'provider_config') and conversation.provider_config:
+            # Extract model from provider_config JSON
+            model = conversation.provider_config.get('model', 'unknown') if isinstance(conversation.provider_config, dict) else "unknown"
+        
         # Build summary
         summary = {
             "id": str(conversation.id),
@@ -179,8 +254,8 @@ def get_conversation_summary(conversation_id: Optional[str] = None, db_session: 
             "message_count": message_count,
             "persona_name": persona_name,
             "persona_id": str(conversation.persona_id) if conversation.persona_id else None,
-            "provider": conversation.provider,
-            "model": conversation.model,
+            "provider": provider,
+            "model": model,
             "created_at": conversation.created_at.isoformat(),
             "updated_at": conversation.updated_at.isoformat()
         }
@@ -194,7 +269,7 @@ def get_conversation_summary(conversation_id: Optional[str] = None, db_session: 
 
 
 @plugin_registry.register("get_persona_info")
-def get_persona_info(persona_id: Optional[str] = None, db_session: Session = None, _script_context: Any = None) -> Dict[str, Any]:
+def get_persona_info(persona_id: Optional[str] = None, db_session: Session = None, _script_context: Any = None) -> DictObject:
     """
     Get information about a persona.
     
@@ -203,23 +278,26 @@ def get_persona_info(persona_id: Optional[str] = None, db_session: Session = Non
         db_session: Database session (auto-injected)
         
     Returns:
-        Dictionary with persona information
+        DictObject with persona information supporting both attribute and dictionary access
         
     Example:
         persona = ctx.get_persona_info()
-        # Returns: {"name": "AVA", "description": "...", "template": "..."}
+        # Both work:
+        name = persona.name           # Attribute access
+        name = persona['name']        # Dictionary access  
+        name = persona.get('name')    # Dict.get() method
     """
     try:
         if db_session is None:
             logger.warning("get_persona_info called without database session")
-            return {}
+            return DictObject({})
             
         if persona_id is None:
             if _script_context and hasattr(_script_context, 'persona_id'):
                 persona_id = _script_context.persona_id
             else:
                 logger.warning("get_persona_info called without persona_id and no script context")
-                return {}
+                return DictObject({})
         
         # Get persona
         persona = db_session.query(Persona).filter(
@@ -228,7 +306,7 @@ def get_persona_info(persona_id: Optional[str] = None, db_session: Session = Non
         
         if not persona:
             logger.warning(f"Persona {persona_id} not found")
-            return {}
+            return DictObject({})
         
         # Build persona info
         persona_info = {
@@ -242,11 +320,11 @@ def get_persona_info(persona_id: Optional[str] = None, db_session: Session = Non
         }
         
         logger.debug(f"Retrieved info for persona {persona.name}")
-        return persona_info
+        return DictObject(persona_info)
         
     except Exception as e:
         logger.error(f"Error getting persona info: {e}")
-        return {}
+        return DictObject({})
 
 
 @plugin_registry.register("get_conversation_history")

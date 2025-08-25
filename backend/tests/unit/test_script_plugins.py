@@ -426,7 +426,12 @@ class TestConversationPlugins:
         result = get_conversation_summary()
         assert isinstance(result, dict)
         
-        # Test get_persona_info
+        # Test get_persona_info (now returns DictObject)
         get_persona_info = self.plugin_context["get_persona_info"]
         result = get_persona_info()
-        assert isinstance(result, dict)
+        # Should be a DictObject that supports both dict and attribute access
+        assert hasattr(result, 'get')  # dict-like behavior
+        assert hasattr(result, '_data')  # DictObject internal
+        # Since there's no db session, it returns empty DictObject
+        assert result.get('name') is None  # Empty result due to no DB session
+        assert len(result) == 0  # Should be empty
