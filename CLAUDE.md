@@ -9,6 +9,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ### Key Components:
 - **Simple Modules**: Static text templates (personalities, instructions, tools)
 - **Advanced Modules**: Python scripts that update dynamically (memory, context, time, custom logic)
+- **Self-Reflecting AI**: AI can introspect on its own thoughts and responses using `ctx.reflect()`
 - **Self-Modifying**: AI can update some of its own modules, creating evolving personas
 
 ## 📐 Architecture Overview
@@ -572,11 +573,53 @@ The system treats persona templates as **living, modular heads-up displays** tha
 - **Performance Optimized**: Efficient recursive resolution with proper cycle detection
 - **Error Resilient**: Graceful handling of all edge cases without breaking chat functionality
 
+### ✅ **COMPLETE: Self-Reflecting AI System**
+
+#### **🧠 COMPLETE: AI Self-Reflection & Introspection**
+- **reflect() Function**: AI can analyze its own thoughts, responses, and behavior ✅
+- **Comprehensive Safety**: Depth limiting, recursion prevention, timing restrictions ✅
+- **Flexible Parameters**: Full control over temperature, max_tokens, and other AI settings ✅
+- **Timing Integration**: Works with BEFORE, AFTER, and CUSTOM module timing ✅
+- **Cross-Module Reflection**: Modules can safely reflect through other modules ✅
+- **Complete Testing**: 461/461 tests passing including comprehensive reflection tests ✅
+
+#### **Self-Reflection Architecture:**
+**Core Innovation - AI Self-Awareness**:
+The `ctx.reflect()` function enables AI personas to introspect on their own thoughts, responses, and behavior patterns, creating truly self-aware and adaptive AI systems.
+
+**Safety Mechanisms**:
+1. **Maximum Reflection Depth**: 3 levels to prevent infinite loops
+2. **Module Resolution Stack Tracking**: Prevents direct recursion during nested reflections
+3. **Timing Restrictions**: No nested BEFORE timing reflections for stability
+4. **Audit Trail**: Complete reflection chain tracking for transparency and debugging
+5. **Graceful Fallbacks**: Safe error handling with informative messages
+
+**Usage Examples**:
+```python
+# Self-assessment after AI response (AFTER timing)
+quality = ctx.reflect("Rate this response quality 1-10 and suggest improvements", max_tokens=50)
+
+# Adaptive behavior based on context (BEFORE timing)  
+tone = ctx.reflect("What communication style would work best here?", recent_context, temperature=0.1)
+
+# Cross-module analysis with specific provider
+analysis = ctx.reflect("openai", "gpt-4", "Analyze this conversation pattern", chat_history)
+
+# Creative self-reflection with custom parameters
+idea = ctx.reflect("Generate a creative approach", temperature=0.8, max_tokens=200)
+```
+
+**Real-World Applications**:
+- **Response Quality Assessment**: AI evaluates and improves its own responses
+- **Mood Adaptation**: AI adjusts communication style based on conversation context  
+- **Behavior Analysis**: AI reflects on interaction patterns and adjusts accordingly
+- **Creative Problem Solving**: AI uses introspection for innovative solutions
+
 ### ✅ **COMPLETE: Advanced Modules Implementation**
 
 #### **🎯 COMPLETE: Advanced Modules System**
 - **Script Execution Engine**: RestrictedPython sandbox with security validation ✅
-- **Plugin Registry**: Auto-discovery decorator system with 14+ built-in functions ✅
+- **Plugin Registry**: Auto-discovery decorator system with 15+ built-in functions ✅
 - **Execution Context**: Rich context with conversation/database access and plugin injection ✅
 - **Trigger System**: Keyword/regex pattern matching for conditional execution ✅
 - **Variable Resolution**: `${variable}` system separate from `@module_name` references ✅
@@ -602,7 +645,8 @@ def get_current_time(format: str = "%Y-%m-%d %H:%M") -> str:
     return datetime.now().strftime(format)
 ```
 
-**14 Built-in Plugin Functions**:
+**15+ Built-in Plugin Functions**:
+- **AI Generation Functions**: `generate` (flexible AI content generation), `reflect` (self-introspection and analysis)
 - **Time Functions**: `get_current_time`, `get_relative_time`, `format_duration`, `is_business_hours`, `get_timezone_info`
 - **Conversation Functions**: `get_message_count`, `get_recent_messages`, `get_conversation_summary`, `get_persona_info`
 - **Utility Functions**: `generate_uuid`, `log_debug`, `validate_email`, `format_number`, `get_random_choice`
@@ -650,9 +694,10 @@ Users can create advanced modules with Python scripts that:
 
 ### 💡 **Key Implementation Notes**:
 - **The core innovation** is the dynamic system prompt architecture - both simple and advanced modules fully operational! ✅
+- **Self-Reflecting AI System is complete** - full AI introspection with `ctx.reflect()` and comprehensive safety ✅
 - **Advanced Modules System is complete** - full Python script execution with RestrictedPython sandbox ✅
 - **Cognitive Engine is complete** - full `@module_name` and `${variable}` resolution with recursive support ✅
-- **Plugin System is complete** - auto-discovery decorator registry with 14+ built-in functions ✅
+- **Plugin System is complete** - auto-discovery decorator registry with 15+ built-in functions ✅
 - **Complete chat system is working** - full Ollama/OpenAI integration with streaming and persona support ✅
 - **Conversation persistence is complete** - full CRUD API with database storage and thinking support ✅
 - **Message CRUD system is complete** - full message management with thinking, tokens, and metadata ✅
@@ -660,7 +705,7 @@ Users can create advanced modules with Python scripts that:
 - **Provider abstraction is clean** - centralized system prompt handling across all AI providers ✅
 - **Frontend-centric architecture** - all settings managed in browser, passed via requests ✅
 - **Database models are solid** - UUIDs, proper relationships, cascade deletion working ✅
-- **Test coverage is excellent** - 396/396 passing tests, maintain this standard ✅
+- **Test coverage is excellent** - 461/461 passing tests, maintain this standard ✅
 - **Architecture is well-planned** - follow the existing design patterns ✅
 - **UI patterns are consistent** - reuses existing components and styling for cohesive experience ✅
 

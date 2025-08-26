@@ -3,15 +3,22 @@ Script Execution Context for Advanced Modules.
 
 Provides the execution context object that advanced module scripts receive,
 giving them access to conversation data, database sessions, and plugin functions.
+Includes reflection safety mechanisms to prevent infinite loops.
 """
 
 import inspect
 import logging
-from typing import Dict, Any, Optional
+from datetime import datetime
+from typing import Dict, Any, Optional, List
 from sqlalchemy.orm import Session
 from app.core.script_plugins import plugin_registry
+from app.models import ExecutionTiming
 
 logger = logging.getLogger(__name__)
+
+# Reflection safety constants
+MAX_REFLECTION_DEPTH = 3
+MAX_REFLECTION_CHAIN_LENGTH = 10
 
 
 class ScriptExecutionContext:
@@ -53,6 +60,11 @@ class ScriptExecutionContext:
         self.current_provider = current_provider
         self.current_provider_settings = current_provider_settings or {}
         self.current_chat_controls = current_chat_controls or {}
+        
+        # Reflection safety tracking
+        self.reflection_depth = 0
+        self.module_resolution_stack = []
+        self.reflection_chain = []
         
         # Auto-load plugins if not already loaded (make it truly automatic)
         if not plugin_registry._functions:
@@ -123,3 +135,104 @@ class ScriptExecutionContext:
             True if function is available
         """
         return name in self._plugin_functions
+    
+    def can_reflect(self, current_module_id: Optional[str], timing: ExecutionTiming) -> bool:
+        """
+        Check if reflection is allowed based on current safety constraints.
+        
+        Args:
+            current_module_id: ID of the module attempting to reflect
+            timing: Execution timing of the module
+            
+        Returns:
+            True if reflection is safe to proceed
+        """
+        # Handle None/empty module ID
+        if not current_module_id:
+            logger.debug("Reflection blocked: No module ID provided")
+            return False
+        
+        # Hard limit on reflection depth
+        if self.reflection_depth >= MAX_REFLECTION_DEPTH:
+            logger.debug(f"Reflection blocked: Max depth ({MAX_REFLECTION_DEPTH}) reached")
+            return False
+        
+        # Prevent recursive module calls during reflection
+        # A module can reflect during its own execution (depth 0), but cannot call another module
+        # that would then try to resolve the original module again (depth > 0)
+        if current_module_id in self.module_resolution_stack and self.reflection_depth > 0:
+            logger.debug(f"Reflection blocked: Recursive module resolution detected for module {current_module_id} at depth {self.reflection_depth}")
+            return False
+        
+        # Timing-based restrictions for nested reflections
+        if timing == ExecutionTiming.BEFORE and self.reflection_depth > 0:
+            logger.debug("Reflection blocked: Nested BEFORE timing reflection not allowed")
+            return False
+        
+        logger.debug(f"Reflection allowed for module {current_module_id} with timing {timing}")
+        return True
+    
+    def enter_reflection(self, module_id: str, instructions: str) -> None:
+        """
+        Enter reflection mode - increment depth and add to chain.
+        
+        Args:
+            module_id: ID of the module entering reflection
+            instructions: Reflection instructions for audit trail
+        """
+        self.reflection_depth += 1
+        
+        # Add to reflection chain with timestamp
+        reflection_entry = {
+            "module_id": module_id,
+            "instructions": instructions,
+            "timestamp": datetime.now().isoformat(),
+            "depth": self.reflection_depth
+        }
+        
+        self.reflection_chain.append(reflection_entry)
+        
+        # Limit chain length to prevent memory issues
+        if len(self.reflection_chain) > MAX_REFLECTION_CHAIN_LENGTH:
+            self.reflection_chain = self.reflection_chain[-MAX_REFLECTION_CHAIN_LENGTH:]
+        
+        logger.debug(f"Entered reflection for module {module_id} at depth {self.reflection_depth}")
+    
+    def exit_reflection(self) -> None:
+        """Exit reflection mode - decrement depth."""
+        if self.reflection_depth > 0:
+            self.reflection_depth -= 1
+            logger.debug(f"Exited reflection, depth now {self.reflection_depth}")
+        else:
+            logger.warning("Attempted to exit reflection when depth was already 0")
+    
+    def add_module_to_resolution_stack(self, module_id: str) -> None:
+        """
+        Add module to resolution stack to track active resolutions.
+        
+        Args:
+            module_id: ID of the module being resolved
+        """
+        if module_id not in self.module_resolution_stack:
+            self.module_resolution_stack.append(module_id)
+            logger.debug(f"Added module {module_id} to resolution stack")
+    
+    def remove_module_from_resolution_stack(self, module_id: str) -> None:
+        """
+        Remove module from resolution stack when resolution completes.
+        
+        Args:
+            module_id: ID of the module that finished resolving
+        """
+        if module_id in self.module_resolution_stack:
+            self.module_resolution_stack.remove(module_id)
+            logger.debug(f"Removed module {module_id} from resolution stack")
+    
+    def get_reflection_audit_trail(self) -> List[Dict[str, Any]]:
+        """
+        Get reflection audit trail for debugging and self-awareness.
+        
+        Returns:
+            List of reflection chain entries
+        """
+        return self.reflection_chain.copy()

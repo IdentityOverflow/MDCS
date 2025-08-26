@@ -81,6 +81,10 @@ const currentStreamingMessage = ref('')
 const currentStreamingThinking = ref('')
 const error = ref<string | null>(null)
 
+// Processing stage state
+const processingStage = ref<string | null>(null)
+const stageMessage = ref<string | null>(null)
+
 // Conversation persistence state
 const currentConversation: Ref<Conversation | null> = ref(null)
 const isLoadingConversation = ref(false)
@@ -294,10 +298,12 @@ export function useChat() {
       try {
         isSavingMessage.value = true
         const savedMessage = await saveMessageToDb(message)
-        // Update the message in our local state with the database ID
+        // Update the message in our local state with the database ID (avoid replacing entire object to prevent blink)
         const index = messages.value.findIndex(m => m.id === message.id)
         if (index >= 0) {
-          messages.value[index] = savedMessage
+          // Update only the ID and conversation_id in place to avoid full re-render
+          messages.value[index].id = savedMessage.id
+          messages.value[index].conversation_id = savedMessage.conversation_id
         }
         return savedMessage
       } catch (err) {
@@ -321,6 +327,7 @@ export function useChat() {
     outputTokens?: number,
     persist: boolean = true
   ): Promise<ChatMessage> => {
+    
     const message: ChatMessage = {
       id: generateMessageId(),
       role: 'assistant',
@@ -340,10 +347,12 @@ export function useChat() {
       try {
         isSavingMessage.value = true
         const savedMessage = await saveMessageToDb(message)
-        // Update the message in our local state with the database ID
+        // Update the message in our local state with the database ID (avoid replacing entire object to prevent blink)
         const index = messages.value.findIndex(m => m.id === message.id)
         if (index >= 0) {
-          messages.value[index] = savedMessage
+          // Update only the ID and conversation_id in place to avoid full re-render
+          messages.value[index].id = savedMessage.id
+          messages.value[index].conversation_id = savedMessage.conversation_id
         }
         return savedMessage
       } catch (err) {
@@ -461,6 +470,17 @@ export function useChat() {
     currentStreamingMessage.value = ''
     currentStreamingThinking.value = ''
     
+    // Set thinking stage if we have a persona (BEFORE modules will execute)
+    const selectedPersonaId = localStorage.getItem('selectedPersonaId')
+    if (selectedPersonaId) {
+      processingStage.value = 'thinking'
+      stageMessage.value = 'AI is thinking and preparing response...'
+    } else {
+      // Reset processing stage if no persona
+      processingStage.value = null
+      stageMessage.value = null
+    }
+    
     // Add user message immediately
     await addUserMessage(userMessage)
     
@@ -542,6 +562,12 @@ export function useChat() {
                     throw new Error(chunk.message || 'Streaming error')
                   }
                   
+                  // Handle processing stage updates
+                  if (chunk.processing_stage) {
+                    processingStage.value = chunk.processing_stage
+                    stageMessage.value = chunk.stage_message || null
+                  }
+                  
                   // Add content to streaming message
                   currentStreamingMessage.value += chunk.content || ''
                   
@@ -594,6 +620,10 @@ export function useChat() {
       isStreaming.value = false
       currentStreamingMessage.value = ''
       currentStreamingThinking.value = ''
+      
+      // Reset processing stage
+      processingStage.value = null
+      stageMessage.value = null
     }
   }
   
@@ -607,6 +637,17 @@ export function useChat() {
     
     error.value = null
     isStreaming.value = true
+    
+    // Set thinking stage BEFORE adding user message for proper UI timing
+    const selectedPersonaId = localStorage.getItem('selectedPersonaId')
+    if (selectedPersonaId) {
+      processingStage.value = 'thinking'
+      stageMessage.value = 'AI is thinking and preparing response...'
+    } else {
+      // Reset processing stage if no persona
+      processingStage.value = null
+      stageMessage.value = null
+    }
     
     // Add user message immediately
     await addUserMessage(userMessage)
@@ -640,6 +681,11 @@ export function useChat() {
         conversation_id: currentConversation.value?.id || undefined
       }
 
+      // Update to generating stage just before making the request
+      if (selectedPersonaId) {
+        processingStage.value = 'generating'
+        stageMessage.value = 'AI is generating response...'
+      }
       
       const response = await apiRequest('/api/chat/send', {
         method: 'POST',
@@ -653,6 +699,10 @@ export function useChat() {
       }
       
       const data = await response.json()
+      
+      // Reset processing stage immediately after receiving response
+      processingStage.value = null
+      stageMessage.value = null
       
       // Capture debug data if available
       if (data.debug_data) {
@@ -684,6 +734,10 @@ export function useChat() {
       await addAssistantMessage(`❌ Error: ${message}`, undefined, undefined, undefined, undefined, false)
     } finally {
       isStreaming.value = false
+      
+      // Reset processing stage
+      processingStage.value = null
+      stageMessage.value = null
     }
   }
   
@@ -706,6 +760,10 @@ export function useChat() {
     currentStreamingMessage.value = ''
     currentStreamingThinking.value = ''
     error.value = null
+    
+    // Reset processing stage
+    processingStage.value = null
+    stageMessage.value = null
     
     // Clear from database if requested and we have an active conversation
     if (clearFromDb && currentConversation.value) {
@@ -760,6 +818,10 @@ export function useChat() {
     currentStreamingMessage: computed(() => currentStreamingMessage.value),
     currentStreamingThinking: computed(() => currentStreamingThinking.value),
     error: computed(() => error.value),
+    
+    // Processing stage state
+    processingStage: computed(() => processingStage.value),
+    stageMessage: computed(() => stageMessage.value),
     
     // Conversation persistence state
     currentConversation: computed(() => currentConversation.value),

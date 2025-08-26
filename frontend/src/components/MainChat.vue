@@ -33,7 +33,9 @@ const {
   sendChatMessage, 
   clearChat,
   removeMessage,
-  updateMessage 
+  updateMessage,
+  processingStage,
+  stageMessage
 } = useChat()
 
 // Get chat controls from storage - no defaults, load what's actually saved
@@ -276,6 +278,21 @@ async function deleteMessage(messageId: string) {
 function canEditMessage(msg: ChatMessage): boolean {
   return msg.role !== 'system' && !isStreaming.value
 }
+
+// Get streaming indicator text based on processing stage
+function getStreamingIndicatorText(): string {
+  if (processingStage.value) {
+    switch (processingStage.value) {
+      case 'thinking':
+        return 'Thinking...'
+      case 'generating':
+        return 'Typing...'
+      default:
+        return stageMessage.value || 'Processing...'
+    }
+  }
+  return 'Typing...'
+}
 </script>
 
 <template>
@@ -367,8 +384,8 @@ function canEditMessage(msg: ChatMessage): boolean {
             </div>
           </div>
           
-          <!-- Streaming message -->
-          <div v-if="isStreaming && currentStreamingMessage" class="message message-assistant streaming">
+          <!-- Processing indicator (only when actually processing) -->
+          <div v-if="isStreaming && (currentStreamingMessage || currentStreamingThinking || processingStage)" class="message message-assistant streaming">
             <div class="message-content">
               <!-- Streaming thinking content - shown above response -->
               <div v-if="currentStreamingThinking" class="message-thinking streaming-thinking">
@@ -382,12 +399,23 @@ function canEditMessage(msg: ChatMessage): boolean {
                 </div>
               </div>
               
-              <div class="message-text" v-html="streamingMessageWithCursor"></div>
+              <!-- Show streaming message content if available -->
+              <div v-if="currentStreamingMessage" class="message-text" v-html="streamingMessageWithCursor"></div>
+              
+              <!-- Show processing indicator if no content yet (thinking stage or non-streaming generation) -->
+              <div v-else-if="processingStage === 'thinking'" class="processing-placeholder">
+                <i class="fa-solid fa-brain"></i>
+                <span>{{ stageMessage || 'Thinking...' }}</span>
+              </div>
+              <div v-else-if="processingStage === 'generating' && !currentStreamingMessage" class="processing-placeholder">
+                <i class="fa-solid fa-comment-dots"></i>
+                <span>{{ stageMessage || 'Generating response...' }}</span>
+              </div>
               
               <div class="message-meta">
                 <span class="streaming-indicator">
                   <i class="fa-solid fa-circle-notch fa-spin"></i>
-                  Typing...
+                  {{ getStreamingIndicatorText() }}
                 </span>
                 <span v-if="currentStreamingThinking" class="thinking-indicator">
                   <i class="fa-solid fa-brain"></i>
@@ -880,6 +908,23 @@ function canEditMessage(msg: ChatMessage): boolean {
 
 .message-assistant .message-meta {
   color: var(--fg-secondary);
+}
+
+/* Processing placeholder styles */
+.processing-placeholder {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px 0;
+  color: var(--fg-secondary);
+  font-style: italic;
+  opacity: 0.8;
+}
+
+.processing-placeholder i {
+  font-size: 1.1em;
+  color: var(--accent);
+  opacity: 0.7;
 }
 
 /* Streaming message */

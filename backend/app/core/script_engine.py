@@ -16,7 +16,7 @@ from RestrictedPython.transformer import RestrictingNodeTransformer
 logger = logging.getLogger(__name__)
 
 # Default execution timeout (5 seconds)
-DEFAULT_TIMEOUT = 5.0
+DEFAULT_TIMEOUT = 30.0  # Increased for AI reflection calls
 
 # Safe builtins for script execution
 SAFE_BUILTINS = {

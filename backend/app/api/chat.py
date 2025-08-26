@@ -17,7 +17,8 @@ from .chat_models import (
     ChatSendResponse, 
     StreamingChatResponse,
     ChatError,
-    ChatProvider
+    ChatProvider,
+    ProcessingStage
 )
 from ..services.ai_providers import ProviderFactory, ProviderType
 from ..services.exceptions import (
@@ -298,22 +299,9 @@ async def stream_chat_message(request: ChatSendRequest, db: Session = Depends(ge
         raise HTTPException(status_code=400, detail=error.model_dump())
     
     try:
-        # Resolve system prompt from persona (if provided)
-        resolved_system_prompt = await resolve_system_prompt(request, db)
-        
-        # Debug logging for streaming
-        if request.persona_id:
-            logger.info(f"Streaming request with persona_id: {request.persona_id}")
-            logger.info(f"Resolved system prompt for streaming: '{resolved_system_prompt[:100]}...' ({len(resolved_system_prompt)} chars)")
-        else:
-            logger.info("Streaming request without persona_id")
-        
         # Create provider instance - convert ChatProvider to ProviderType
         provider_type = ProviderType.OLLAMA if request.provider == ChatProvider.OLLAMA else ProviderType.OPENAI
         provider = ProviderFactory.create_provider(provider_type)
-        
-        # Convert to provider request with resolved system prompt
-        provider_request = request.to_provider_request(system_prompt=resolved_system_prompt)
         
         async def generate_stream():
             """Generate Server-Sent Events stream."""
@@ -324,6 +312,28 @@ async def stream_chat_message(request: ChatSendRequest, db: Session = Depends(ge
             final_metadata = None
             
             try:
+                # Frontend handles thinking stage, we start with system prompt resolution
+                
+                # Resolve system prompt from persona (BEFORE modules execute here)
+                resolved_system_prompt = await resolve_system_prompt(request, db)
+                
+                # Debug logging for streaming
+                if request.persona_id:
+                    logger.info(f"Streaming request with persona_id: {request.persona_id}")
+                    logger.info(f"Resolved system prompt for streaming: '{resolved_system_prompt[:100]}...' ({len(resolved_system_prompt)} chars)")
+                else:
+                    logger.info("Streaming request without persona_id")
+                
+                # Convert to provider request with resolved system prompt
+                provider_request = request.to_provider_request(system_prompt=resolved_system_prompt)
+                
+                # Send generating stage update
+                generating_update = StreamingChatResponse.create_stage_update(
+                    ProcessingStage.GENERATING, 
+                    "AI is generating response..."
+                )
+                yield f"data: {generating_update.model_dump_json()}\n\n"
+                
                 async for provider_chunk in provider.send_message_stream(provider_request):
                     # Accumulate content and metadata for debug data
                     accumulated_content += provider_chunk.content

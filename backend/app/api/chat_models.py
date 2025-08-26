@@ -126,6 +126,14 @@ class ChatSendResponse(BaseModel):
         )
 
 
+class ProcessingStage(str, Enum):
+    """Processing stages for chat responses."""
+    THINKING = "thinking"      # BEFORE module processing (system prompt resolution)
+    GENERATING = "generating"  # Main AI response generation
+    REFLECTING = "reflecting"  # AFTER module processing
+    COMPLETE = "complete"      # All processing finished
+
+
 class StreamingChatResponse(BaseModel):
     """Response model for streaming chat messages."""
     content: str = Field(..., description="The chunk content")
@@ -134,12 +142,16 @@ class StreamingChatResponse(BaseModel):
     thinking: Optional[str] = Field(None, description="The model's reasoning/thinking process (if available)")
     resolved_system_prompt: Optional[str] = Field(None, description="The resolved system prompt (only in final chunk)")
     debug_data: Optional[DebugData] = Field(None, description="Debug information (only in final chunk)")
+    processing_stage: Optional[ProcessingStage] = Field(None, description="Current processing stage")
+    stage_message: Optional[str] = Field(None, description="Human-readable stage description")
     
     @classmethod
     def from_provider_chunk(cls, provider_chunk: ProviderStreamingResponse, 
                           response_time: Optional[float] = None,
                           resolved_system_prompt: Optional[str] = None,
-                          debug_data: Optional[DebugData] = None) -> "StreamingChatResponse":
+                          debug_data: Optional[DebugData] = None,
+                          processing_stage: Optional[ProcessingStage] = None,
+                          stage_message: Optional[str] = None) -> "StreamingChatResponse":
         """Create from provider streaming response."""
         metadata = None
         
@@ -159,7 +171,19 @@ class StreamingChatResponse(BaseModel):
             metadata=metadata,
             thinking=provider_chunk.thinking,
             resolved_system_prompt=resolved_system_prompt if provider_chunk.done else None,
-            debug_data=debug_data if provider_chunk.done else None
+            debug_data=debug_data if provider_chunk.done else None,
+            processing_stage=processing_stage,
+            stage_message=stage_message
+        )
+    
+    @classmethod
+    def create_stage_update(cls, stage: ProcessingStage, stage_message: str) -> "StreamingChatResponse":
+        """Create a stage-only update message."""
+        return cls(
+            content="",
+            done=False,
+            processing_stage=stage,
+            stage_message=stage_message
         )
 
 

@@ -412,12 +412,45 @@ class ModuleResolver:
                 current_chat_controls=current_chat_controls
             )
             
+            # Set current module information for reflection safety
+            context.current_module_id = module.name
+            context.current_timing = module.timing
+            
+            # Sync module resolution stack for reflection safety
+            context.module_resolution_stack = list(self._resolution_stack)
+            
             # Handle AFTER timing differently - use previous state during template resolution
             if module.timing == ExecutionTiming.AFTER:
+                logger.info(f"🔍 AFTER MODULE DEBUG: '{module.name}' - starting AFTER timing resolution for conversation {conversation_id}")
+                
                 # During template resolution, use previous execution results
+                logger.info(f"🔍 AFTER MODULE DEBUG: '{module.name}' - getting previous state")
                 resolved_content = self._resolve_variables_with_previous_state(
                     module_content, module, conversation_id
                 )
+                logger.info(f"🔍 AFTER MODULE DEBUG: '{module.name}' - resolved content from previous state: '{resolved_content}'")
+                
+                # Also try executing the script NOW to see what it would produce (for debugging)
+                if module.script and module.script.strip():
+                    try:
+                        logger.info(f"🔍 AFTER MODULE DEBUG: '{module.name}' - executing script NOW for comparison")
+                        script_engine = ScriptEngine()
+                        result = script_engine.execute_script(
+                            module.script,
+                            {"ctx": context}
+                        )
+                        if result.success and result.outputs:
+                            fresh_content = self._resolve_variables(module_content, result.outputs)
+                            logger.info(f"🔍 AFTER MODULE DEBUG: '{module.name}' - fresh execution would give: '{fresh_content}'")
+                            logger.info(f"🔍 AFTER MODULE DEBUG: '{module.name}' - script outputs: {result.outputs}")
+                        else:
+                            logger.error(f"🔍 AFTER MODULE DEBUG: '{module.name}' - script execution failed: {result.error}")
+                            if result.traceback:
+                                logger.error(f"🔍 AFTER MODULE DEBUG: '{module.name}' - traceback: {result.traceback}")
+                    except Exception as e:
+                        logger.error(f"🔍 AFTER MODULE DEBUG: '{module.name}' - script execution error: {e}")
+                else:
+                    logger.info(f"🔍 AFTER MODULE DEBUG: '{module.name}' - no script to execute")
                 
                 # Store context and script for later execution (after AI response)
                 # This would need to be implemented in the chat API to execute after AI responds
@@ -474,16 +507,26 @@ class ModuleResolver:
         """
         # Get previous execution state from module's extra_data
         previous_outputs = {}
+        logger.info(f"🔍 PREV STATE DEBUG: '{module.name}' - checking for previous state in conversation {conversation_id}")
+        logger.info(f"🔍 PREV STATE DEBUG: '{module.name}' - module.extra_data: {module.extra_data}")
+        
         if (module.extra_data and 
             isinstance(module.extra_data, dict) and 
             conversation_id and
             'conversation_states' in module.extra_data):
             
             conversation_states = module.extra_data['conversation_states']
+            logger.info(f"🔍 PREV STATE DEBUG: '{module.name}' - found conversation_states: {conversation_states}")
+            
             if conversation_id in conversation_states:
                 previous_outputs = conversation_states[conversation_id]
-                logger.debug(f"Using previous state for AFTER module '{module.name}' in conversation {conversation_id}")
+                logger.info(f"🔍 PREV STATE DEBUG: '{module.name}' - found previous outputs for conversation {conversation_id}: {previous_outputs}")
+            else:
+                logger.info(f"🔍 PREV STATE DEBUG: '{module.name}' - no previous state for conversation {conversation_id}")
+        else:
+            logger.info(f"🔍 PREV STATE DEBUG: '{module.name}' - no extra_data or conversation_states found")
         
+        logger.info(f"🔍 PREV STATE DEBUG: '{module.name}' - using previous_outputs: {previous_outputs}")
         return self._resolve_variables(content, previous_outputs)
     
     def _resolve_variables(self, content: str, script_outputs: Dict[str, Any]) -> str:
