@@ -128,34 +128,32 @@ class ChatSendResponse(BaseModel):
 
 class ProcessingStage(str, Enum):
     """Processing stages for chat responses."""
-    THINKING = "thinking"      # BEFORE module processing (system prompt resolution)
-    GENERATING = "generating"  # Main AI response generation
-    REFLECTING = "reflecting"  # AFTER module processing
-    COMPLETE = "complete"      # All processing finished
+    THINKING_BEFORE = "thinking_before"  # BEFORE module processing
+    GENERATING = "generating"          # Main AI response generation
+    THINKING_AFTER = "thinking_after"    # AFTER module processing
 
 
 class StreamingChatResponse(BaseModel):
     """Response model for streaming chat messages."""
-    content: str = Field(..., description="The chunk content")
-    done: bool = Field(..., description="Whether this is the final chunk")
+    event_type: str = Field(default="chunk", description="Type of event (chunk, stage_update, after_module_result, done)")
+    content: Optional[str] = Field(None, description="The chunk content")
+    done: bool = Field(default=False, description="Whether this is the final chunk of the main content stream")
     metadata: Optional[ChatMetadata] = Field(None, description="Metadata (only present in final chunk)")
     thinking: Optional[str] = Field(None, description="The model's reasoning/thinking process (if available)")
     resolved_system_prompt: Optional[str] = Field(None, description="The resolved system prompt (only in final chunk)")
     debug_data: Optional[DebugData] = Field(None, description="Debug information (only in final chunk)")
     processing_stage: Optional[ProcessingStage] = Field(None, description="Current processing stage")
     stage_message: Optional[str] = Field(None, description="Human-readable stage description")
-    
+    event_data: Optional[Dict[str, Any]] = Field(None, description="Data for custom events")
+
     @classmethod
     def from_provider_chunk(cls, provider_chunk: ProviderStreamingResponse, 
                           response_time: Optional[float] = None,
                           resolved_system_prompt: Optional[str] = None,
-                          debug_data: Optional[DebugData] = None,
-                          processing_stage: Optional[ProcessingStage] = None,
-                          stage_message: Optional[str] = None) -> "StreamingChatResponse":
+                          debug_data: Optional[DebugData] = None) -> "StreamingChatResponse":
         """Create from provider streaming response."""
         metadata = None
         
-        # Only include metadata in the final chunk
         if provider_chunk.done:
             provider = ChatProvider.OLLAMA if provider_chunk.provider_type == ProviderType.OLLAMA else ChatProvider.OPENAI
             metadata = ChatMetadata.from_provider_response(
@@ -166,25 +164,36 @@ class StreamingChatResponse(BaseModel):
             )
         
         return cls(
+            event_type="chunk",
             content=provider_chunk.content,
             done=provider_chunk.done,
             metadata=metadata,
             thinking=provider_chunk.thinking,
             resolved_system_prompt=resolved_system_prompt if provider_chunk.done else None,
-            debug_data=debug_data if provider_chunk.done else None,
-            processing_stage=processing_stage,
-            stage_message=stage_message
+            debug_data=debug_data if provider_chunk.done else None
         )
     
     @classmethod
     def create_stage_update(cls, stage: ProcessingStage, stage_message: str) -> "StreamingChatResponse":
         """Create a stage-only update message."""
         return cls(
-            content="",
-            done=False,
+            event_type="stage_update",
             processing_stage=stage,
             stage_message=stage_message
         )
+
+    @classmethod
+    def create_event(cls, event_type: str, event_data: Dict[str, Any]) -> "StreamingChatResponse":
+        """Create a custom event message."""
+        return cls(
+            event_type=event_type,
+            event_data=event_data
+        )
+
+    @classmethod
+    def done_event(cls) -> "StreamingChatResponse":
+        """Create a final [DONE] message."""
+        return cls(event_type="done", content="", done=True)
 
 
 class ChatError(BaseModel):

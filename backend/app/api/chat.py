@@ -159,13 +159,6 @@ async def send_chat_message(request: ChatSendRequest, db: Session = Depends(get_
         # Resolve system prompt from persona (if provided)
         resolved_system_prompt = await resolve_system_prompt(request, db)
         
-        # Debug logging
-        if request.persona_id:
-            logger.info(f"Chat request with persona_id: {request.persona_id}")
-            logger.info(f"Resolved system prompt: '{resolved_system_prompt[:100]}...' ({len(resolved_system_prompt)} chars)")
-        else:
-            logger.info("Chat request without persona_id")
-        
         # Create provider instance - convert ChatProvider to ProviderType
         provider_type = ProviderType.OLLAMA if request.provider == ChatProvider.OLLAMA else ProviderType.OPENAI
         provider = ProviderFactory.create_provider(provider_type)
@@ -309,45 +302,25 @@ async def stream_chat_message(request: ChatSendRequest, db: Session = Depends(ge
             request_timestamp = time.time()
             accumulated_content = ""
             accumulated_thinking = ""
-            final_metadata = None
             
             try:
-                # Frontend handles thinking stage, we start with system prompt resolution
-                
-                # Resolve system prompt from persona (BEFORE modules execute here)
+                # Stage 1: Thinking (BEFORE modules)
+                yield f"data: {StreamingChatResponse.create_stage_update(ProcessingStage.THINKING_BEFORE, 'Resolving system prompt...').model_dump_json()}\n\n"
                 resolved_system_prompt = await resolve_system_prompt(request, db)
                 
-                # Debug logging for streaming
-                if request.persona_id:
-                    logger.info(f"Streaming request with persona_id: {request.persona_id}")
-                    logger.info(f"Resolved system prompt for streaming: '{resolved_system_prompt[:100]}...' ({len(resolved_system_prompt)} chars)")
-                else:
-                    logger.info("Streaming request without persona_id")
-                
-                # Convert to provider request with resolved system prompt
+                # Stage 2: Generating (AI response)
+                yield f"data: {StreamingChatResponse.create_stage_update(ProcessingStage.GENERATING, 'Generating AI response...').model_dump_json()}\n\n"
                 provider_request = request.to_provider_request(system_prompt=resolved_system_prompt)
                 
-                # Send generating stage update
-                generating_update = StreamingChatResponse.create_stage_update(
-                    ProcessingStage.GENERATING, 
-                    "AI is generating response..."
-                )
-                yield f"data: {generating_update.model_dump_json()}\n\n"
-                
                 async for provider_chunk in provider.send_message_stream(provider_request):
-                    # Accumulate content and metadata for debug data
                     accumulated_content += provider_chunk.content
                     if provider_chunk.thinking:
                         accumulated_thinking += provider_chunk.thinking
-                    if provider_chunk.done:
-                        final_metadata = provider_chunk.metadata
                     
-                    # Prepare debug data for final chunk - use actual API format
                     debug_data = None
                     if provider_chunk.done:
                         response_timestamp = time.time()
                         from .chat_models import DebugData
-                        
                         debug_data = DebugData(
                             provider_request=provider_chunk.metadata.get("debug_api_request", {}),
                             provider_response=provider_chunk.metadata.get("debug_api_response", {}),
@@ -355,7 +328,6 @@ async def stream_chat_message(request: ChatSendRequest, db: Session = Depends(ge
                             response_timestamp=response_timestamp
                         )
                     
-                    # Convert provider chunk to API chunk
                     response_time = time.time() - start_time if provider_chunk.done else None
                     api_chunk = StreamingChatResponse.from_provider_chunk(
                         provider_chunk=provider_chunk,
@@ -363,47 +335,38 @@ async def stream_chat_message(request: ChatSendRequest, db: Session = Depends(ge
                         resolved_system_prompt=resolved_system_prompt if provider_chunk.done else None,
                         debug_data=debug_data
                     )
-                    
-                    # Format as Server-Sent Event
-                    chunk_json = api_chunk.model_dump_json()
-                    yield f"data: {chunk_json}\n\n"
+                    yield f"data: {api_chunk.model_dump_json()}\n\n"
                 
-                # Send final [DONE] message
-                yield "data: [DONE]\n\n"
-                
-                # Execute AFTER timing modules asynchronously (don't block streaming completion)
+                # Stage 3: Thinking (AFTER modules)
                 if request.persona_id:
-                    import asyncio
+                    yield f"data: {StreamingChatResponse.create_stage_update(ProcessingStage.THINKING_AFTER, 'Executing post-response modules...').model_dump_json()}\n\n"
                     
-                    async def run_after_modules_streaming():
-                        """Run AFTER timing modules in background without blocking streaming."""
-                        try:
-                            # Extract session context for AFTER modules
-                            current_provider = request.provider.value if request.provider else None
-                            current_provider_settings = request.provider_settings
-                            current_chat_controls = request.chat_controls
-                            
-                            resolver = ModuleResolver(db_session=db)
-                            trigger_context = {"last_ai_message": accumulated_content}
-                            
-                            resolver.execute_after_timing_modules(
-                                persona_id=request.persona_id,
-                                conversation_id=request.conversation_id,
-                                db_session=db,
-                                trigger_context=trigger_context,
-                                current_provider=current_provider,
-                                current_provider_settings=current_provider_settings,
-                                current_chat_controls=current_chat_controls
-                            )
-                        except Exception as e:
-                            # Don't fail the streaming if AFTER modules fail
-                            logger.error(f"Error executing AFTER timing modules in streaming: {e}")
+                    current_provider = request.provider.value if request.provider else None
+                    current_provider_settings = request.provider_settings
+                    current_chat_controls = request.chat_controls
                     
-                    # Schedule AFTER modules to run in background without waiting
-                    asyncio.create_task(run_after_modules_streaming())
-                
+                    resolver = ModuleResolver(db_session=db)
+                    trigger_context = {"last_ai_message": accumulated_content}
+                    
+                    after_module_results = resolver.execute_after_timing_modules(
+                        persona_id=request.persona_id,
+                        conversation_id=request.conversation_id,
+                        db_session=db,
+                        trigger_context=trigger_context,
+                        current_provider=current_provider,
+                        current_provider_settings=current_provider_settings,
+                        current_chat_controls=current_chat_controls
+                    )
+                    
+                    for result in after_module_results:
+                        event = StreamingChatResponse.create_event("after_module_result", result)
+                        yield f"data: {event.model_dump_json()}\n\n"
+
+                # Stage 4: Done
+                yield f"data: {StreamingChatResponse.done_event().model_dump_json()}\n\n"
+
             except Exception as e:
-                # Send error as SSE
+                logger.error(f"STREAM: Error during stream generation: {e}")
                 error = ChatError.from_exception(e)
                 error_json = error.model_dump_json()
                 yield f"data: {error_json}\n\n"

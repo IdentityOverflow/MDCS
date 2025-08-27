@@ -96,7 +96,6 @@ class AIProvider(ABC):
         # Debug logging for system prompt handling
         import logging
         logger = logging.getLogger(__name__)
-        logger.info(f"Building messages - system_prompt: '{request.system_prompt[:100] if request.system_prompt else None}...', chat_controls system: '{request.chat_controls.get('system_or_instructions', 'None')[:50] if request.chat_controls.get('system_or_instructions') else None}...'")
         
         if system_message:
             messages.append({
@@ -113,7 +112,6 @@ class AIProvider(ABC):
             "content": request.message
         })
         
-        logger.info(f"Built {len(messages)} messages total")
         return messages
 
 

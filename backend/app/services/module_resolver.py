@@ -421,39 +421,9 @@ class ModuleResolver:
             
             # Handle AFTER timing differently - use previous state during template resolution
             if module.timing == ExecutionTiming.AFTER:
-                logger.info(f"🔍 AFTER MODULE DEBUG: '{module.name}' - starting AFTER timing resolution for conversation {conversation_id}")
-                
-                # During template resolution, use previous execution results
-                logger.info(f"🔍 AFTER MODULE DEBUG: '{module.name}' - getting previous state")
                 resolved_content = self._resolve_variables_with_previous_state(
                     module_content, module, conversation_id
                 )
-                logger.info(f"🔍 AFTER MODULE DEBUG: '{module.name}' - resolved content from previous state: '{resolved_content}'")
-                
-                # Also try executing the script NOW to see what it would produce (for debugging)
-                if module.script and module.script.strip():
-                    try:
-                        logger.info(f"🔍 AFTER MODULE DEBUG: '{module.name}' - executing script NOW for comparison")
-                        script_engine = ScriptEngine()
-                        result = script_engine.execute_script(
-                            module.script,
-                            {"ctx": context}
-                        )
-                        if result.success and result.outputs:
-                            fresh_content = self._resolve_variables(module_content, result.outputs)
-                            logger.info(f"🔍 AFTER MODULE DEBUG: '{module.name}' - fresh execution would give: '{fresh_content}'")
-                            logger.info(f"🔍 AFTER MODULE DEBUG: '{module.name}' - script outputs: {result.outputs}")
-                        else:
-                            logger.error(f"🔍 AFTER MODULE DEBUG: '{module.name}' - script execution failed: {result.error}")
-                            if result.traceback:
-                                logger.error(f"🔍 AFTER MODULE DEBUG: '{module.name}' - traceback: {result.traceback}")
-                    except Exception as e:
-                        logger.error(f"🔍 AFTER MODULE DEBUG: '{module.name}' - script execution error: {e}")
-                else:
-                    logger.info(f"🔍 AFTER MODULE DEBUG: '{module.name}' - no script to execute")
-                
-                # Store context and script for later execution (after AI response)
-                # This would need to be implemented in the chat API to execute after AI responds
                 logger.debug(f"Advanced module '{module.name}' with AFTER timing - using previous state")
                 return resolved_content
             else:
@@ -505,28 +475,16 @@ class ModuleResolver:
         Returns:
             Content with variables resolved using previous state or empty strings
         """
-        # Get previous execution state from module's extra_data
         previous_outputs = {}
-        logger.info(f"🔍 PREV STATE DEBUG: '{module.name}' - checking for previous state in conversation {conversation_id}")
-        logger.info(f"🔍 PREV STATE DEBUG: '{module.name}' - module.extra_data: {module.extra_data}")
-        
         if (module.extra_data and 
             isinstance(module.extra_data, dict) and 
             conversation_id and
             'conversation_states' in module.extra_data):
             
-            conversation_states = module.extra_data['conversation_states']
-            logger.info(f"🔍 PREV STATE DEBUG: '{module.name}' - found conversation_states: {conversation_states}")
-            
+            conversation_states = module.extra_data.get('conversation_states', {})
             if conversation_id in conversation_states:
                 previous_outputs = conversation_states[conversation_id]
-                logger.info(f"🔍 PREV STATE DEBUG: '{module.name}' - found previous outputs for conversation {conversation_id}: {previous_outputs}")
-            else:
-                logger.info(f"🔍 PREV STATE DEBUG: '{module.name}' - no previous state for conversation {conversation_id}")
-        else:
-            logger.info(f"🔍 PREV STATE DEBUG: '{module.name}' - no extra_data or conversation_states found")
-        
-        logger.info(f"🔍 PREV STATE DEBUG: '{module.name}' - using previous_outputs: {previous_outputs}")
+
         return self._resolve_variables(content, previous_outputs)
     
     def _resolve_variables(self, content: str, script_outputs: Dict[str, Any]) -> str:
@@ -570,7 +528,7 @@ class ModuleResolver:
         current_provider: Optional[str] = None,
         current_provider_settings: Optional[Dict[str, Any]] = None,
         current_chat_controls: Optional[Dict[str, Any]] = None
-    ) -> None:
+    ) -> List[Dict[str, Any]]:
         """
         Execute all AFTER timing modules for a persona and store their results.
         
@@ -585,14 +543,19 @@ class ModuleResolver:
             current_provider: Current provider for AI generation
             current_provider_settings: Current provider settings
             current_chat_controls: Current chat controls
+            
+        Returns:
+            A list of dictionaries, where each dictionary contains the execution
+            results (outputs) of a single module.
         """
         if not persona_id or not db_session:
             logger.warning("Cannot execute AFTER timing modules without persona_id and db_session")
-            return
+            return []
+        
+        all_results: List[Dict[str, Any]] = []
         
         try:
             # Get all AFTER timing modules for this persona
-            # First we need to get the persona and its template, then find AFTER modules
             from app.models import Persona
             persona = db_session.query(Persona).filter(
                 Persona.id == persona_id,
@@ -600,35 +563,43 @@ class ModuleResolver:
             ).first()
             
             if not persona or not persona.template:
-                return
+                return []
             
             # Find all module references in the persona template
             module_names = self._parse_module_references(persona.template)
             if not module_names:
-                return
+                return []
             
             # Get modules from database
             modules = self._get_modules_by_names(module_names)
             after_modules = [m for m in modules if m.type == ModuleType.ADVANCED and m.timing == ExecutionTiming.AFTER]
             
             if not after_modules:
-                return
+                return []
             
             logger.info(f"Executing {len(after_modules)} AFTER timing modules for persona {persona_id}")
             
             # Execute each AFTER module and store results
             for module in after_modules:
                 try:
-                    self._execute_and_store_after_module(
+                    execution_result = self._execute_and_store_after_module(
                         module, conversation_id, persona_id, db_session, trigger_context,
                         current_provider, current_provider_settings, current_chat_controls
                     )
+                    if execution_result:
+                        all_results.append({
+                            "module_name": module.name,
+                            "outputs": execution_result
+                        })
                 except Exception as e:
                     logger.error(f"Error executing AFTER module '{module.name}': {e}")
                     continue
+            
+            return all_results
                     
         except Exception as e:
             logger.error(f"Error in execute_after_timing_modules: {e}")
+            return []
     
     def _execute_and_store_after_module(
         self,
@@ -640,8 +611,13 @@ class ModuleResolver:
         current_provider: Optional[str],
         current_provider_settings: Optional[Dict[str, Any]],
         current_chat_controls: Optional[Dict[str, Any]]
-    ) -> None:
-        """Execute a single AFTER timing module and store its results."""
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Execute a single AFTER timing module, store its results, and return them.
+        
+        Returns:
+            A dictionary containing the script outputs, or None if execution fails or yields no output.
+        """
         try:
             # Check trigger pattern if specified
             if module.trigger_pattern:
@@ -651,11 +627,11 @@ class ModuleResolver:
                 )
                 if not should_execute:
                     logger.debug(f"AFTER module '{module.name}' trigger not matched")
-                    return
+                    return None
             
             # Skip if no script
             if not module.script or not module.script.strip():
-                return
+                return None
             
             # Create execution context
             context = ScriptExecutionContext(
@@ -695,18 +671,23 @@ class ModuleResolver:
                         
                         # Commit the changes to database
                         db_session.add(module)
-                        db_session.flush()  # Ensure changes are written
+                        db_session.flush()
                         db_session.commit()
-                        db_session.refresh(module)  # Refresh to ensure we see the committed data
+                        db_session.refresh(module)
                         
                         logger.debug(f"Stored AFTER module '{module.name}' results for conversation {conversation_id}")
+                    
+                    return result.outputs
                 else:
                     logger.warning(f"AFTER module '{module.name}' produced no outputs")
+                    return None
             else:
                 logger.error(f"AFTER module '{module.name}' execution failed: {getattr(result, 'error_message', 'Unknown error')}")
+                return None
                 
         except Exception as e:
             logger.error(f"Error executing and storing AFTER module '{module.name}': {e}")
+            return None
     
     @staticmethod
     def validate_module_name(name: str) -> bool:

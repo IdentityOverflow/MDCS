@@ -33,13 +33,13 @@ class OllamaRequestBuilder:
         """Build Ollama API request payload."""
         # Get model from either 'model' or 'default_model' field
         model = request.provider_settings.get("model") or request.provider_settings.get("default_model")
-        logger.info(f"Using model: {model} (from provider_settings: {request.provider_settings})")
+        # logger.info(f"Using model: {model} (from provider_settings: {request.provider_settings})")
         
         # Build messages first so we can log them
         messages = self._build_messages(request)
-        logger.info(f"Built {len(messages)} messages for Ollama:")
-        for i, msg in enumerate(messages):
-            logger.info(f"  Message {i+1}: {msg['role']} - '{msg['content'][:100]}{'...' if len(msg['content']) > 100 else ''}'")
+        # logger.info(f"Built {len(messages)} messages for Ollama:")
+        # for i, msg in enumerate(messages):
+        #     logger.info(f"  Message {i+1}: {msg['role']} - '{msg['content'][:100]}{'...' if len(msg['content']) > 100 else ''}'")
         
         # Start with basic request structure
         ollama_request = {

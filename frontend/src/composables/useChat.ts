@@ -2,7 +2,7 @@
  * Composable for managing chat functionality
  */
 
-import { ref, computed, type Ref } from 'vue'
+import { ref, computed, nextTick, type Ref } from 'vue'
 import { useApiConfig } from './apiConfig'
 import { usePersonas } from './usePersonas'
 import { useDebug } from './useDebug'
@@ -84,6 +84,9 @@ const error = ref<string | null>(null)
 // Processing stage state
 const processingStage = ref<string | null>(null)
 const stageMessage = ref<string | null>(null)
+const isProcessingAfter = ref(false)
+const messageCompleted = ref(false)
+const hideStreamingUI = ref(false)
 
 // Conversation persistence state
 const currentConversation: Ref<Conversation | null> = ref(null)
@@ -93,7 +96,6 @@ const isSavingMessage = ref(false)
 export function useChat() {
   const { apiRequest } = useApiConfig()
   const { getPersonaById } = usePersonas()
-  const { addDebugRecord } = useDebug()
   
   // Computed values
   const chatHistory = computed(() => messages.value)
@@ -413,20 +415,6 @@ export function useChat() {
     }
   }
 
-  // Get selected persona template from localStorage
-  const getSelectedPersonaTemplate = (): string | null => {
-    try {
-      const selectedPersonaId = localStorage.getItem('selectedPersonaId')
-      if (selectedPersonaId) {
-        const persona = getPersonaById(selectedPersonaId)
-        return persona?.template || null
-      }
-      return null
-    } catch (error) {
-      console.error('Failed to get selected persona template:', error)
-      return null
-    }
-  }
 
   // Build chat controls from current settings
   const buildChatControls = (chatControls: ChatControls): Record<string, any> => {
@@ -460,44 +448,30 @@ export function useChat() {
   // Send message with streaming
   const sendMessageStreaming = async (
     userMessage: string, 
-    chatControls: ChatControls,
-    personaTemplate?: string
+    chatControls: ChatControls
   ): Promise<void> => {
     if (isStreaming.value) return
-    
+
     error.value = null
     isStreaming.value = true
     currentStreamingMessage.value = ''
     currentStreamingThinking.value = ''
-    
-    // Set thinking stage if we have a persona (BEFORE modules will execute)
-    const selectedPersonaId = localStorage.getItem('selectedPersonaId')
-    if (selectedPersonaId) {
-      processingStage.value = 'thinking'
-      stageMessage.value = 'AI is thinking and preparing response...'
-    } else {
-      // Reset processing stage if no persona
-      processingStage.value = null
-      stageMessage.value = null
-    }
-    
-    // Add user message immediately
+    messageCompleted.value = false
+    hideStreamingUI.value = false
+    // Start with thinking stage immediately to show animation
+    processingStage.value = 'thinking'
+    stageMessage.value = 'Thinking...'
+
     await addUserMessage(userMessage)
-    
+
     try {
-      // Get fresh chat controls from localStorage to ensure we have the latest values
       const freshControls = getFreshChatControls() || chatControls
-      
-      // Get provider settings from localStorage
       const providerSettings = getProviderSettings(freshControls.provider)
       if (!providerSettings) {
-        throw new Error(`${freshControls.provider.toUpperCase()} connection settings not found. Please configure in Settings.`)
+        throw new Error(`${freshControls.provider.toUpperCase()} connection settings not found.`)
       }
 
-      // Get selected persona ID for backend template resolution
       const selectedPersonaId = localStorage.getItem('selectedPersonaId')
-
-      // Add selected model to provider settings
       const enhancedProviderSettings = {
         ...providerSettings,
         model: freshControls.selected_model || providerSettings.default_model
@@ -513,159 +487,149 @@ export function useChat() {
         conversation_id: currentConversation.value?.id || undefined
       }
 
-      
       const response = await apiRequest('/api/chat/stream', {
         method: 'POST',
         body: JSON.stringify(chatRequest)
       })
-      
+
       if (!response.ok) {
         const errorData = await response.json()
-        const errorMessage = errorData.detail?.message || errorData.message || 'Chat request failed'
-        throw new Error(errorMessage)
+        throw new Error(errorData.detail?.message || errorData.message || 'Chat request failed')
       }
-      
-      // Handle streaming response with EventSource-like parsing
+
       const reader = response.body?.getReader()
-      if (!reader) {
-        throw new Error('Failed to get response stream')
-      }
-      
+      if (!reader) throw new Error('Failed to get response stream')
+
       const decoder = new TextDecoder()
       let buffer = ''
-      
-      try {
-        while (true) {
-          const { done, value } = await reader.read()
-          
-          if (done) break
-          
-          buffer += decoder.decode(value, { stream: true })
-          
-          // Process complete lines
-          const lines = buffer.split('\n')
-          buffer = lines.pop() || '' // Keep incomplete line in buffer
-          
-          for (const line of lines) {
-            if (line.startsWith('data: ')) {
-              const data = line.slice(6).trim()
-              
-              if (data === '[DONE]') {
-                break
+      let firstChunk = true
+
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+
+        buffer += decoder.decode(value, { stream: true })
+        const lines = buffer.split('\n')
+        buffer = lines.pop() || ''
+
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            const data = line.slice(6).trim()
+            if (!data) continue
+
+            try {
+              const chunk = JSON.parse(data)
+
+              if (chunk.error_type) {
+                throw new Error(chunk.message || 'Streaming error')
               }
-              
-              if (data) {
-                try {
-                  const chunk = JSON.parse(data)
-                  
-                  if (chunk.error_type) {
-                    throw new Error(chunk.message || 'Streaming error')
+
+              switch (chunk.event_type) {
+                case 'stage_update':
+                  if (chunk.processing_stage === 'thinking_before') {
+                    processingStage.value = 'thinking'
+                    stageMessage.value = 'Thinking...'
+                  } else if (chunk.processing_stage === 'generating') {
+                    // Continue showing thinking until first chunk arrives
+                    processingStage.value = 'thinking'
+                    stageMessage.value = 'Thinking...'
+                  } else if (chunk.processing_stage === 'thinking_after') {
+                    // Show thinking animation for AFTER processing
+                    processingStage.value = 'thinking'
+                    stageMessage.value = 'Thinking...'
+                    // Clear ALL streaming content to avoid showing duplicates during AFTER processing
+                    currentStreamingMessage.value = ''
+                    currentStreamingThinking.value = ''
+                    isProcessingAfter.value = true
                   }
-                  
-                  // Handle processing stage updates
-                  if (chunk.processing_stage) {
-                    processingStage.value = chunk.processing_stage
-                    stageMessage.value = chunk.stage_message || null
+                  break
+                case 'chunk':
+                  if (firstChunk) {
+                    processingStage.value = null
+                    stageMessage.value = null
+                    firstChunk = false
                   }
-                  
-                  // Add content to streaming message
-                  currentStreamingMessage.value += chunk.content || ''
-                  
-                  // Add thinking content to streaming thinking if available
-                  if (chunk.thinking) {
-                    currentStreamingThinking.value += chunk.thinking
-                  }
-                  
-                  // If this is the final chunk, save the complete message
+                  if (chunk.content) currentStreamingMessage.value += chunk.content
+                  if (chunk.thinking) currentStreamingThinking.value += chunk.thinking
                   if (chunk.done) {
-                    // Capture debug data if available
-                    if (chunk.debug_data) {
-                      const personaName = selectedPersonaId ? getPersonaById(selectedPersonaId)?.name : undefined
-                      addDebugRecord({
-                        debugData: chunk.debug_data,
-                        personaName,
-                        personaId: selectedPersonaId || undefined,
-                        resolvedSystemPrompt: chunk.resolved_system_prompt,
-                        responseTime: chunk.metadata?.response_time
-                      })
-                    }
+                    console.log('DEBUG: chunk.done received - saving message and forcing UI to hide')
                     
+                    // FIRST: Clear all streaming content immediately to break template condition
+                    const savedContent = currentStreamingMessage.value
+                    const savedThinking = currentStreamingThinking.value
+                    currentStreamingMessage.value = ''
+                    currentStreamingThinking.value = ''
+                    hideStreamingUI.value = true
+                    messageCompleted.value = true
+                    processingStage.value = null
+                    stageMessage.value = null
+                    isProcessingAfter.value = true
+                    
+                    // THEN: Save the message using the saved content
                     await addAssistantMessage(
-                      currentStreamingMessage.value,
+                      savedContent,
                       chunk.metadata,
-                      currentStreamingThinking.value || undefined,
+                      savedThinking || undefined,
                       chunk.metadata?.input_tokens,
                       chunk.metadata?.output_tokens
                     )
+                    
+                    console.log('DEBUG: Content cleared FIRST, message saved SECOND')
                   }
-                } catch (parseError) {
-                  console.warn('Failed to parse streaming chunk:', data)
-                }
+                  break
+                case 'after_module_result':
+                  // AFTER module results can be used for debugging if needed
+                  break
+                case 'done':
+                  isStreaming.value = false
+                  isProcessingAfter.value = false
+                  messageCompleted.value = false
+                  hideStreamingUI.value = false
+                  currentStreamingMessage.value = ''
+                  currentStreamingThinking.value = ''
+                  processingStage.value = null
+                  stageMessage.value = null
+                  break
               }
+            } catch (parseError) {
+              console.warn('Failed to parse streaming chunk:', data, parseError)
             }
           }
         }
-      } finally {
-        reader.releaseLock()
       }
-      
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Unknown error occurred'
       error.value = message
       console.error('Chat streaming error:', err)
-      
-      // Add error message as assistant message
       await addAssistantMessage(`❌ Error: ${message}`, undefined, undefined, undefined, undefined, false)
-    } finally {
       isStreaming.value = false
-      currentStreamingMessage.value = ''
-      currentStreamingThinking.value = ''
-      
-      // Reset processing stage
       processingStage.value = null
       stageMessage.value = null
     }
   }
-  
+
   // Send message without streaming
   const sendMessage = async (
     userMessage: string,
-    chatControls: ChatControls,
-    personaTemplate?: string
+    chatControls: ChatControls
   ): Promise<void> => {
     if (isStreaming.value) return
-    
+
     error.value = null
     isStreaming.value = true
-    
-    // Set thinking stage BEFORE adding user message for proper UI timing
-    const selectedPersonaId = localStorage.getItem('selectedPersonaId')
-    if (selectedPersonaId) {
-      processingStage.value = 'thinking'
-      stageMessage.value = 'AI is thinking and preparing response...'
-    } else {
-      // Reset processing stage if no persona
-      processingStage.value = null
-      stageMessage.value = null
-    }
-    
-    // Add user message immediately
+    processingStage.value = 'thinking'
+    stageMessage.value = 'Thinking...'
+
     await addUserMessage(userMessage)
-    
+
     try {
-      // Get fresh chat controls from localStorage to ensure we have the latest values
       const freshControls = getFreshChatControls() || chatControls
-      
-      // Get provider settings from localStorage
       const providerSettings = getProviderSettings(freshControls.provider)
       if (!providerSettings) {
-        throw new Error(`${freshControls.provider.toUpperCase()} connection settings not found. Please configure in Settings.`)
+        throw new Error(`${freshControls.provider.toUpperCase()} connection settings not found.`)
       }
 
-      // Get selected persona ID for backend template resolution
       const selectedPersonaId = localStorage.getItem('selectedPersonaId')
-
-      // Add selected model to provider settings
       const enhancedProviderSettings = {
         ...providerSettings,
         model: freshControls.selected_model || providerSettings.default_model
@@ -680,62 +644,39 @@ export function useChat() {
         persona_id: selectedPersonaId || undefined,
         conversation_id: currentConversation.value?.id || undefined
       }
-
-      // Update to generating stage just before making the request
-      if (selectedPersonaId) {
-        processingStage.value = 'generating'
-        stageMessage.value = 'AI is generating response...'
-      }
       
+      // Keep showing "Thinking..." during the entire request
       const response = await apiRequest('/api/chat/send', {
         method: 'POST',
         body: JSON.stringify(chatRequest)
       })
-      
+
       if (!response.ok) {
         const errorData = await response.json()
-        const errorMessage = errorData.detail?.message || errorData.message || 'Chat request failed'
-        throw new Error(errorMessage)
+        throw new Error(errorData.detail?.message || errorData.message || 'Chat request failed')
       }
-      
+
       const data = await response.json()
       
-      // Reset processing stage immediately after receiving response
+      // After getting the response, clear all stages.
       processingStage.value = null
       stageMessage.value = null
-      
-      // Capture debug data if available
-      if (data.debug_data) {
-        const personaName = selectedPersonaId ? getPersonaById(selectedPersonaId)?.name : undefined
-        addDebugRecord({
-          debugData: data.debug_data,
-          personaName,
-          personaId: selectedPersonaId || undefined,
-          resolvedSystemPrompt: data.resolved_system_prompt,
-          responseTime: data.metadata?.response_time
-        })
-      }
-      
-      // Add assistant response
+
       await addAssistantMessage(
-        data.content, 
-        data.metadata, 
+        data.content,
+        data.metadata,
         data.thinking || undefined,
         data.metadata?.input_tokens,
         data.metadata?.output_tokens
       )
-      
+
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Unknown error occurred'
       error.value = message
       console.error('Chat error:', err)
-      
-      // Add error message as assistant message
       await addAssistantMessage(`❌ Error: ${message}`, undefined, undefined, undefined, undefined, false)
     } finally {
       isStreaming.value = false
-      
-      // Reset processing stage
       processingStage.value = null
       stageMessage.value = null
     }
@@ -745,12 +686,13 @@ export function useChat() {
   const sendChatMessage = async (
     userMessage: string,
     chatControls: ChatControls,
-    personaTemplate?: string
+    _personaTemplate?: string
   ): Promise<void> => {
     if (chatControls.stream) {
-      await sendMessageStreaming(userMessage, chatControls, personaTemplate)
-    } else {
-      await sendMessage(userMessage, chatControls, personaTemplate)
+      await sendMessageStreaming(userMessage, chatControls)
+    }
+    else {
+      await sendMessage(userMessage, chatControls)
     }
   }
   
@@ -822,6 +764,9 @@ export function useChat() {
     // Processing stage state
     processingStage: computed(() => processingStage.value),
     stageMessage: computed(() => stageMessage.value),
+    isProcessingAfter: computed(() => isProcessingAfter.value),
+    messageCompleted: computed(() => messageCompleted.value),
+    hideStreamingUI: computed(() => hideStreamingUI.value),
     
     // Conversation persistence state
     currentConversation: computed(() => currentConversation.value),

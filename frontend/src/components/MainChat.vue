@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, nextTick, computed, onMounted, onUnmounted, watch } from 'vue'
 import ChatControls from './connections/ChatControls.vue'
-import { useChat, type ChatMessage } from '@/composables/useChat'
+import { useChat, type ChatMessage, type ChatControls as ChatControlsType } from '@/composables/useChat'
 import { useLocalStorage } from '@/composables/storage'
 import { usePersonas } from '@/composables/usePersonas'
 import { useMarkdown } from '@/composables/useMarkdown'
@@ -35,7 +35,10 @@ const {
   removeMessage,
   updateMessage,
   processingStage,
-  stageMessage
+  stageMessage,
+  isProcessingAfter,
+  messageCompleted,
+  hideStreamingUI
 } = useChat()
 
 // Get chat controls from storage - no defaults, load what's actually saved
@@ -149,7 +152,7 @@ async function sendMessage() {
   try {
     await sendChatMessage(
       userMessage,
-      chatControls.value as any,
+      chatControls.value as ChatControlsType,
       currentSystemPrompt.value
     )
     // Scroll to bottom after sending message
@@ -171,7 +174,8 @@ function toggleControls() {
 function toggleMenu() {
   if (showPanel.value && panelType.value === 'menu') {
     showPanel.value = false
-  } else {
+  }
+ else {
     panelType.value = 'menu'
     showPanel.value = true
   }
@@ -281,10 +285,12 @@ function canEditMessage(msg: ChatMessage): boolean {
 
 // Get streaming indicator text based on processing stage
 function getStreamingIndicatorText(): string {
+  console.log('DEBUG Template: messageCompleted:', messageCompleted.value, 'isStreaming:', isStreaming.value, 'currentStreamingMessage:', !!currentStreamingMessage.value, 'currentStreamingThinking:', !!currentStreamingThinking.value)
+  
   if (processingStage.value) {
     switch (processingStage.value) {
       case 'thinking':
-        return 'Thinking...'
+        return isProcessingAfter.value ? 'Processing...' : 'Thinking...'
       case 'generating':
         return 'Typing...'
       default:
@@ -384,10 +390,23 @@ function getStreamingIndicatorText(): string {
             </div>
           </div>
           
-          <!-- Processing indicator (only when actually processing) -->
-          <div v-if="isStreaming && (currentStreamingMessage || currentStreamingThinking || processingStage)" class="message message-assistant streaming">
+          <!-- BEFORE processing indicator - minimal spinner only (for both streaming and non-streaming) -->
+          <div v-if="processingStage === 'thinking' && !currentStreamingMessage && !currentStreamingThinking && !isProcessingAfter" class="message message-assistant streaming">
             <div class="message-content">
-              <!-- Streaming thinking content - shown above response -->
+              <div class="message-meta">
+                <span class="streaming-indicator">
+                  <i class="fa-solid fa-circle-notch fa-spin"></i>
+                  Thinking...
+                </span>
+              </div>
+            </div>
+          </div>
+
+
+          <!-- Active streaming indicator (only show when UI not hidden) -->
+          <div v-if="!hideStreamingUI && isStreaming && (currentStreamingMessage || currentStreamingThinking)" class="message message-assistant streaming">
+            <div class="message-content">
+              <!-- Streaming thinking content - shown above response (only during initial thinking) -->
               <div v-if="currentStreamingThinking" class="message-thinking streaming-thinking">
                 <div class="thinking-toggle expanded">
                   <i class="fa-solid fa-brain"></i>
@@ -402,11 +421,7 @@ function getStreamingIndicatorText(): string {
               <!-- Show streaming message content if available -->
               <div v-if="currentStreamingMessage" class="message-text" v-html="streamingMessageWithCursor"></div>
               
-              <!-- Show processing indicator if no content yet (thinking stage or non-streaming generation) -->
-              <div v-else-if="processingStage === 'thinking'" class="processing-placeholder">
-                <i class="fa-solid fa-brain"></i>
-                <span>{{ stageMessage || 'Thinking...' }}</span>
-              </div>
+              <!-- Show processing indicator for generating stage -->
               <div v-else-if="processingStage === 'generating' && !currentStreamingMessage" class="processing-placeholder">
                 <i class="fa-solid fa-comment-dots"></i>
                 <span>{{ stageMessage || 'Generating response...' }}</span>
@@ -424,6 +439,9 @@ function getStreamingIndicatorText(): string {
               </div>
             </div>
           </div>
+
+          <!-- No visual feedback during AFTER processing - let it run silently in background -->
+
         </div>
         
         <!-- Empty state -->
@@ -943,6 +961,13 @@ function getStreamingIndicatorText(): string {
   align-items: center;
   gap: 6px;
   color: var(--accent);
+}
+
+.after-thinking-indicator {
+  display: flex;
+  justify-content: center;
+  padding: 8px;
+  opacity: 0.5;
 }
 
 .thinking-indicator {

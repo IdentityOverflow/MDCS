@@ -399,9 +399,7 @@ def reflect(*args, _script_context=None, **kwargs) -> str:
         current_timing = getattr(_script_context, 'current_timing', ExecutionTiming.AFTER)
         
         if not _script_context.can_reflect(current_module_id, current_timing):
-            logger.warning(f"🔍 REFLECT BLOCKED: module {current_module_id} - depth: {_script_context.reflection_depth}, stack: {_script_context.module_resolution_stack}")
             blocked_msg = f"Reflection blocked for safety: current depth {_script_context.reflection_depth}, module stack: {_script_context.module_resolution_stack}"
-            logger.info(f"🔍 REFLECT DEBUG: returning blocked message: '{blocked_msg}'")
             return blocked_msg
         
         # Enter reflection mode for tracking
@@ -483,13 +481,9 @@ Please provide thoughtful self-reflection."""
                 system_prompt=reflection_system_prompt  # Simple system prompt to avoid module recursion
             )
             
-            logger.info(f"🔍 REFLECT DEBUG: About to call AI - {provider} with instructions: {instructions[:50]}... (depth: {_script_context.reflection_depth})")
-            
             # Use synchronous wrapper to call AI provider (same as generate())
             result = _run_async_ai_call(provider, chat_request)
             
-            logger.info(f"🔍 REFLECT DEBUG: AI call completed successfully at depth {_script_context.reflection_depth}")
-            logger.info(f"🔍 REFLECT DEBUG: AI result: '{result[:100]}...'")
             return result
             
         finally:
