@@ -26,7 +26,7 @@ from ..services.exceptions import (
     ProviderAuthenticationError,
     UnsupportedProviderError
 )
-from ..services.module_resolver import ModuleResolver
+from ..services.staged_module_resolver import StagedModuleResolver
 from ..database.connection import get_db
 from ..models import Persona
 
@@ -92,9 +92,9 @@ async def resolve_system_prompt(request: ChatSendRequest, db: Session) -> str:
         current_provider_settings = request.provider_settings
         current_chat_controls = request.chat_controls
         
-        # Resolve template using ModuleResolver with full context including session info
-        resolver = ModuleResolver(db_session=db)
-        result = resolver.resolve_template(
+        # Resolve template using StagedModuleResolver (Stage 1 + Stage 2)
+        resolver = StagedModuleResolver(db_session=db)
+        result = resolver.resolve_template_stage1_and_stage2(
             persona.template,
             conversation_id=conversation_id,
             persona_id=request.persona_id,
@@ -206,10 +206,10 @@ async def send_chat_message(request: ChatSendRequest, db: Session = Depends(get_
                     current_provider_settings = request.provider_settings
                     current_chat_controls = request.chat_controls
                     
-                    resolver = ModuleResolver(db_session=db)
+                    resolver = StagedModuleResolver(db_session=db)
                     trigger_context = {"last_ai_message": provider_response.content}
                     
-                    resolver.execute_after_timing_modules(
+                    resolver.execute_post_response_modules(
                         persona_id=request.persona_id,
                         conversation_id=request.conversation_id,
                         db_session=db,
@@ -219,8 +219,8 @@ async def send_chat_message(request: ChatSendRequest, db: Session = Depends(get_
                         current_chat_controls=current_chat_controls
                     )
                 except Exception as e:
-                    # Don't fail the response if AFTER modules fail
-                    logger.error(f"Error executing AFTER timing modules: {e}")
+                    # Don't fail the response if POST_RESPONSE modules fail
+                    logger.error(f"Error executing POST_RESPONSE modules: {e}")
             
             # Schedule AFTER modules to run in background without waiting
             asyncio.create_task(run_after_modules())
@@ -345,10 +345,10 @@ async def stream_chat_message(request: ChatSendRequest, db: Session = Depends(ge
                     current_provider_settings = request.provider_settings
                     current_chat_controls = request.chat_controls
                     
-                    resolver = ModuleResolver(db_session=db)
+                    resolver = StagedModuleResolver(db_session=db)
                     trigger_context = {"last_ai_message": accumulated_content}
                     
-                    after_module_results = resolver.execute_after_timing_modules(
+                    after_module_results = resolver.execute_post_response_modules(
                         persona_id=request.persona_id,
                         conversation_id=request.conversation_id,
                         db_session=db,
@@ -359,7 +359,12 @@ async def stream_chat_message(request: ChatSendRequest, db: Session = Depends(ge
                     )
                     
                     for result in after_module_results:
-                        event = StreamingChatResponse.create_event("after_module_result", result)
+                        # Convert PostResponseExecutionResult to old format for compatibility
+                        legacy_result = {
+                            "module_name": result.module_name,
+                            "outputs": result.variables
+                        }
+                        event = StreamingChatResponse.create_event("after_module_result", legacy_result)
                         yield f"data: {event.model_dump_json()}\n\n"
 
                 # Stage 4: Done

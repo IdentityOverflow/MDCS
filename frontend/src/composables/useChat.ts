@@ -96,6 +96,7 @@ const isSavingMessage = ref(false)
 export function useChat() {
   const { apiRequest } = useApiConfig()
   const { getPersonaById } = usePersonas()
+  const { addDebugRecord } = useDebug()
   
   // Computed values
   const chatHistory = computed(() => messages.value)
@@ -464,6 +465,9 @@ export function useChat() {
 
     await addUserMessage(userMessage)
 
+    // Prepare debug data
+    let debugDataToRecord: any = null
+
     try {
       const freshControls = getFreshChatControls() || chatControls
       const providerSettings = getProviderSettings(freshControls.provider)
@@ -549,10 +553,25 @@ export function useChat() {
                     stageMessage.value = null
                     firstChunk = false
                   }
-                  if (chunk.content) currentStreamingMessage.value += chunk.content
-                  if (chunk.thinking) currentStreamingThinking.value += chunk.thinking
+                  if (chunk.content) {
+                    currentStreamingMessage.value += chunk.content
+                  }
+                  if (chunk.thinking) {
+                    currentStreamingThinking.value += chunk.thinking
+                  }
                   if (chunk.done) {
                     console.log('DEBUG: chunk.done received - saving message and forcing UI to hide')
+                    
+                    // Use debug_data from backend if available (contains actual AI provider API calls)
+                    if (chunk.debug_data) {
+                      const persona = selectedPersonaId ? getPersonaById(selectedPersonaId) : null
+                      debugDataToRecord = {
+                        provider_request: chunk.debug_data.provider_request,
+                        provider_response: chunk.debug_data.provider_response,
+                        request_timestamp: chunk.debug_data.request_timestamp,
+                        response_timestamp: chunk.debug_data.response_timestamp
+                      }
+                    }
                     
                     // FIRST: Clear all streaming content immediately to break template condition
                     const savedContent = currentStreamingMessage.value
@@ -597,6 +616,17 @@ export function useChat() {
           }
         }
       }
+
+      // Record debug data after successful streaming
+      if (debugDataToRecord) {
+        const persona = selectedPersonaId ? getPersonaById(selectedPersonaId) : null
+        addDebugRecord({
+          debugData: debugDataToRecord,
+          personaName: persona?.name,
+          personaId: selectedPersonaId || undefined,
+          responseTime: (debugDataToRecord.response_timestamp - debugDataToRecord.request_timestamp)
+        })
+      }
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Unknown error occurred'
       error.value = message
@@ -621,6 +651,7 @@ export function useChat() {
     stageMessage.value = 'Thinking...'
 
     await addUserMessage(userMessage)
+
 
     try {
       const freshControls = getFreshChatControls() || chatControls
@@ -669,6 +700,17 @@ export function useChat() {
         data.metadata?.input_tokens,
         data.metadata?.output_tokens
       )
+
+      // Record debug data for non-streaming using backend-provided debug_data
+      if (data.debug_data) {
+        const persona = selectedPersonaId ? getPersonaById(selectedPersonaId) : null
+        addDebugRecord({
+          debugData: data.debug_data,
+          personaName: persona?.name,
+          personaId: selectedPersonaId || undefined,
+          responseTime: (data.debug_data.response_timestamp - data.debug_data.request_timestamp)
+        })
+      }
 
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Unknown error occurred'

@@ -1,5 +1,18 @@
 // Shared TypeScript interfaces
 
+// Execution context enum for modules
+export type ExecutionContext = 'IMMEDIATE' | 'POST_RESPONSE' | 'ON_DEMAND'
+
+// Module type enum
+export type ModuleType = 'simple' | 'advanced'
+
+// Helper type for execution stage information
+export interface ExecutionStageInfo {
+  stage: number
+  name: string
+  description: string
+}
+
 export interface Persona {
   id: string
   name: string
@@ -19,10 +32,11 @@ export interface Module {
   name: string
   description: string | null
   content: string | null
-  type: 'simple' | 'advanced'
+  type: ModuleType
   trigger_pattern: string | null
   script: string | null
-  timing: 'before' | 'after' | 'custom' | null
+  execution_context: ExecutionContext | null
+  requires_ai_inference: boolean
   is_active: boolean
   created_at: string
   updated_at: string
@@ -32,20 +46,20 @@ export interface ModuleCreateRequest {
   name: string
   description?: string
   content?: string
-  type: 'simple' | 'advanced'
+  type: ModuleType
   trigger_pattern?: string
   script?: string
-  timing?: 'before' | 'after' | 'custom'
+  execution_context?: ExecutionContext
 }
 
 export interface ModuleUpdateRequest {
   name?: string
   description?: string
   content?: string
-  type?: 'simple' | 'advanced'
+  type?: ModuleType
   trigger_pattern?: string
   script?: string
-  timing?: 'before' | 'after' | 'custom'
+  execution_context?: ExecutionContext
 }
 
 export interface PersonaCreateRequest {

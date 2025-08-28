@@ -103,7 +103,7 @@ class TestModulesIntegration:
             "type": "advanced",
             "trigger_pattern": "/integration/*",
             "script": "print('integration validation')",
-            "timing": "before"
+            "execution_context": "IMMEDIATE"
         }
         
         create_response = client.post("/api/modules", json=module_data)
@@ -115,17 +115,17 @@ class TestModulesIntegration:
         # Verify all advanced fields
         assert created_module["trigger_pattern"] == "/integration/*"
         assert created_module["script"] == "print('integration validation')"
-        assert created_module["timing"] == "before"
+        assert created_module["execution_context"] == "IMMEDIATE"
         
-        # Test updating timing
+        # Test updating execution context
         updated_data = module_data.copy()
-        updated_data["timing"] = "after"
+        updated_data["execution_context"] = "POST_RESPONSE"
         
         update_response = client.put(f"/api/modules/{module_id}", json=updated_data)
         assert update_response.status_code == 200
         
         updated_module = update_response.json()
-        assert updated_module["timing"] == "after"
+        assert updated_module["execution_context"] == "POST_RESPONSE"
         
         # Clean up
         client.delete(f"/api/modules/{module_id}")
@@ -221,21 +221,21 @@ class TestModulesIntegration:
             # Clean up
             client.delete(f"/api/modules/{module_id}")
         
-        # Test all valid ExecutionTiming values for advanced modules
-        for timing in ["before", "after", "custom"]:
+        # Test all valid ExecutionContext values for advanced modules
+        for execution_context in ["IMMEDIATE", "POST_RESPONSE", "ON_DEMAND"]:
             module_data = {
-                "name": f"Test {timing.title()} Module",
-                "description": f"Testing {timing} timing",
+                "name": f"Test {execution_context.title()} Module",
+                "description": f"Testing {execution_context} execution context",
                 "content": "Test content",
                 "type": "advanced",
-                "timing": timing
+                "execution_context": execution_context
             }
             
             response = client.post("/api/modules", json=module_data)
             assert response.status_code == 201
             
             created_module = response.json()
-            assert created_module["timing"] == timing
+            assert created_module["execution_context"] == execution_context
             
             # Clean up
             client.delete(f"/api/modules/{created_module['id']}")

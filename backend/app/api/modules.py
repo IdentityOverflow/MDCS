@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy.exc import SQLAlchemyError
 
 from app.database.connection import get_db
-from app.models import Module, ModuleType, ExecutionTiming
+from app.models import Module, ModuleType, ExecutionContext
 from app.core.script_engine import ScriptEngine
 from app.core.script_context import ScriptExecutionContext
 from app.core.script_plugins import plugin_registry
@@ -36,7 +36,7 @@ class ModuleCreateRequest(BaseModel):
     # Advanced module fields (optional)
     trigger_pattern: Optional[str] = Field(None, max_length=500, description="Trigger pattern for advanced modules")
     script: Optional[str] = Field(None, description="Python script for advanced modules")
-    timing: Optional[ExecutionTiming] = Field(None, description="Execution timing for advanced modules")
+    execution_context: Optional[ExecutionContext] = Field(None, description="Execution context for advanced modules")
     
     model_config = ConfigDict(use_enum_values=True)
 
@@ -51,7 +51,7 @@ class ModuleUpdateRequest(BaseModel):
     # Advanced module fields
     trigger_pattern: Optional[str] = Field(None, max_length=500, description="Trigger pattern for advanced modules")
     script: Optional[str] = Field(None, description="Python script for advanced modules")
-    timing: Optional[ExecutionTiming] = Field(None, description="Execution timing for advanced modules")
+    execution_context: Optional[ExecutionContext] = Field(None, description="Execution context for advanced modules")
     
     model_config = ConfigDict(use_enum_values=True)
 
@@ -65,7 +65,8 @@ class ModuleResponse(BaseModel):
     type: str
     trigger_pattern: Optional[str]
     script: Optional[str]
-    timing: Optional[str]
+    execution_context: Optional[str]
+    requires_ai_inference: bool
     is_active: bool
     created_at: str
     updated_at: str
@@ -83,7 +84,8 @@ class ModuleResponse(BaseModel):
             type=module.type.value,
             trigger_pattern=module.trigger_pattern,
             script=module.script,
-            timing=module.timing.value if module.timing else None,
+            execution_context=module.execution_context.value if module.execution_context else None,
+            requires_ai_inference=module.requires_ai_inference,
             is_active=module.is_active,
             created_at=module.created_at.isoformat(),
             updated_at=module.updated_at.isoformat()
@@ -153,8 +155,12 @@ def create_module(
             type=module_data.type,
             trigger_pattern=module_data.trigger_pattern,
             script=module_data.script,
-            timing=module_data.timing
+            execution_context=module_data.execution_context
         )
+        
+        # Analyze script for AI dependencies if it's an advanced module with a script
+        if new_module.type == ModuleType.ADVANCED and new_module.script:
+            new_module.analyze_script()
         
         # Save to database
         db.add(new_module)
@@ -385,6 +391,10 @@ def update_module(
         
         for field, value in update_dict.items():
             setattr(module, field, value)
+        
+        # Re-analyze script if it was updated or if this is now an advanced module
+        if ('script' in update_dict or 'type' in update_dict) and module.type == ModuleType.ADVANCED and module.script:
+            module.analyze_script()
         
         # Save changes
         db.commit()

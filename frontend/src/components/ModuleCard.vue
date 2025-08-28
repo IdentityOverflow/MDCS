@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { Module } from '@/types'
+import type { Module, ExecutionContext } from '@/types'
 
 const props = defineProps<{
   module: Module
@@ -16,6 +16,21 @@ function handleEdit() {
 
 function handleDelete() {
   emit('delete', props.module.id)
+}
+
+function getExecutionContextDisplay(context: ExecutionContext | null): string {
+  if (!context) return 'On Demand'
+  
+  switch (context) {
+    case 'IMMEDIATE':
+      return 'Before Response'
+    case 'POST_RESPONSE':
+      return 'After Response'
+    case 'ON_DEMAND':
+      return 'On Demand'
+    default:
+      return context
+  }
 }
 </script>
 
@@ -41,8 +56,12 @@ function handleDelete() {
       
       <div v-if="module.type === 'advanced'" class="advanced-info">
         <div class="info-row">
-          <span class="info-label">Timing:</span>
-          <span class="info-value">{{ module.timing }}</span>
+          <span class="info-label">Context:</span>
+          <span class="info-value">{{ getExecutionContextDisplay(module.execution_context) }}</span>
+        </div>
+        <div class="info-row">
+          <span class="info-label">AI:</span>
+          <span class="info-value">{{ module.requires_ai_inference ? 'Required' : 'Not Required' }}</span>
         </div>
         <div class="info-row">
           <span class="info-label">Trigger:</span>

@@ -522,7 +522,7 @@ class TestChatTemplateIntegration:
 
     def test_chat_with_advanced_module_variable_resolution(self, client, db_session):
         """Test chat with advanced module that uses ${variable} resolution."""
-        from app.models import ExecutionTiming
+        from app.models import ExecutionContext
         
         # Create advanced module with script
         advanced_module = Module(
@@ -535,7 +535,7 @@ name = "AVA"
 current_time = ctx.get_current_time()
 """,
             trigger_pattern=None,  # Always execute
-            timing=ExecutionTiming.CUSTOM,
+            execution_context=ExecutionContext.IMMEDIATE,
             is_active=True
         )
         

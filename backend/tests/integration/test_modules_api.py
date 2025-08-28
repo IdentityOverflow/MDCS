@@ -59,7 +59,7 @@ def sample_advanced_module_data():
         "type": "advanced",
         "trigger_pattern": "/test/*",
         "script": "print('validation script')",
-        "timing": "before"
+        "execution_context": "IMMEDIATE"
     }
 
 
@@ -90,7 +90,8 @@ class TestModulesCreateEndpoint:
         # Optional fields for simple modules
         assert data["trigger_pattern"] is None
         assert data["script"] is None
-        assert data["timing"] == "custom"  # Default timing is "custom" (on demand)
+        assert data["execution_context"] == "ON_DEMAND"  # Default execution context is ON_DEMAND
+        assert data["requires_ai_inference"] is False  # Default is False
         
         # Check timestamps
         assert "created_at" in data
@@ -108,7 +109,8 @@ class TestModulesCreateEndpoint:
         assert data["type"] == "advanced"
         assert data["trigger_pattern"] == sample_advanced_module_data["trigger_pattern"]
         assert data["script"] == sample_advanced_module_data["script"]
-        assert data["timing"] == "before"
+        assert data["execution_context"] == "IMMEDIATE"
+        assert data["requires_ai_inference"] is False  # Should be False for simple script
     
     def test_create_module_missing_required_fields(self, client):
         """Test creation fails with missing required fields."""
@@ -128,10 +130,10 @@ class TestModulesCreateEndpoint:
         response = client.post("/api/modules", json=invalid_data)
         assert response.status_code == 422
     
-    def test_create_module_invalid_timing(self, client, sample_advanced_module_data):
-        """Test creation fails with invalid timing value."""
+    def test_create_module_invalid_execution_context(self, client, sample_advanced_module_data):
+        """Test creation fails with invalid execution context value."""
         invalid_data = sample_advanced_module_data.copy()
-        invalid_data["timing"] = "invalid_timing"
+        invalid_data["execution_context"] = "INVALID_CONTEXT"
         
         response = client.post("/api/modules", json=invalid_data)
         assert response.status_code == 422
@@ -260,7 +262,7 @@ class TestModulesUpdateEndpoint:
         assert data["type"] == "advanced"
         assert data["trigger_pattern"] == sample_advanced_module_data["trigger_pattern"]
         assert data["script"] == sample_advanced_module_data["script"]
-        assert data["timing"] == "before"
+        assert data["execution_context"] == "IMMEDIATE"
 
 
 class TestModulesDeleteEndpoint:
@@ -339,4 +341,4 @@ class TestModulesValidation:
         created_module = response.json()
         assert created_module["trigger_pattern"] is None
         assert created_module["script"] is None
-        assert created_module["timing"] == "custom"  # Default timing is "custom" (on demand)
+        assert created_module["execution_context"] == "ON_DEMAND"  # Default execution context is ON_DEMAND

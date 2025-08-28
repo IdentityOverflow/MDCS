@@ -21,7 +21,7 @@ const formData = ref<ModuleCreateRequest>({
   type: 'simple',
   trigger_pattern: '',
   script: '',
-  timing: 'custom'
+  execution_context: 'ON_DEMAND'
 })
 
 const loading = ref(false)
@@ -110,7 +110,7 @@ async function loadModuleForEditing(id: string) {
         type: module.type,
         trigger_pattern: module.trigger_pattern || '',
         script: module.script || '',
-        timing: module.timing || 'custom'
+        execution_context: module.execution_context || 'ON_DEMAND'
       }
       
       moduleMetadata.value = {
@@ -403,14 +403,17 @@ function clearTestResult() {
             </div>
           </div>
 
-          <!-- Timing -->
+          <!-- Execution Context -->
           <div class="form-group">
-            <label>Timing</label>
-            <select v-model="formData.timing" class="form-select">
-              <option value="before">Before</option>
-              <option value="after">After</option>
-              <option value="custom">On demand</option>
+            <label>Execution Context</label>
+            <select v-model="formData.execution_context" class="form-select">
+              <option value="IMMEDIATE">Before Response (IMMEDIATE)</option>
+              <option value="POST_RESPONSE">After Response (POST_RESPONSE)</option>
+              <option value="ON_DEMAND">On Demand (ON_DEMAND)</option>
             </select>
+            <div class="execution-context-help">
+              Choose when this module should execute relative to AI response generation
+            </div>
           </div>
         </div>
 
@@ -709,5 +712,14 @@ function clearTestResult() {
 
 .success-result {
   border-top: 1px solid rgba(0, 255, 65, 0.2);
+}
+
+/* Execution context help */
+.execution-context-help {
+  color: var(--fg);
+  opacity: 0.6;
+  font-size: 0.75em;
+  margin-top: 4px;
+  font-style: italic;
 }
 </style>

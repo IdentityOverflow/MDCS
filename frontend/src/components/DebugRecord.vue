@@ -20,10 +20,57 @@ const responseTimeMs = computed(() => {
 })
 
 const systemPromptPreview = computed(() => {
-  const prompt = props.record.resolved_system_prompt || props.record.request.system_prompt
-  if (!prompt) return 'No system prompt'
-  if (prompt.length <= 100) return prompt
-  return prompt.substring(0, 100) + '...'
+  // First try resolved_system_prompt (from backend response)
+  if (props.record.resolved_system_prompt) {
+    const prompt = props.record.resolved_system_prompt
+    if (prompt.length <= 100) return prompt
+    return prompt.substring(0, 100) + '...'
+  }
+  
+  // Then try to find system prompt in actual provider request format
+  const request = props.record.request as any
+  if (request && request.messages) {
+    // Look for system message in messages array (Ollama/OpenAI format)
+    const systemMessage = request.messages.find((msg: any) => msg.role === 'system')
+    if (systemMessage && systemMessage.content) {
+      const prompt = systemMessage.content
+      if (prompt.length <= 100) return prompt
+      return prompt.substring(0, 100) + '...'
+    }
+  }
+  
+  // Fallback to direct system_prompt field (legacy format)
+  if (request && request.system_prompt) {
+    const prompt = request.system_prompt
+    if (prompt.length <= 100) return prompt
+    return prompt.substring(0, 100) + '...'
+  }
+  
+  return 'No system prompt'
+})
+
+const fullSystemPrompt = computed(() => {
+  // First try resolved_system_prompt (from backend response)
+  if (props.record.resolved_system_prompt) {
+    return props.record.resolved_system_prompt
+  }
+  
+  // Then try to find system prompt in actual provider request format
+  const request = props.record.request as any
+  if (request && request.messages) {
+    // Look for system message in messages array (Ollama/OpenAI format)
+    const systemMessage = request.messages.find((msg: any) => msg.role === 'system')
+    if (systemMessage && systemMessage.content) {
+      return systemMessage.content
+    }
+  }
+  
+  // Fallback to direct system_prompt field (legacy format)
+  if (request && request.system_prompt) {
+    return request.system_prompt
+  }
+  
+  return 'No system prompt'
 })
 
 // Toggle expanded state
@@ -74,7 +121,7 @@ const getResponseData = computed(() => {
           System Prompt
         </h4>
         <div class="system-prompt">
-          <pre>{{ record.resolved_system_prompt || record.request.system_prompt || 'No system prompt' }}</pre>
+          <pre>{{ fullSystemPrompt }}</pre>
         </div>
       </div>
 

@@ -9,7 +9,7 @@ import uuid
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-from app.models import Base, Conversation, Message, MessageRole, Persona, Module, ModuleType, ExecutionTiming
+from app.models import Base, Conversation, Message, MessageRole, Persona, Module, ModuleType, ExecutionContext
 
 
 # Using db_session fixture from conftest.py instead of in-memory SQLite
@@ -246,7 +246,7 @@ class TestModuleModel:
             description="A test module",
             content="This is static content",
             type=ModuleType.SIMPLE,
-            extra_data={"version": "1.0"}
+            execution_context=ExecutionContext.IMMEDIATE
         )
         
         clean_db.add(module)
@@ -258,7 +258,7 @@ class TestModuleModel:
         assert module.description == "A test module"
         assert module.content == "This is static content"
         assert module.type == ModuleType.SIMPLE
-        assert module.extra_data == {"version": "1.0"}
+        assert module.execution_context == ExecutionContext.IMMEDIATE
         assert module.is_active is True
     
     def test_create_advanced_module(self, clean_db):
@@ -269,7 +269,7 @@ class TestModuleModel:
             type=ModuleType.ADVANCED,
             trigger_pattern="hello|hi",
             script="print('Hello from script')",
-            timing=ExecutionTiming.BEFORE
+            execution_context=ExecutionContext.POST_RESPONSE
         )
         
         clean_db.add(module)
@@ -278,16 +278,16 @@ class TestModuleModel:
         assert module.type == ModuleType.ADVANCED
         assert module.trigger_pattern == "hello|hi"
         assert module.script == "print('Hello from script')"
-        assert module.timing == ExecutionTiming.BEFORE
+        assert module.execution_context == ExecutionContext.POST_RESPONSE
     
     def test_module_enums(self):
         """Test module enumeration values."""
         assert ModuleType.SIMPLE == "simple"
         assert ModuleType.ADVANCED == "advanced"
         
-        assert ExecutionTiming.BEFORE == "before"
-        assert ExecutionTiming.AFTER == "after"
-        assert ExecutionTiming.CUSTOM == "custom"
+        assert ExecutionContext.IMMEDIATE == "IMMEDIATE"
+        assert ExecutionContext.POST_RESPONSE == "POST_RESPONSE"
+        assert ExecutionContext.ON_DEMAND == "ON_DEMAND"
     
     def test_module_defaults(self, clean_db):
         """Test module default values."""
@@ -300,7 +300,8 @@ class TestModuleModel:
         clean_db.commit()
         
         assert module.type == ModuleType.SIMPLE
-        assert module.timing == ExecutionTiming.CUSTOM
+        assert module.execution_context == ExecutionContext.ON_DEMAND  # Default is ON_DEMAND
+        assert module.requires_ai_inference is False  # Default is False
         assert module.is_active is True
     
     def test_module_repr(self, clean_db):
