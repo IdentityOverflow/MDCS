@@ -250,8 +250,6 @@ The staged execution redesign successfully transforms Project 2501's cognitive s
   - **Benefits**: Predictable state, simpler templates, no timing races
 
 ## 🔮 Future Priorities  
-- Template editor with @module autocomplete
-- Debug screen for resolved system prompts
 - Import/export system for personas
 - Advanced chat features (file uploads, tools)
 - Module marketplace

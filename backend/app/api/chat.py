@@ -218,6 +218,8 @@ async def send_chat_message(request: ChatSendRequest, db: Session = Depends(get_
                         current_provider_settings=current_provider_settings,
                         current_chat_controls=current_chat_controls
                     )
+                    # Commit ConversationState changes from POST_RESPONSE modules
+                    db.commit()
                 except Exception as e:
                     # Don't fail the response if POST_RESPONSE modules fail
                     logger.error(f"Error executing POST_RESPONSE modules: {e}")
@@ -357,6 +359,8 @@ async def stream_chat_message(request: ChatSendRequest, db: Session = Depends(ge
                         current_provider_settings=current_provider_settings,
                         current_chat_controls=current_chat_controls
                     )
+                    # Commit ConversationState changes from POST_RESPONSE modules
+                    db.commit()
                     
                     for result in after_module_results:
                         # Convert PostResponseExecutionResult to old format for compatibility
