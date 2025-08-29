@@ -8,7 +8,7 @@ self-modification behavior in advanced modules using the reflect() function.
 import pytest
 from unittest.mock import Mock, MagicMock, patch
 from app.core.script_context import ScriptExecutionContext
-from app.models import ModuleType, ExecutionTiming
+from app.models import ModuleType, ExecutionContext
 
 
 class TestReflectionSafety:
@@ -41,7 +41,7 @@ class TestReflectionSafety:
     def test_can_reflect_basic_case(self):
         """Test can_reflect allows reflection in basic case."""
         # Should allow reflection when no constraints are active
-        result = self.base_context.can_reflect("test_module", ExecutionTiming.AFTER)
+        result = self.base_context.can_reflect("test_module", "POST_RESPONSE")
         assert result is True
 
     def test_can_reflect_blocks_at_max_depth(self):
@@ -49,7 +49,7 @@ class TestReflectionSafety:
         # Set reflection depth to maximum
         self.base_context.reflection_depth = 3
         
-        result = self.base_context.can_reflect("test_module", ExecutionTiming.AFTER)
+        result = self.base_context.can_reflect("test_module", "POST_RESPONSE")
         assert result is False
 
     def test_can_reflect_allows_under_max_depth(self):
@@ -57,7 +57,7 @@ class TestReflectionSafety:
         # Set reflection depth below maximum
         self.base_context.reflection_depth = 2
         
-        result = self.base_context.can_reflect("test_module", ExecutionTiming.AFTER)
+        result = self.base_context.can_reflect("test_module", "POST_RESPONSE")
         assert result is True
 
     def test_can_reflect_blocks_direct_recursion(self):
@@ -68,7 +68,7 @@ class TestReflectionSafety:
         self.base_context.reflection_depth = 1
         
         # Should block the same module from reflecting during nested reflection
-        result = self.base_context.can_reflect("recursive_module", ExecutionTiming.AFTER)
+        result = self.base_context.can_reflect("recursive_module", "POST_RESPONSE")
         assert result is False
 
     def test_can_reflect_allows_cross_module_reflection(self):
@@ -77,12 +77,12 @@ class TestReflectionSafety:
         self.base_context.module_resolution_stack = ["module_a"]
         
         # Should allow module B to reflect
-        result = self.base_context.can_reflect("module_b", ExecutionTiming.AFTER)
+        result = self.base_context.can_reflect("module_b", "POST_RESPONSE")
         assert result is True
 
     def test_can_reflect_allows_custom_timing(self):
         """Test can_reflect allows CUSTOM timing modules to reflect."""
-        result = self.base_context.can_reflect("test_module", ExecutionTiming.CUSTOM)
+        result = self.base_context.can_reflect("test_module", "ON_DEMAND")
         assert result is True
 
     def test_can_reflect_blocks_nested_before_timing(self):
@@ -90,7 +90,7 @@ class TestReflectionSafety:
         # Set reflection depth > 0 to simulate nesting
         self.base_context.reflection_depth = 1
         
-        result = self.base_context.can_reflect("test_module", ExecutionTiming.BEFORE)
+        result = self.base_context.can_reflect("test_module", "IMMEDIATE")
         assert result is False
 
     def test_can_reflect_allows_first_level_before_timing(self):
@@ -98,7 +98,7 @@ class TestReflectionSafety:
         # Reflection depth = 0 (no nesting)
         self.base_context.reflection_depth = 0
         
-        result = self.base_context.can_reflect("test_module", ExecutionTiming.BEFORE)
+        result = self.base_context.can_reflect("test_module", "IMMEDIATE")
         assert result is True
 
     def test_can_reflect_always_allows_after_timing(self):
@@ -106,14 +106,14 @@ class TestReflectionSafety:
         # Even with some depth, AFTER should be allowed
         self.base_context.reflection_depth = 2
         
-        result = self.base_context.can_reflect("test_module", ExecutionTiming.AFTER)
+        result = self.base_context.can_reflect("test_module", "POST_RESPONSE")
         assert result is True
 
     def test_can_reflect_allows_custom_timing(self):
         """Test can_reflect allows CUSTOM timing modules."""
         self.base_context.reflection_depth = 1
         
-        result = self.base_context.can_reflect("test_module", ExecutionTiming.CUSTOM)
+        result = self.base_context.can_reflect("test_module", "ON_DEMAND")
         assert result is True
 
     def test_enter_reflection_increments_depth(self):
@@ -214,19 +214,19 @@ class TestReflectionSafety:
         self.base_context.module_resolution_stack = ["module_a", "module_b"]
         
         # Test various constraints
-        assert self.base_context.can_reflect("module_a", ExecutionTiming.AFTER) is False  # Direct recursion
-        assert self.base_context.can_reflect("module_c", ExecutionTiming.AFTER) is True   # Different module
-        assert self.base_context.can_reflect("module_c", ExecutionTiming.BEFORE) is False # Nested BEFORE
-        assert self.base_context.can_reflect("module_c", ExecutionTiming.CUSTOM) is True  # Custom timing allowed
+        assert self.base_context.can_reflect("module_a", "POST_RESPONSE") is False  # Direct recursion
+        assert self.base_context.can_reflect("module_c", "POST_RESPONSE") is True   # Different module
+        assert self.base_context.can_reflect("module_c", "IMMEDIATE") is False # Nested BEFORE
+        assert self.base_context.can_reflect("module_c", "ON_DEMAND") is True  # Custom timing allowed
 
     def test_safety_with_edge_case_values(self):
         """Test safety mechanisms with edge case values."""
         # Test with None values
-        result = self.base_context.can_reflect(None, ExecutionTiming.AFTER)
+        result = self.base_context.can_reflect(None, "POST_RESPONSE")
         assert result is False  # Should handle None gracefully
         
         # Test with empty string
-        result = self.base_context.can_reflect("", ExecutionTiming.AFTER)
+        result = self.base_context.can_reflect("", "POST_RESPONSE")
         assert result is False  # Should handle empty string
 
     def test_reflection_context_isolation(self):
@@ -255,7 +255,7 @@ class TestReflectionIntegrationSafety:
         )
         
         # Simulate AFTER timing module reflection (most common use case)
-        assert context.can_reflect("response_analyzer", ExecutionTiming.AFTER) is True
+        assert context.can_reflect("response_analyzer", "POST_RESPONSE") is True
         
         # Add module to resolution stack (simulating module resolution)
         context.add_module_to_resolution_stack("response_analyzer")
@@ -264,10 +264,10 @@ class TestReflectionIntegrationSafety:
         context.enter_reflection("response_analyzer", "Analyze my response quality")
         
         # Should still allow other modules to reflect
-        assert context.can_reflect("mood_detector", ExecutionTiming.AFTER) is True
+        assert context.can_reflect("mood_detector", "POST_RESPONSE") is True
         
         # But not the same module (due to resolution stack)
-        assert context.can_reflect("response_analyzer", ExecutionTiming.AFTER) is False
+        assert context.can_reflect("response_analyzer", "POST_RESPONSE") is False
 
     def test_cross_module_reflection_chain(self):
         """Test safe cross-module reflection chains."""
@@ -279,7 +279,7 @@ class TestReflectionIntegrationSafety:
         
         # Module A starts reflecting
         context.add_module_to_resolution_stack("personality_adapter")
-        assert context.can_reflect("mood_analyzer", ExecutionTiming.AFTER) is True
+        assert context.can_reflect("mood_analyzer", "POST_RESPONSE") is True
         
         # Module A reflects using Module B - this should work
         # Add Module B to resolution stack to simulate it being resolved
@@ -287,11 +287,11 @@ class TestReflectionIntegrationSafety:
         context.enter_reflection("mood_analyzer", "What mood should I use?")
         
         # Now Module B is in a reflection, but can still reflect to Module C
-        assert context.can_reflect("conversation_summarizer", ExecutionTiming.AFTER) is True
+        assert context.can_reflect("conversation_summarizer", "POST_RESPONSE") is True
         
         # But Module B cannot reflect back to itself (in resolution stack) or Module A (in resolution stack)
-        assert context.can_reflect("mood_analyzer", ExecutionTiming.AFTER) is False
-        assert context.can_reflect("personality_adapter", ExecutionTiming.AFTER) is False
+        assert context.can_reflect("mood_analyzer", "POST_RESPONSE") is False
+        assert context.can_reflect("personality_adapter", "POST_RESPONSE") is False
 
     def test_reflection_depth_cascade_prevention(self):
         """Test prevention of excessive reflection depth cascades."""
@@ -306,10 +306,10 @@ class TestReflectionIntegrationSafety:
             context.enter_reflection(f"module_{i}", f"reflection {i}")
         
         # Should still allow one more level
-        assert context.can_reflect("final_module", ExecutionTiming.AFTER) is True
+        assert context.can_reflect("final_module", "POST_RESPONSE") is True
         
         # Enter final level
         context.enter_reflection("final_module", "final reflection")
         
         # Now should block any more reflections
-        assert context.can_reflect("overflow_module", ExecutionTiming.AFTER) is False
+        assert context.can_reflect("overflow_module", "POST_RESPONSE") is False

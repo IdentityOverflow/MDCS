@@ -7,8 +7,8 @@ with focused, realistic scenarios.
 
 import pytest
 from unittest.mock import Mock, patch
-from app.services.module_resolver import ModuleResolver
-from app.models import Module, ModuleType, ExecutionTiming
+from app.services.staged_module_resolver import StagedModuleResolver
+from app.models import Module, ModuleType, ExecutionContext
 from app.core.script_context import ScriptExecutionContext
 from app.plugins.ai_plugins import reflect
 
@@ -72,7 +72,7 @@ class TestReflectionIntegration:
         # Add current module to resolution stack and set reflection depth > 0 (simulating nested self-recursion)
         context.module_resolution_stack = ["self_analyzer"]
         context.current_module_id = "self_analyzer"
-        context.current_timing = ExecutionTiming.AFTER
+        context.current_timing = "POST_RESPONSE"
         context.reflection_depth = 1  # Simulate being in a nested reflection
         
         # Test that nested reflection is blocked
@@ -100,7 +100,7 @@ class TestReflectionIntegration:
         # Module A is in resolution stack, but we're reflecting as Module B
         context.module_resolution_stack = ["personality_adapter"]
         context.current_module_id = "mood_analyzer"  # Different module
-        context.current_timing = ExecutionTiming.AFTER
+        context.current_timing = "POST_RESPONSE"
         
         with patch('app.plugins.ai_plugins._run_async_ai_call') as mock_ai_call:
             mock_ai_call.return_value = "Use a warm, encouraging tone"
@@ -130,7 +130,7 @@ class TestReflectionIntegration:
         # Set reflection depth to maximum
         context.reflection_depth = 3
         context.current_module_id = "deep_thinker"
-        context.current_timing = ExecutionTiming.AFTER
+        context.current_timing = "POST_RESPONSE"
         
         # Test that reflection is blocked at max depth
         result = reflect(
@@ -176,16 +176,16 @@ class TestReflectionIntegration:
         context.module_resolution_stack = list(resolver_stack)
         
         # Test safety checks work with the stack
-        assert context.can_reflect("module_c", ExecutionTiming.AFTER) is True   # Different module
+        assert context.can_reflect("module_c", "POST_RESPONSE") is True   # Different module
         
         # At depth 0, modules can reflect during their own execution
-        assert context.can_reflect("module_a", ExecutionTiming.AFTER) is True  # Same module but depth 0
-        assert context.can_reflect("module_b", ExecutionTiming.AFTER) is True  # Same module but depth 0
+        assert context.can_reflect("module_a", "POST_RESPONSE") is True  # Same module but depth 0
+        assert context.can_reflect("module_b", "POST_RESPONSE") is True  # Same module but depth 0
         
         # At depth > 0, same modules should be blocked
         context.reflection_depth = 1
-        assert context.can_reflect("module_a", ExecutionTiming.AFTER) is False  # Same module at depth > 0
-        assert context.can_reflect("module_b", ExecutionTiming.AFTER) is False  # Same module at depth > 0
+        assert context.can_reflect("module_a", "POST_RESPONSE") is False  # Same module at depth > 0
+        assert context.can_reflect("module_b", "POST_RESPONSE") is False  # Same module at depth > 0
 
 
 class TestReflectionSafetyScenarios:
@@ -207,10 +207,10 @@ class TestReflectionSafetyScenarios:
         context.reflection_depth = 1
         
         # BEFORE timing should be blocked when nested
-        assert context.can_reflect("some_module", ExecutionTiming.BEFORE) is False
+        assert context.can_reflect("some_module", "IMMEDIATE") is False
         # But AFTER and CUSTOM should still be allowed
-        assert context.can_reflect("some_module", ExecutionTiming.AFTER) is True
-        assert context.can_reflect("some_module", ExecutionTiming.CUSTOM) is True
+        assert context.can_reflect("some_module", "POST_RESPONSE") is True
+        assert context.can_reflect("some_module", "ON_DEMAND") is True
 
     def test_reflection_chain_length_limiting(self):
         """Test that reflection chains don't grow indefinitely."""
@@ -245,10 +245,10 @@ class TestReflectionSafetyScenarios:
         
         # Test comprehensive safety checks
         test_cases = [
-            ("module_a", ExecutionTiming.AFTER, False, "Direct recursion"),
-            ("module_c", ExecutionTiming.AFTER, True, "Different module, AFTER timing"),
-            ("module_c", ExecutionTiming.BEFORE, False, "Nested BEFORE timing"),
-            ("module_c", ExecutionTiming.CUSTOM, True, "Different module, CUSTOM timing"),
+            ("module_a", "POST_RESPONSE", False, "Direct recursion"),
+            ("module_c", "POST_RESPONSE", True, "Different module, AFTER timing"),
+            ("module_c", "IMMEDIATE", False, "Nested BEFORE timing"),
+            ("module_c", "ON_DEMAND", True, "Different module, CUSTOM timing"),
         ]
         
         for module_id, timing, expected, reason in test_cases:

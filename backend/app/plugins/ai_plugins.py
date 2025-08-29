@@ -343,8 +343,7 @@ def reflect(*args, _script_context=None, **kwargs) -> str:
         quick_rating = ctx.reflect("Rate this 1-10", max_tokens=20)
     """
     try:
-        # Import ExecutionTiming for safety checks
-        from app.models import ExecutionTiming
+        # Note: Using string constants for execution context checks
         
         # Safety check - verify script context is available
         if not _script_context:
@@ -396,7 +395,7 @@ def reflect(*args, _script_context=None, **kwargs) -> str:
         # CRITICAL SAFETY CHECK: Verify reflection is allowed
         # We need to determine the current module and timing, but for now use a default approach
         current_module_id = getattr(_script_context, 'current_module_id', 'unknown_module')
-        current_timing = getattr(_script_context, 'current_timing', ExecutionTiming.AFTER)
+        current_timing = getattr(_script_context, 'current_timing', "POST_RESPONSE")
         
         if not _script_context.can_reflect(current_module_id, current_timing):
             blocked_msg = f"Reflection blocked for safety: current depth {_script_context.reflection_depth}, module stack: {_script_context.module_resolution_stack}"

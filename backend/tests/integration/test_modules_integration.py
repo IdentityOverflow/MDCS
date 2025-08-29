@@ -8,7 +8,7 @@ import uuid
 from fastapi.testclient import TestClient
 
 from app.main import app
-from app.models import Module, ModuleType, ExecutionTiming
+from app.models import Module, ModuleType, ExecutionContext
 
 
 @pytest.fixture

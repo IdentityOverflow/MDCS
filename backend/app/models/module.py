@@ -22,12 +22,6 @@ class ExecutionContext(str, enum.Enum):
     POST_RESPONSE = "POST_RESPONSE"  # Execute after AI response (Stage 4-5)
     ON_DEMAND = "ON_DEMAND"      # Execute only when explicitly triggered
 
-# Deprecated - kept for migration compatibility, will be removed
-class ExecutionTiming(str, enum.Enum):
-    """DEPRECATED: Use ExecutionContext instead."""
-    BEFORE = "before"
-    AFTER = "after"
-    CUSTOM = "custom"
 
 
 class Module(Base):

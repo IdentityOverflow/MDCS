@@ -10,7 +10,6 @@ from sqlalchemy.orm import Session
 from ..services.ai_providers import ChatRequest, ChatResponse, ProviderType
 from ..services.ai_providers import StreamingChatResponse as ProviderStreamingResponse
 from ..services.exceptions import ProviderConnectionError, ProviderAuthenticationError, UnsupportedProviderError
-from ..services.module_resolver import ModuleResolver
 
 
 class ChatProvider(str, Enum):

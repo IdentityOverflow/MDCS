@@ -12,7 +12,6 @@ from datetime import datetime
 from typing import Dict, Any, Optional, List
 from sqlalchemy.orm import Session
 from app.core.script_plugins import plugin_registry
-from app.models import ExecutionTiming
 
 logger = logging.getLogger(__name__)
 
@@ -136,7 +135,7 @@ class ScriptExecutionContext:
         """
         return name in self._plugin_functions
     
-    def can_reflect(self, current_module_id: Optional[str], timing: ExecutionTiming) -> bool:
+    def can_reflect(self, current_module_id: Optional[str], timing: str) -> bool:
         """
         Check if reflection is allowed based on current safety constraints.
         
@@ -164,9 +163,9 @@ class ScriptExecutionContext:
             logger.debug(f"Reflection blocked: Recursive module resolution detected for module {current_module_id} at depth {self.reflection_depth}")
             return False
         
-        # Timing-based restrictions for nested reflections
-        if timing == ExecutionTiming.BEFORE and self.reflection_depth > 0:
-            logger.debug("Reflection blocked: Nested BEFORE timing reflection not allowed")
+        # Context-based restrictions for nested reflections  
+        if timing == "IMMEDIATE" and self.reflection_depth > 0:
+            logger.debug("Reflection blocked: Nested IMMEDIATE context reflection not allowed")
             return False
         
         logger.debug(f"Reflection allowed for module {current_module_id} with timing {timing}")

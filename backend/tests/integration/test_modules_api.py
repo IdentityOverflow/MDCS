@@ -9,7 +9,7 @@ from unittest.mock import Mock, patch, AsyncMock
 from fastapi.testclient import TestClient
 
 from app.main import app
-from app.models import Module, ModuleType, ExecutionTiming
+from app.models import Module, ModuleType, ExecutionContext
 
 
 @pytest.fixture
@@ -332,7 +332,7 @@ class TestModulesValidation:
             "description": "Test advanced module",
             "content": "Advanced content",
             "type": "advanced"
-            # No trigger_pattern, script, or timing
+            # No trigger_pattern, script, or execution_context
         }
         
         response = client.post("/api/modules", json=data)

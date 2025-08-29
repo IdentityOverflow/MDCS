@@ -9,7 +9,7 @@ import pytest
 from unittest.mock import Mock, patch, MagicMock
 from app.plugins.ai_plugins import reflect
 from app.core.script_context import ScriptExecutionContext
-from app.models import ExecutionTiming
+from app.models import ExecutionContext
 
 
 class TestReflectPlugin:
