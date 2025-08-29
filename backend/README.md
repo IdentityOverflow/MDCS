@@ -1,41 +1,55 @@
 # Project 2501 Backend
 
-A FastAPI-based backend service for the Project 2501 Cognitive Systems Framework, providing database connectivity, AI provider integration, and conversation management.
+A FastAPI-based backend service for the Project 2501 Cognitive Systems Framework, providing AI provider integration, staged module execution, conversation management, and advanced cognitive capabilities.
 
 ## 🏗️ Architecture
 
-The backend follows a clean, modular architecture based on the project's ArchitecturePlan.md:
+The backend follows a clean, modular architecture with complete staged execution pipeline:
 
 ```
 backend/
 ├── app/
-│   ├── api/                 # API route handlers
-│   │   ├── database.py      # Database connection endpoints
-│   │   └── __init__.py
-│   ├── core/                # Core configuration and settings
-│   │   ├── config.py        # Environment-based configuration
-│   │   └── __init__.py
-│   ├── database/            # Database connection management
-│   │   ├── connection.py    # SQLAlchemy connection manager
-│   │   ├── migrations/      # Database migrations (future)
-│   │   └── __init__.py
-│   ├── models/              # Database models
-│   │   ├── base.py          # Base model with common fields
-│   │   ├── conversation.py  # Conversation and Message models
-│   │   ├── persona.py       # AI Persona configurations
-│   │   ├── module.py        # Cognitive system modules
-│   │   └── __init__.py
-│   ├── services/            # Business logic services (future)
-│   ├── utils/               # Utility functions (future)
-│   └── main.py              # FastAPI application entry point
-├── tests/                   # Comprehensive test suite
-│   ├── unit/                # Unit tests for all components
-│   └── integration/         # Integration tests (future)
-├── requirements.txt         # Python dependencies
-├── requirements-dev.txt     # Development dependencies
-├── pyproject.toml          # Project configuration
-├── .env.example            # Environment variables template
-└── README.md               # This file
+│   ├── api/                    # API route handlers
+│   │   ├── chat.py             # Chat endpoints (streaming & non-streaming)
+│   │   ├── conversations.py    # Conversation management
+│   │   ├── messages.py         # Message operations
+│   │   ├── personas.py         # AI persona management
+│   │   ├── modules.py          # Cognitive module management
+│   │   ├── templates.py        # Template resolution API
+│   │   ├── connections.py      # Database connections
+│   │   └── database.py         # Database utilities
+│   ├── core/                   # Core engine components
+│   │   ├── config.py           # Environment configuration
+│   │   ├── script_engine.py    # RestrictedPython script execution
+│   │   ├── script_context.py   # Execution context for modules
+│   │   ├── script_analyzer.py  # AI dependency analysis
+│   │   └── trigger_matcher.py  # Module trigger patterns
+│   ├── services/               # Business logic services
+│   │   ├── staged_module_resolver.py  # 5-Stage execution pipeline
+│   │   ├── ai_providers.py     # AI provider abstraction
+│   │   ├── ollama_service.py   # Ollama integration
+│   │   └── openai_service.py   # OpenAI integration
+│   ├── plugins/                # Plugin system for advanced modules
+│   │   ├── ai_plugins.py       # AI generation & reflection
+│   │   ├── conversation_plugins.py  # Conversation utilities
+│   │   ├── time_plugins.py     # Time-based functions
+│   │   └── core_plugins.py     # Core utility functions
+│   ├── models/                 # Database models
+│   │   ├── base.py             # Base model with UUID & timestamps
+│   │   ├── conversation.py     # Conversation & Message models
+│   │   ├── conversation_state.py  # Staged execution state
+│   │   ├── persona.py          # AI persona configurations
+│   │   └── module.py           # Cognitive modules with ExecutionContext
+│   ├── database/               # Database management
+│   │   ├── connection.py       # SQLAlchemy connection
+│   │   └── migrations/         # Database schema migrations
+│   └── main.py                 # FastAPI application entry point
+├── tests/                      # Comprehensive test suite (501 tests)
+│   ├── unit/                   # Unit tests (24 test files)
+│   ├── integration/            # Integration tests (10 test files)
+│   ├── conftest.py             # Test configuration
+│   └── fixtures/               # Test fixtures
+└── static/images/personas/     # Persona image storage
 ```
 
 ## 🚀 Quick Start
@@ -43,7 +57,7 @@ backend/
 ### Prerequisites
 
 - Python 3.10+
-- PostgreSQL database
+- PostgreSQL database (with pgvector extension)
 - Conda (Miniconda/Anaconda/Miniforge)
 
 ### Installation
@@ -88,7 +102,31 @@ APP_NAME=Project 2501 Backend
 DEBUG=false
 ```
 
-Configuration is managed through `app/core/config.py` using pydantic-settings for type-safe environment variable loading.
+## 🧠 Cognitive Systems Framework
+
+### 5-Stage Execution Pipeline
+
+The backend implements a sophisticated staged execution system replacing the old timing-based approach:
+
+- **Stage 1**: Template preparation (Simple + IMMEDIATE Non-AI + Previous POST_RESPONSE)
+- **Stage 2**: Pre-response AI processing (IMMEDIATE modules with AI inference)
+- **Stage 3**: Main AI response generation (handled by chat system)
+- **Stage 4**: Post-response processing (POST_RESPONSE modules without AI)
+- **Stage 5**: Post-response AI analysis (POST_RESPONSE modules with AI reflection)
+
+### Execution Contexts
+
+Modules are classified by execution context:
+- **IMMEDIATE**: Execute during template resolution (Stages 1-2)
+- **POST_RESPONSE**: Execute after AI response (Stages 4-5)
+- **ON_DEMAND**: Execute only when explicitly triggered
+
+### AI Dependency Detection
+
+Advanced modules are automatically analyzed for AI dependencies:
+- **Script Analysis**: Detects `ctx.reflect()`, `ctx.generate()` calls
+- **Stage Classification**: AI-dependent modules scheduled appropriately
+- **Performance Optimization**: Non-AI modules execute without delays
 
 ## 🗄️ Database Models
 
@@ -106,209 +144,313 @@ Represents chat sessions between users and AI personas.
 ```python
 class Conversation(Base):
     title: str
+    persona_id: UUID  # Associated persona
     provider_type: str  # "openai", "ollama", etc.
     provider_config: dict  # Provider configuration snapshot
     messages: List[Message]  # Related messages
 ```
 
 #### Message  
-Individual messages within conversations.
+Individual messages within conversations with thinking support.
 ```python
 class Message(Base):
     conversation_id: UUID
     role: MessageRole  # USER, ASSISTANT, SYSTEM
     content: str
-    extra_data: dict  # Additional message metadata
+    thinking: str  # AI thinking process (optional)
     input_tokens: int  # Token usage tracking
     output_tokens: int
+    extra_data: dict  # Additional message metadata
 ```
 
 #### Persona
-AI persona configurations and templates.
+AI persona configurations with dynamic templates.
 ```python
 class Persona(Base):
     name: str
     description: str
-    model: str  # AI model identifier
-    template: str  # Persona prompt template
+    template: str  # System prompt with @module_name references
     mode: str  # "reactive" or "autonomous"
+    loop_frequency: str  # For autonomous mode
     first_message: str
     image_path: str
-    extra_data: dict
     is_active: bool
 ```
 
 #### Module
-Cognitive system modules for extending AI capabilities.
+Cognitive system modules with staged execution.
 ```python
 class Module(Base):
     name: str
     description: str
-    content: str  # Static content or Python code
+    content: str  # Static content or template with ${variables}
     type: ModuleType  # SIMPLE or ADVANCED
-    trigger_pattern: str  # Activation pattern
     script: str  # Python script for advanced modules
-    timing: ExecutionTiming  # BEFORE, AFTER, CUSTOM
-    extra_data: dict
+    trigger_pattern: str  # Activation pattern (regex/keywords)
+    execution_context: ExecutionContext  # IMMEDIATE, POST_RESPONSE, ON_DEMAND
+    requires_ai_inference: bool  # Auto-detected from script
+    script_analysis_metadata: dict  # Analysis results
     is_active: bool
+```
+
+#### ConversationState
+Stores module execution state between conversations.
+```python
+class ConversationState(Base):
+    conversation_id: UUID
+    module_id: UUID
+    execution_stage: str  # "stage4" or "stage5"
+    variables: dict  # Script output variables
+    execution_metadata: dict  # Success, timing, errors
+    executed_at: datetime
 ```
 
 ## 🛠️ API Endpoints
 
-### Core Endpoints
-
-- **GET /** - Service information and status
-- **GET /health** - Health check endpoint
-
-### Database Endpoints
-
-- **GET /api/database/test** - Test database connection
+### Chat System
+- **POST /api/chat/send** - Complete chat response
+- **POST /api/chat/stream** - Streaming chat response with SSE
   ```json
   {
-    "status": "success",
-    "message": "Database connection successful", 
-    "database": "project2501",
-    "version": "PostgreSQL 16.9",
-    "host": "localhost",
-    "port": 5432,
-    "error_type": null
+    "message": "Hello!",
+    "provider": "ollama",
+    "persona_id": "uuid-string",
+    "provider_settings": {"host": "localhost:11434", "model": "llama3.2"},
+    "chat_controls": {"temperature": 0.7, "max_tokens": 1024}
   }
   ```
 
-- **GET /api/database/info** - Get database information and table list
+### Conversation Management
+- **GET /api/conversations/by-persona/{persona_id}** - Get conversations for persona
+- **POST /api/conversations** - Create new conversation
+- **PUT /api/conversations/{id}** - Update conversation
+- **DELETE /api/conversations/{id}** - Delete conversation
+
+### Message Operations
+- **GET /api/messages/by-conversation/{conversation_id}** - Get conversation messages
+- **POST /api/messages** - Create message
+- **PUT /api/messages/{id}** - Update message (with thinking)
+- **DELETE /api/messages/{id}** - Delete message
+
+### Persona Management
+- **GET /api/personas** - List all personas
+- **POST /api/personas** - Create persona
+- **PUT /api/personas/{id}** - Update persona
+- **DELETE /api/personas/{id}** - Delete persona
+
+### Module Management
+- **GET /api/modules** - List all modules
+- **POST /api/modules** - Create module (with automatic script analysis)
+- **PUT /api/modules/{id}** - Update module
+- **DELETE /api/modules/{id}** - Delete module
+
+### Template Resolution
+- **POST /api/templates/resolve** - Resolve @module_name references
+  ```json
+  {
+    "template": "You are an AI assistant. @greeting @context_module",
+    "persona_id": "optional-uuid"
+  }
+  ```
+
+### Database Utilities
+- **GET /api/database/test** - Test database connection
+- **GET /api/database/info** - Database information and table list
+
+## 🔌 AI Provider Integration
+
+### Supported Providers
+- **Ollama**: Local LLM hosting with streaming support
+- **OpenAI**: GPT models with streaming and function calling
+
+### Provider Configuration
+Settings are passed with each request (no backend storage):
+```json
+{
+  "ollama": {
+    "host": "localhost:11434",
+    "model": "llama3.2:latest",
+    "options": {"temperature": 0.7}
+  },
+  "openai": {
+    "api_key": "sk-...",
+    "model": "gpt-4",
+    "base_url": "https://api.openai.com/v1"
+  }
+}
+```
+
+## 🧩 Plugin System
+
+### Available Plugins (15+ functions)
+
+#### AI Generation Plugins
+- `ctx.reflect()` - AI-powered self-reflection and analysis
+- `ctx.generate()` - Custom AI generation with flexible parameters
+
+#### Conversation Plugins  
+- `ctx.get_recent_messages()` - Retrieve conversation history
+- `ctx.get_message_count()` - Get total message count
+- `ctx.get_conversation_summary()` - Generate conversation summaries
+
+#### Time Plugins
+- `ctx.get_current_time()` - Current time with formatting
+- `ctx.get_relative_time()` - Parse relative time expressions
+
+#### Utility Plugins
+- `ctx.log()` - Enhanced logging with context
+- `ctx.set_variable()` / `ctx.get_variable()` - Variable management
+
+### Plugin Security
+- **RestrictedPython**: Sandboxed execution environment
+- **Import Restrictions**: Only allowed modules accessible
+- **Execution Timeouts**: Prevents infinite loops
+- **Reflection Safety**: Prevents nested AI generation loops
 
 ## 🧪 Testing
 
-The backend includes a comprehensive test suite covering all components:
+### Test Coverage: 501 Tests (100% Passing)
 
-### Test Structure
-```
-tests/
-├── unit/
-│   ├── test_config.py           # Configuration management tests
-│   ├── test_database_connection.py  # Database connection tests
-│   ├── test_models.py           # Database model tests
-│   ├── test_main.py             # FastAPI application tests
-│   └── test_database_api.py     # API endpoint tests
-└── fixtures/                    # Test fixtures and utilities
-```
-
-### Running Tests
 ```bash
-# Activate environment
-conda activate project2501
-
 # Run all tests
 pytest
 
-# Run with coverage
-pytest --cov=app
+# Run with verbose output
+pytest -v
 
-# Run specific test file
-pytest tests/unit/test_models.py -v
+# Run specific test categories
+pytest tests/unit/test_staged_module_resolver.py -v
+pytest tests/integration/test_chat_api.py -v
+
+# Run with coverage
+pytest --cov=app --cov-report=html
 ```
 
-### Test Coverage
-- **Configuration Management**: Environment loading, validation, defaults
-- **Database Connection**: Connection pooling, error handling, testing
-- **Models**: CRUD operations, relationships, validation
-- **API Endpoints**: Success/error responses, data validation
-- **FastAPI Application**: CORS, lifecycle management, routing
+### Test Structure
+- **Unit Tests** (24 files): Individual component testing
+- **Integration Tests** (10 files): Full workflow testing  
+- **Fixtures**: Database setup, test data, mocking utilities
+
+### Key Test Areas
+- Staged module execution pipeline (20 tests)
+- AI provider integration (25+ tests)
+- Chat API functionality (14 tests)
+- Database operations (50+ tests)
+- Plugin system security (15+ tests)
+- Template resolution (12 tests)
 
 ## 🔧 Development
 
 ### Code Quality Tools
-
-The project includes development dependencies for code quality:
 ```bash
 pip install -r requirements-dev.txt
+pytest --cov=app  # Coverage analysis
 ```
 
-### Database Migrations
+### Database Management
+- **Automatic Schema Creation**: Models create tables on startup
+- **Migration System**: 6 migrations implemented (UUID conversion, staged execution)
+- **Connection Pooling**: SQLAlchemy session management
 
-Database schema changes are managed through SQLAlchemy. The models automatically create tables on startup via:
-```python
-Base.metadata.create_all(bind=engine)
-```
-
-For production deployments, consider using Alembic for proper migration management.
+### Performance Considerations
+- **Connection Pooling**: Efficient database connections
+- **Staged Execution**: Optimized module processing order
+- **Streaming Responses**: Server-Sent Events for real-time chat
+- **Lazy Loading**: On-demand module and persona loading
 
 ## 🚢 Deployment
 
 ### Production Configuration
+```bash
+DEBUG=false
+DB_HOST=your_production_host
+DB_SSL_MODE=require
+# Configure for production database
+```
 
-1. **Set production environment variables:**
-   ```bash
-   DEBUG=false
-   DB_HOST=your_production_host
-   # ... other production values
-   ```
+### Production Server
+```bash
+# Install production dependencies
+pip install gunicorn uvicorn[standard]
 
-2. **Run without auto-reload:**
-   ```bash
-   ./scripts/run_BE.sh --no-reload
-   ```
+# Run with Gunicorn
+gunicorn app.main:app -w 4 -k uvicorn.workers.UvicornWorker --host 0.0.0.0 --port 8000
+```
 
-3. **Use a production WSGI server like Gunicorn:**
-   ```bash
-   pip install gunicorn
-   gunicorn app.main:app -w 4 -k uvicorn.workers.UvicornWorker
-   ```
-
-## 🔗 Integration
-
-### Frontend Integration
-
-The backend is designed to work with the Vue.js frontend:
-
-- **CORS Configuration**: Allows requests from `localhost:3000` and `localhost:5173`
-- **Database Test Integration**: Frontend Test Connection button calls `/api/database/test`
-- **Stateless Architecture**: AI provider configurations sent with each request
-
-### Future Integrations
-
-The architecture supports future integration of:
-- AI Provider Services (OpenAI, Ollama, Anthropic)
-- Conversation Management APIs
-- Real-time Chat via WebSocket
-- Authentication and Authorization
-- File Upload and Management
+### Docker Support
+```dockerfile
+FROM python:3.10-slim
+WORKDIR /app
+COPY requirements.txt .
+RUN pip install -r requirements.txt
+COPY . .
+CMD ["gunicorn", "app.main:app", "-w", "4", "-k", "uvicorn.workers.UvicornWorker"]
+```
 
 ## 📋 Implementation Status
 
-### ✅ Completed Features
+### ✅ Completed Features (Production Ready)
 
-- [x] Complete FastAPI application structure
-- [x] Environment-based configuration management
-- [x] PostgreSQL database connection with SQLAlchemy
-- [x] Core database models (Conversation, Message, Persona, Module)
-- [x] Database connection test API endpoint
-- [x] CORS configuration for frontend integration
-- [x] Comprehensive test suite (90%+ coverage)
-- [x] Installation and run scripts
-- [x] Error handling and logging
-- [x] Frontend Test Connection integration
+- [x] **Complete FastAPI application** with 501 passing tests
+- [x] **5-Stage Execution Pipeline** replacing legacy timing system
+- [x] **ExecutionContext System** (IMMEDIATE, POST_RESPONSE, ON_DEMAND)
+- [x] **Dual AI Provider Support** (Ollama + OpenAI with streaming)
+- [x] **Advanced Module System** with RestrictedPython sandboxing
+- [x] **Plugin Architecture** with 15+ built-in functions
+- [x] **Self-Reflecting AI** via `ctx.reflect()` capability  
+- [x] **Conversation Management** with full CRUD operations
+- [x] **Template Resolution** with @module_name references
+- [x] **Database Models** with UUID primary keys and relationships
+- [x] **ConversationState Management** for persistent module variables
+- [x] **Comprehensive API** with streaming chat support
+- [x] **Script Analysis Engine** with automatic AI dependency detection
+- [x] **Frontend Integration** with CORS and localStorage compatibility
 
-### 🔄 Next Steps
+### 🔄 Future Enhancements
 
-- [ ] AI Provider Integration (OpenAI-compatible, Ollama)
-- [ ] Chat API endpoints with streaming support
-- [ ] Conversation management (CRUD operations)
-- [ ] Persona and Module management APIs
-- [ ] Authentication and user management
-- [ ] WebSocket support for real-time chat
-- [ ] File upload and management
-- [ ] Advanced logging and monitoring
-- [ ] Database migration system
-- [ ] API rate limiting and caching
+- [ ] **Authentication System** with JWT tokens
+- [ ] **File Upload Support** for documents and images  
+- [ ] **WebSocket Support** for real-time bidirectional communication
+- [ ] **Module Marketplace** for sharing cognitive modules
+- [ ] **Advanced Analytics** for conversation and module performance
+- [ ] **Multi-tenant Support** with user isolation
+- [ ] **Caching Layer** with Redis for improved performance
+- [ ] **Rate Limiting** for API endpoints
+- [ ] **Audit Logging** for security and compliance
+
+## 🔗 Frontend Integration
+
+### CORS Configuration
+- Supports `localhost:5173` (Vite dev server)
+- Configurable origins for production deployment
+
+### State Management
+- **Stateless Architecture**: All settings passed with requests
+- **LocalStorage Integration**: Frontend manages provider configurations
+- **Real-time Updates**: Server-Sent Events for streaming responses
+
+### API Response Format
+```json
+{
+  "content": "AI response content",
+  "thinking": "Internal AI reasoning (optional)",
+  "token_usage": {"input": 150, "output": 75},
+  "debug_data": {
+    "provider_request": "...",
+    "provider_response": "...",
+    "execution_stages": [1, 2, 4, 5]
+  }
+}
+```
 
 ## 🤝 Contributing
 
-1. Follow the existing code structure and patterns
-2. Write tests for new functionality
-3. Update this README when adding new features
-4. Use type hints throughout the codebase
-5. Follow FastAPI and SQLAlchemy best practices
+1. Follow existing architectural patterns
+2. Write comprehensive tests for new features
+3. Use type hints throughout the codebase
+4. Update documentation for API changes
+5. Follow the staged execution pattern for new modules
+6. Ensure 100% test coverage for critical components
 
 ## 📄 License
 
@@ -316,4 +458,4 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 
 ---
 
-**Project 2501 Backend** - Built with FastAPI, SQLAlchemy, and PostgreSQL for the Cognitive Systems Framework.
+**Project 2501 Backend** - Built with FastAPI, SQLAlchemy, and PostgreSQL for the Cognitive Systems Framework with 5-Stage Execution Pipeline and Advanced AI Integration.
