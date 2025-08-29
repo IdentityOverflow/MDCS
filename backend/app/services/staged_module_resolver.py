@@ -543,6 +543,10 @@ class StagedModuleResolver:
             context.current_module_id = module.name
             context.current_timing = module.execution_context.value  # Pass the enum value
             
+            # Set SystemPromptState for state-aware AI plugins
+            if self._current_state:
+                context.set_system_prompt_state(self._current_state, stage)
+            
             # Execute script
             script_engine = ScriptEngine()
             result = script_engine.execute_script(
@@ -832,6 +836,10 @@ class StagedModuleResolver:
             context.current_module_id = module.name
             context.current_timing = module.execution_context.value
             context.module_resolution_stack = list(self._resolution_stack)
+            
+            # Set SystemPromptState for state-aware AI plugins
+            if self._current_state:
+                context.set_system_prompt_state(self._current_state, stage)
             
             # Execute script
             script_engine = ScriptEngine()

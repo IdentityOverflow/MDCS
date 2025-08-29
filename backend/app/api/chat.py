@@ -94,6 +94,7 @@ async def resolve_system_prompt(request: ChatSendRequest, db: Session) -> str:
         
         # Resolve template using StagedModuleResolver (Stage 1 + Stage 2)
         resolver = StagedModuleResolver(db_session=db)
+        resolver.enable_state_tracking()  # Enable SystemPromptState tracking for AI plugins
         result = resolver.resolve_template_stage1_and_stage2(
             persona.template,
             conversation_id=conversation_id,
@@ -206,14 +207,29 @@ async def send_chat_message(request: ChatSendRequest, db: Session = Depends(get_
                     current_provider_settings = request.provider_settings
                     current_chat_controls = request.chat_controls
                     
-                    resolver = StagedModuleResolver(db_session=db)
+                    resolver_post = StagedModuleResolver(db_session=db)
+                    resolver_post.enable_state_tracking()  # Enable SystemPromptState tracking for AI plugins
+                    
+                    # Create SystemPromptState with the resolved system prompt from template resolution
+                    from app.services.system_prompt_state import PromptStateManager
+                    state_manager = PromptStateManager()
+                    post_response_state = state_manager.create_initial_state(
+                        request.conversation_id or "unknown",
+                        request.persona_id or "unknown", 
+                        persona.template or ""
+                    )
+                    # Set the resolved system prompt as the main response prompt
+                    post_response_state.main_response_prompt = resolved_system_prompt
+                    resolver_post._current_state = post_response_state
+                    resolver_post._prompt_state_manager = state_manager
+                    
                     trigger_context = {"last_ai_message": provider_response.content}
                     
-                    resolver.execute_post_response_modules(
-                        persona_id=request.persona_id,
-                        conversation_id=request.conversation_id,
-                        db_session=db,
-                        trigger_context=trigger_context,
+                    resolver_post.execute_post_response_modules(
+                        request.persona_id,
+                        request.conversation_id,
+                        db,
+                        trigger_context,
                         current_provider=current_provider,
                         current_provider_settings=current_provider_settings,
                         current_chat_controls=current_chat_controls
@@ -339,26 +355,44 @@ async def stream_chat_message(request: ChatSendRequest, db: Session = Depends(ge
                     )
                     yield f"data: {api_chunk.model_dump_json()}\n\n"
                 
-                # Stage 3: Thinking (AFTER modules)
+                # Stage 3: Thinking (AFTER modules) - only if there are actually modules to execute
                 if request.persona_id:
-                    yield f"data: {StreamingChatResponse.create_stage_update(ProcessingStage.THINKING_AFTER, 'Executing post-response modules...').model_dump_json()}\n\n"
-                    
                     current_provider = request.provider.value if request.provider else None
                     current_provider_settings = request.provider_settings
                     current_chat_controls = request.chat_controls
                     
                     resolver = StagedModuleResolver(db_session=db)
+                    resolver.enable_state_tracking()  # Enable SystemPromptState tracking for AI plugins
+                    
+                    # Create SystemPromptState with the resolved system prompt from template resolution
+                    from app.services.system_prompt_state import PromptStateManager
+                    state_manager = PromptStateManager()
+                    post_response_state = state_manager.create_initial_state(
+                        request.conversation_id or "unknown",
+                        request.persona_id or "unknown", 
+                        "streaming_context"  # We don't have access to persona.template here
+                    )
+                    # Set the resolved system prompt as the main response prompt
+                    post_response_state.main_response_prompt = resolved_system_prompt
+                    resolver._current_state = post_response_state
+                    resolver._prompt_state_manager = state_manager
+                    
                     trigger_context = {"last_ai_message": accumulated_content}
                     
                     after_module_results = resolver.execute_post_response_modules(
-                        persona_id=request.persona_id,
-                        conversation_id=request.conversation_id,
-                        db_session=db,
-                        trigger_context=trigger_context,
+                        request.persona_id,
+                        request.conversation_id,
+                        db,
+                        trigger_context,
                         current_provider=current_provider,
                         current_provider_settings=current_provider_settings,
                         current_chat_controls=current_chat_controls
                     )
+                    
+                    # Only send stage update if there are actually modules that executed
+                    if after_module_results:
+                        yield f"data: {StreamingChatResponse.create_stage_update(ProcessingStage.THINKING_AFTER, 'Executing post-response modules...').model_dump_json()}\n\n"
+                    
                     # Commit ConversationState changes from POST_RESPONSE modules
                     db.commit()
                     

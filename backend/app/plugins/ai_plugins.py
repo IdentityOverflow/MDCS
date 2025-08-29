@@ -19,6 +19,46 @@ from app.services.openai_service import OpenAIService
 logger = logging.getLogger(__name__)
 
 
+def _get_state_aware_system_prompt(script_context) -> Optional[str]:
+    """
+    Get state-aware system prompt for AI reflection based on SystemPromptState.
+    
+    Args:
+        script_context: Script execution context with potential state access
+        
+    Returns:
+        State-aware system prompt or None if state is not available
+    """
+    try:
+        # Check if context has state-aware methods (loose coupling check)
+        if not hasattr(script_context, 'get_system_prompt_state') or not hasattr(script_context, 'get_current_execution_stage'):
+            return None
+        
+        # Get SystemPromptState
+        prompt_state = script_context.get_system_prompt_state()
+        if not prompt_state:
+            return None
+        
+        # Get current execution stage
+        current_stage = script_context.get_current_execution_stage()
+        if not current_stage:
+            return None
+        
+        # Get stage-appropriate system prompt
+        stage_prompt = prompt_state.get_prompt_for_stage(current_stage)
+        
+        # Ensure we return a valid string (not Mock or None)
+        if isinstance(stage_prompt, str) and stage_prompt.strip():
+            return stage_prompt
+        else:
+            return None
+        
+    except Exception as e:
+        # Any exception in state access should fall back gracefully
+        logger.debug(f"Could not get state-aware system prompt: {e}")
+        return None
+
+
 def _run_async_ai_call(provider: str, chat_request: ChatRequest) -> str:
     """
     Run an async AI call using a simple synchronous HTTP approach.
@@ -276,13 +316,16 @@ Input:
         else:
             user_message = instructions
         
+        # Get state-aware system prompt if available, otherwise use empty prompt
+        generation_system_prompt = _get_state_aware_system_prompt(_script_context) or ""
+        
         # Create chat request
         chat_request = ChatRequest(
             message=user_message,
             provider_type=provider_type,
             provider_settings=provider_settings,
             chat_controls=chat_controls,
-            system_prompt=""  # No system prompt for generation tasks
+            system_prompt=generation_system_prompt  # Use state-aware prompt if available
         )
         
         logger.debug(f"AI generation: {provider} - {instructions[:30]}...")
@@ -298,102 +341,50 @@ Input:
 
 
 @plugin_registry.register("reflect")
-def reflect(*args, _script_context=None, **kwargs) -> str:
+def reflect(instructions: str, _script_context=None, **kwargs) -> str:
     """
-    Self-reflective AI processing with flexible signature support and safety mechanisms.
+    Self-reflective AI processing using the current state-aware system prompt.
     
     This function enables AI personas to reflect on their own thoughts and actions,
-    creating self-modifying behavior while preventing infinite loops through
-    comprehensive safety checks.
-    
-    Supported signatures:
-        ctx.reflect('instructions')
-        ctx.reflect('instructions', 'input_data')
-        ctx.reflect('provider_name', 'model_id', 'instructions')
-        ctx.reflect('provider_name', 'model_id', 'instructions', 'input_data')
+    using the fully resolved system prompt from the current execution stage.
+    Includes comprehensive safety mechanisms to prevent infinite loops.
     
     Safety features:
     - Maximum reflection depth limiting (3 levels)
     - Direct module recursion prevention  
-    - Timing-based restrictions (no nested BEFORE timing)
+    - Execution context restrictions (no nested IMMEDIATE)
     - Audit trail for debugging and self-awareness
     
     Args:
-        *args: Variable arguments matching one of the supported signatures
+        instructions: Reflection instructions from the script (mandatory)
         _script_context: Script execution context (auto-injected)
-        **kwargs: Keyword arguments for fine-tuning (temperature, max_tokens, etc.)
+        **kwargs: Chat control overrides (temperature, max_tokens, etc.)
         
     Returns:
         AI-generated reflection response or error message if reflection is blocked
         
     Examples:
-        # Self-assessment after AI response (most common use case)
+        # Self-assessment using current system prompt
         quality = ctx.reflect("Rate my last response quality 1-10 and suggest improvements")
         
-        # Adaptive behavior based on conversation context
-        tone = ctx.reflect("What communication style would work best here?", recent_messages)
+        # Adaptive behavior analysis
+        tone = ctx.reflect("What communication style would work best for this user?")
         
-        # Cross-module reflection for complex reasoning
-        analysis = ctx.reflect("openai", "gpt-4", "Analyze this conversation pattern", chat_history)
-        
-        # With additional parameters for creative reflection
-        creative_idea = ctx.reflect("Generate a creative solution", temperature=0.8, max_tokens=300)
-        
-        # Concise reflection for simple assessments
-        quick_rating = ctx.reflect("Rate this 1-10", max_tokens=20)
+        # Creative reflection with custom parameters
+        creative_idea = ctx.reflect("Generate a creative solution approach", temperature=0.8, max_tokens=300)
     """
     try:
-        # Note: Using string constants for execution context checks
-        
         # Safety check - verify script context is available
         if not _script_context:
             logger.error("reflect() called without script context - safety mechanisms unavailable")
             return "Error: Reflection requires script context for safety mechanisms"
         
-        # Parse arguments based on signature (same as generate())
-        if len(args) == 0:
-            logger.error("reflect() called with no arguments")
-            return "Error: No reflection instructions provided"
-        
-        elif len(args) == 1:
-            # ctx.reflect('instructions')
-            instructions = args[0]
-            input_text = None
-            provider = None
-            model = None
-            
-        elif len(args) == 2:
-            # ctx.reflect('instructions', 'input_data')
-            instructions = args[0]
-            input_text = args[1]
-            provider = None
-            model = None
-            
-        elif len(args) == 3:
-            # ctx.reflect('provider_name', 'model_id', 'instructions')
-            provider = args[0]
-            model = args[1]
-            instructions = args[2]
-            input_text = None
-            
-        elif len(args) == 4:
-            # ctx.reflect('provider_name', 'model_id', 'instructions', 'input_data')
-            provider = args[0]
-            model = args[1]
-            instructions = args[2]
-            input_text = args[3]
-            
-        else:
-            logger.error(f"reflect() called with invalid number of arguments: {len(args)}")
-            return "Error: Invalid number of arguments for reflection"
-        
-        # Validate required parameters
-        if not instructions or not instructions.strip():
-            logger.error("reflect() called with empty instructions")
-            return "Error: Reflection instructions cannot be empty"
+        # Validate instructions
+        if not instructions or not isinstance(instructions, str) or not instructions.strip():
+            logger.error("reflect() called with invalid instructions")
+            return "Error: Reflection instructions must be a non-empty string"
         
         # CRITICAL SAFETY CHECK: Verify reflection is allowed
-        # We need to determine the current module and timing, but for now use a default approach
         current_module_id = getattr(_script_context, 'current_module_id', 'unknown_module')
         current_timing = getattr(_script_context, 'current_timing', "POST_RESPONSE")
         
@@ -405,11 +396,15 @@ def reflect(*args, _script_context=None, **kwargs) -> str:
         _script_context.enter_reflection(current_module_id, instructions[:100])  # Truncated for logging
         
         try:
-            # Get provider and model settings (same logic as generate())
-            if not provider and hasattr(_script_context, 'current_provider'):
-                provider = _script_context.current_provider or "ollama"
-            else:
-                provider = provider or "ollama"
+            # Get provider settings from current session context
+            if not hasattr(_script_context, 'current_provider') or not hasattr(_script_context, 'current_provider_settings'):
+                return "Error: No provider settings available from current chat session for reflection"
+            
+            provider = _script_context.current_provider or "ollama"
+            provider_settings = _script_context.current_provider_settings or {}
+            
+            if not provider_settings:
+                return "Error: No provider settings available from current chat session for reflection"
             
             # Normalize provider
             provider = provider.lower()
@@ -419,68 +414,38 @@ def reflect(*args, _script_context=None, **kwargs) -> str:
             
             provider_type = ProviderType.OLLAMA if provider == "ollama" else ProviderType.OPENAI
             
-            # Get provider settings from current session context
-            provider_settings = {}
-            if hasattr(_script_context, 'current_provider_settings') and _script_context.current_provider_settings:
-                try:
-                    provider_settings = _script_context.current_provider_settings.copy()
-                except (AttributeError, TypeError):
-                    provider_settings = {}
-            
-            # Override model if explicitly provided
-            if model and provider_settings:
-                provider_settings["model"] = model
-            
-            # If no provider settings available, we can't make AI calls
-            if not provider_settings:
-                return "Error: No provider settings available from current chat session for reflection"
-            
-            # Get chat controls from session or use defaults
+            # Get chat controls from session and apply overrides
             chat_controls = {}
             if hasattr(_script_context, 'current_chat_controls') and _script_context.current_chat_controls:
-                try:
-                    chat_controls = _script_context.current_chat_controls.copy()
-                except (AttributeError, TypeError):
-                    chat_controls = {}
+                chat_controls = _script_context.current_chat_controls.copy()
             
-            # Set defaults for missing chat controls (more conservative for reflection)
-            chat_controls.setdefault("temperature", 0.2)  # Lower temperature for more focused reflection
-            chat_controls.setdefault("max_tokens", 150)   # Shorter default for concise reflections
+            # Set reasonable defaults for reflection
+            chat_controls.setdefault("temperature", 0.3)  # Moderate temperature for balanced reflection
+            chat_controls.setdefault("max_tokens", 200)   # Reasonable default for reflections
             chat_controls.setdefault("stream", False)     # Always non-streaming for scripts
             
-            # Apply keyword arguments to chat controls (can override defaults)
+            # Apply keyword arguments to override defaults
             chat_controls.update(kwargs)
             
-            # Build the reflection prompt
-            if input_text and input_text.strip():
-                user_message = f"""Reflect on the following:
-
-Instructions: {instructions}
-
-Context/Input:
-{input_text}
-
-Please provide thoughtful self-reflection."""
-            else:
-                user_message = f"""Reflect on the following:
-
-{instructions}
-
-Please provide thoughtful self-reflection."""
+            # Get state-aware system prompt or use current context
+            system_prompt = _get_state_aware_system_prompt(_script_context)
             
-            # Create chat request with a minimal system prompt to avoid recursion
-            # Use a simple, non-module-based system prompt for reflection
-            reflection_system_prompt = "You are an AI engaged in self-reflection. Provide honest, insightful analysis of your thoughts and responses."
+            # If no state-aware prompt available, reflection should fail gracefully
+            # This maintains the principle that reflect() uses the actual system prompt state
+            if not system_prompt:
+                logger.warning("No state-aware system prompt available for reflection")
+                return "Error: No system prompt state available for reflection"
             
+            # Create chat request with state-aware system prompt
             chat_request = ChatRequest(
-                message=user_message,
+                message=instructions,  # Use instructions directly as the user message
                 provider_type=provider_type,
                 provider_settings=provider_settings,
                 chat_controls=chat_controls,
-                system_prompt=reflection_system_prompt  # Simple system prompt to avoid module recursion
+                system_prompt=system_prompt
             )
             
-            # Use synchronous wrapper to call AI provider (same as generate())
+            # Use synchronous wrapper to call AI provider
             result = _run_async_ai_call(provider, chat_request)
             
             return result

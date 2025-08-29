@@ -67,6 +67,7 @@ def resolve_template(
     try:
         # Create staged module resolver with database session
         resolver = StagedModuleResolver(db_session=db)
+        resolver.enable_state_tracking()  # Enable SystemPromptState tracking for AI plugins
         
         # For template API compatibility, we need to handle persona_id more flexibly
         # and generate warnings for missing modules like the old ModuleResolver

@@ -9,9 +9,12 @@ Includes reflection safety mechanisms to prevent infinite loops.
 import inspect
 import logging
 from datetime import datetime
-from typing import Dict, Any, Optional, List
+from typing import Dict, Any, Optional, List, TYPE_CHECKING
 from sqlalchemy.orm import Session
 from app.core.script_plugins import plugin_registry
+
+if TYPE_CHECKING:
+    from app.services.system_prompt_state import SystemPromptState
 
 logger = logging.getLogger(__name__)
 
@@ -72,7 +75,40 @@ class ScriptExecutionContext:
         # Load plugin functions
         self._plugin_functions = plugin_registry.get_context()
         
+        # State tracking integration (optional, loosely coupled)
+        self._system_prompt_state: Optional['SystemPromptState'] = None
+        self._current_execution_stage: Optional[int] = None
+        
         logger.debug(f"Initialized script context for conversation {conversation_id}")
+    
+    def set_system_prompt_state(self, state: Optional['SystemPromptState'], current_stage: Optional[int] = None) -> None:
+        """
+        Set SystemPromptState for enhanced AI plugin awareness.
+        
+        Args:
+            state: SystemPromptState instance or None
+            current_stage: Current execution stage (1-5) or None
+        """
+        self._system_prompt_state = state
+        self._current_execution_stage = current_stage
+    
+    def get_system_prompt_state(self) -> Optional['SystemPromptState']:
+        """
+        Get SystemPromptState if available.
+        
+        Returns:
+            SystemPromptState instance or None if not available
+        """
+        return self._system_prompt_state
+    
+    def get_current_execution_stage(self) -> Optional[int]:
+        """
+        Get current execution stage.
+        
+        Returns:
+            Current execution stage (1-5) or None if not available
+        """
+        return self._current_execution_stage
     
     def __getattr__(self, name: str):
         """

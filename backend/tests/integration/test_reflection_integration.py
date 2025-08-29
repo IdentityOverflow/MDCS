@@ -37,6 +37,13 @@ class TestReflectionIntegration:
         }
         context.current_chat_controls = {}  # Start with empty to see defaults
         
+        # Add state-aware methods for simplified reflect function
+        from app.services.system_prompt_state import SystemPromptState
+        mock_state = Mock()
+        mock_state.get_prompt_for_stage.return_value = "You are a helpful AI assistant ready to reflect on conversations."
+        
+        context.set_system_prompt_state(mock_state, 5)  # Use the method we added to ScriptExecutionContext
+        
         with patch('app.plugins.ai_plugins._run_async_ai_call') as mock_ai_call:
             mock_ai_call.return_value = "I think this is a thoughtful question that deserves careful consideration."
             
@@ -49,12 +56,14 @@ class TestReflectionIntegration:
             assert "thoughtful question" in result
             assert "careful consideration" in result
             
-            # Verify AI call was made with conservative defaults
+            # Verify AI call was made with reasonable defaults (updated for simplified function)
             mock_ai_call.assert_called_once()
             args, kwargs = mock_ai_call.call_args
             chat_request = args[1]
-            assert chat_request.chat_controls["temperature"] == 0.2  # Conservative default
-            assert "Reflect on the following" in chat_request.message
+            assert chat_request.chat_controls["temperature"] == 0.3  # Updated default for simplified function
+            # Instructions are used directly as message (no "Reflect on the following" formatting)
+            assert chat_request.message == "What are your thoughts on this conversation?"
+            assert chat_request.system_prompt == "You are a helpful AI assistant ready to reflect on conversations."
 
     def test_reflection_safety_blocks_recursion(self):
         """Test that reflection safety correctly blocks recursive calls."""
@@ -97,6 +106,12 @@ class TestReflectionIntegration:
         context.current_provider_settings = {"host": "http://localhost:11434", "model": "dolphin"}
         context.current_chat_controls = {}
         
+        # Add state-aware methods for simplified reflect function
+        mock_state = Mock()
+        mock_state.get_prompt_for_stage.return_value = "You are a mood-aware AI assistant with personality adaptation capabilities."
+        
+        context.set_system_prompt_state(mock_state, 5)  # Use the method we added to ScriptExecutionContext
+        
         # Module A is in resolution stack, but we're reflecting as Module B
         context.module_resolution_stack = ["personality_adapter"]
         context.current_module_id = "mood_analyzer"  # Different module
@@ -113,6 +128,11 @@ class TestReflectionIntegration:
             
             assert "warm, encouraging tone" in result
             mock_ai_call.assert_called_once()
+            
+            # Verify the state-aware system prompt was used
+            args, kwargs = mock_ai_call.call_args
+            chat_request = args[1]
+            assert chat_request.system_prompt == "You are a mood-aware AI assistant with personality adaptation capabilities."
 
     def test_reflection_depth_limiting_integration(self):
         """Test reflection depth limiting works in practice."""
