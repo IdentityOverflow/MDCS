@@ -492,3 +492,384 @@ class TestDataClasses:
         assert result.variables == {"sentiment": "positive"}
         assert result.success is True
         assert result.error_message is None
+
+
+class TestStagedModuleResolverWithSystemPromptState:
+    """Test StagedModuleResolver integration with SystemPromptState tracking."""
+    
+    def setup_method(self):
+        """Set up test fixtures."""
+        self.mock_session = Mock()
+        self.resolver = StagedModuleResolver(self.mock_session)
+        self.conversation_id = str(uuid.uuid4())
+        self.persona_id = str(uuid.uuid4())
+        self.original_template = "You are an AI assistant. @greeting @context"
+    
+    @patch('app.services.staged_module_resolver.SystemPromptState')
+    @patch('app.services.staged_module_resolver.PromptStateManager')
+    def test_resolver_creates_initial_state(self, mock_manager_class, mock_state_class):
+        """Test that resolver creates SystemPromptState for tracking."""
+        mock_manager = Mock()
+        mock_manager_class.return_value = mock_manager
+        
+        mock_state = Mock()
+        mock_manager.create_initial_state.return_value = mock_state
+        
+        # Enable state tracking
+        self.resolver.enable_state_tracking()
+        
+        template = "Hello @greeting"
+        result = self.resolver.resolve_template_stage1_and_stage2(
+            template, self.conversation_id, self.persona_id, self.mock_session
+        )
+        
+        # Verify state manager was created and initial state set up
+        mock_manager_class.assert_called_once()
+        mock_manager.create_initial_state.assert_called_once_with(
+            self.conversation_id, self.persona_id, template
+        )
+    
+    @patch('app.services.staged_module_resolver.SystemPromptState')
+    @patch('app.services.staged_module_resolver.PromptStateManager')
+    @patch('app.services.staged_module_resolver.Module.get_modules_for_stage')
+    def test_stage1_completion_state_update(self, mock_get_modules, mock_manager_class, mock_state_class):
+        """Test SystemPromptState update after Stage 1 completion."""
+        mock_manager = Mock()
+        mock_manager_class.return_value = mock_manager
+        
+        mock_state = Mock()
+        mock_manager.create_initial_state.return_value = mock_state
+        mock_manager.update_stage1_completion.return_value = mock_state
+        
+        # Mock simple module for Stage 1
+        simple_module = Module(
+            id=uuid.uuid4(),
+            name="greeting",
+            type=ModuleType.SIMPLE,
+            execution_context=ExecutionContext.IMMEDIATE,
+            content="Hello there!",
+            is_active=True
+        )
+        
+        def stage_side_effect(db_session, stage, persona_id=None):
+            mock_query = Mock()
+            if stage == 1:
+                mock_query.all.return_value = [simple_module]
+            else:
+                mock_query.all.return_value = []
+            return mock_query
+        
+        mock_get_modules.side_effect = stage_side_effect
+        
+        # Enable state tracking
+        self.resolver.enable_state_tracking()
+        
+        template = "Welcome @greeting"
+        result = self.resolver.resolve_template_stage1_and_stage2(
+            template, self.conversation_id, self.persona_id, self.mock_session
+        )
+        
+        # Verify Stage 1 completion was recorded
+        mock_manager.update_stage1_completion.assert_called_once()
+        args = mock_manager.update_stage1_completion.call_args[0]
+        assert args[0] == mock_state  # state
+        assert "Welcome Hello there!" in args[1]  # resolved_template
+        assert "greeting" in args[2]  # resolved_modules
+        # execution_time should be > 0
+        assert args[4] > 0
+    
+    @patch('app.services.staged_module_resolver.SystemPromptState')
+    @patch('app.services.staged_module_resolver.PromptStateManager')
+    @patch('app.services.staged_module_resolver.ScriptEngine')
+    @patch('app.services.staged_module_resolver.Module.get_modules_for_stage')
+    def test_stage2_ai_module_with_state_tracking(self, mock_get_modules, mock_engine_class, mock_manager_class, mock_state_class):
+        """Test Stage 2 AI module execution with state tracking."""
+        mock_manager = Mock()
+        mock_manager_class.return_value = mock_manager
+        
+        mock_state = Mock()
+        mock_state.get_prompt_for_stage.return_value = "Stage1 resolved content"
+        mock_manager.create_initial_state.return_value = mock_state
+        mock_manager.update_stage1_completion.return_value = mock_state
+        mock_manager.update_stage2_completion.return_value = mock_state
+        mock_manager.finalize_state.return_value = mock_state  # Return same state after finalization
+        
+        # Mock AI module for Stage 2
+        ai_module = Module(
+            id=uuid.uuid4(),
+            name="context_analyzer",
+            type=ModuleType.ADVANCED,
+            execution_context=ExecutionContext.IMMEDIATE,
+            content="Context: ${analysis}",
+            script='analysis = ctx.generate("Analyze context")',
+            requires_ai_inference=True,
+            is_active=True
+        )
+        
+        def stage_side_effect(db_session, stage, persona_id=None):
+            mock_query = Mock()
+            if stage == 1:
+                mock_query.all.return_value = []
+            elif stage == 2:
+                mock_query.all.return_value = [ai_module]
+            return mock_query
+        
+        mock_get_modules.side_effect = stage_side_effect
+        
+        # Mock script engine execution
+        mock_engine = Mock()
+        mock_engine_class.return_value = mock_engine
+        
+        # Mock successful script execution result
+        mock_result = Mock()
+        mock_result.success = True
+        mock_result.outputs = {"analysis": "Positive conversation"}
+        mock_engine.execute_script.return_value = mock_result
+        
+        # Enable state tracking
+        self.resolver.enable_state_tracking()
+        
+        template = "Hello @context_analyzer"
+        result = self.resolver.resolve_template_stage1_and_stage2(
+            template, self.conversation_id, self.persona_id, self.mock_session
+        )
+        
+        # Verify Stage 2 completion was recorded (loose coupling - no state consultation during execution)
+        mock_manager.update_stage2_completion.assert_called_once()
+        args = mock_manager.update_stage2_completion.call_args[0]
+        assert args[0] == mock_state  # state
+        assert "Context: Positive conversation" in args[1]  # resolved_template
+        assert "context_analyzer" in args[2]  # additional_modules
+    
+    @patch('app.services.staged_module_resolver.SystemPromptState')  
+    @patch('app.services.staged_module_resolver.PromptStateManager')
+    @patch('app.services.staged_module_resolver.ScriptEngine')
+    def test_post_response_stage4_with_state_tracking(self, mock_engine_class, mock_manager_class, mock_state_class):
+        """Test POST_RESPONSE Stage 4 execution with state tracking."""
+        mock_manager = Mock()
+        mock_manager_class.return_value = mock_manager
+        
+        mock_state = Mock()
+        mock_manager.create_initial_state.return_value = mock_state
+        mock_manager.update_stage4_completion.return_value = mock_state
+        mock_manager.finalize_state.return_value = mock_state  # Return same state after finalization
+        
+        # Mock non-AI POST_RESPONSE module
+        post_module = Module(
+            id=uuid.uuid4(),
+            name="message_counter",
+            type=ModuleType.ADVANCED,
+            execution_context=ExecutionContext.POST_RESPONSE,
+            script='count = ctx.get_message_count()',
+            requires_ai_inference=False,
+            is_active=True
+        )
+        
+        # Mock script engine execution
+        mock_engine = Mock()
+        mock_engine_class.return_value = mock_engine
+        
+        # Mock successful script execution result
+        mock_result = Mock()
+        mock_result.success = True
+        mock_result.outputs = {"count": 15}
+        mock_engine.execute_script.return_value = mock_result
+        
+        # Enable state tracking
+        self.resolver.enable_state_tracking()
+        
+        # Execute POST_RESPONSE modules
+        results = self.resolver.execute_post_response_modules(
+            self.conversation_id, self.persona_id, self.mock_session, [post_module]
+        )
+        
+        # Verify Stage 4 completion was recorded
+        mock_manager.update_stage4_completion.assert_called_once()
+        args = mock_manager.update_stage4_completion.call_args[0]
+        assert args[0] == mock_state  # state
+        assert args[1] == {"message_counter": {"count": 15}}  # variables
+        assert args[2] > 0  # execution_time
+    
+    @patch('app.services.staged_module_resolver.SystemPromptState')
+    @patch('app.services.staged_module_resolver.PromptStateManager')
+    @patch('app.services.staged_module_resolver.ScriptEngine')
+    def test_post_response_stage5_with_state_tracking(self, mock_engine_class, mock_manager_class, mock_state_class):
+        """Test POST_RESPONSE Stage 5 AI execution with state tracking."""
+        mock_manager = Mock()
+        mock_manager_class.return_value = mock_manager
+        
+        mock_state = Mock()
+        mock_state.get_prompt_for_stage.return_value = "Main prompt with Stage 4 context"
+        mock_manager.create_initial_state.return_value = mock_state
+        mock_manager.update_stage4_completion.return_value = mock_state  # Stage 4 returns same state
+        mock_manager.update_stage5_completion.return_value = mock_state
+        mock_manager.finalize_state.return_value = mock_state  # Return same state after finalization
+        
+        # Mock AI POST_RESPONSE module
+        ai_post_module = Module(
+            id=uuid.uuid4(),
+            name="response_assessor",
+            type=ModuleType.ADVANCED,
+            execution_context=ExecutionContext.POST_RESPONSE,
+            script='quality = ctx.reflect("Rate this response 1-10")',
+            requires_ai_inference=True,
+            is_active=True
+        )
+        
+        # Mock script engine execution
+        mock_engine = Mock()
+        mock_engine_class.return_value = mock_engine
+        
+        # Mock successful script execution result
+        mock_result = Mock()
+        mock_result.success = True
+        mock_result.outputs = {"quality": "8/10"}
+        mock_engine.execute_script.return_value = mock_result
+        
+        # Enable state tracking
+        self.resolver.enable_state_tracking()
+        
+        # Execute POST_RESPONSE modules
+        results = self.resolver.execute_post_response_modules(
+            self.conversation_id, self.persona_id, self.mock_session, [ai_post_module]
+        )
+        
+        # Verify Stage 5 completion was recorded (loose coupling - no state consultation during execution)
+        mock_manager.update_stage5_completion.assert_called_once()
+        args = mock_manager.update_stage5_completion.call_args[0]
+        assert args[0] == mock_state  # state
+        assert args[1] == {"response_assessor": {"quality": "8/10"}}  # variables
+        assert args[2] > 0  # execution_time
+    
+    @patch('app.services.staged_module_resolver.SystemPromptState')
+    @patch('app.services.staged_module_resolver.PromptStateManager')
+    def test_state_finalization(self, mock_manager_class, mock_state_class):
+        """Test SystemPromptState finalization with total execution time."""
+        mock_manager = Mock()
+        mock_manager_class.return_value = mock_manager
+        
+        mock_state = Mock()
+        mock_manager.create_initial_state.return_value = mock_state
+        mock_manager.update_stage1_completion.return_value = mock_state  # All stage completions return same state
+        mock_manager.update_stage2_completion.return_value = mock_state
+        mock_manager.finalize_state.return_value = mock_state  # Return same state after finalization
+        
+        # Enable state tracking
+        self.resolver.enable_state_tracking()
+        
+        template = "Simple template"
+        result = self.resolver.resolve_template_stage1_and_stage2(
+            template, self.conversation_id, self.persona_id, self.mock_session
+        )
+        
+        # Finalize state should be called at the end
+        mock_manager.finalize_state.assert_called_once_with(mock_state)
+    
+    @patch('app.services.staged_module_resolver.SystemPromptState')
+    @patch('app.services.staged_module_resolver.PromptStateManager')
+    def test_get_current_state(self, mock_manager_class, mock_state_class):
+        """Test getting current SystemPromptState during execution."""
+        mock_manager = Mock()
+        mock_manager_class.return_value = mock_manager
+        
+        mock_state = Mock()
+        mock_manager.create_initial_state.return_value = mock_state
+        mock_manager.finalize_state.return_value = mock_state  # Return same state after finalization
+        
+        # Enable state tracking
+        self.resolver.enable_state_tracking()
+        
+        # Before any execution, state should be None
+        assert self.resolver.get_current_state() is None
+        
+        # After starting resolution, state should be available
+        template = "Hello world"
+        result = self.resolver.resolve_template_stage1_and_stage2(
+            template, self.conversation_id, self.persona_id, self.mock_session
+        )
+        
+        current_state = self.resolver.get_current_state()
+        assert current_state == mock_state
+    
+    @patch('app.services.staged_module_resolver.SystemPromptState')
+    @patch('app.services.staged_module_resolver.PromptStateManager')
+    def test_state_tracking_disabled_by_default(self, mock_manager_class, mock_state_class):
+        """Test that state tracking is disabled by default."""
+        # Don't enable state tracking
+        template = "Hello world"
+        result = self.resolver.resolve_template_stage1_and_stage2(
+            template, self.conversation_id, self.persona_id, self.mock_session
+        )
+        
+        # No state manager should be created
+        mock_manager_class.assert_not_called()
+        
+        # Current state should be None
+        assert self.resolver.get_current_state() is None
+    
+    @patch('app.services.staged_module_resolver.SystemPromptState')
+    @patch('app.services.staged_module_resolver.PromptStateManager')
+    def test_debug_summary_generation(self, mock_manager_class, mock_state_class):
+        """Test generation of debug summary from SystemPromptState."""
+        mock_manager = Mock()
+        mock_manager_class.return_value = mock_manager
+        
+        mock_state = Mock()
+        mock_manager.create_initial_state.return_value = mock_state
+        mock_manager.finalize_state.return_value = mock_state  # Return same state after finalization
+        
+        debug_summary = {
+            "conversation_id": self.conversation_id,
+            "persona_id": self.persona_id,
+            "prompt_evolution": {"original": "test", "stage1": "test resolved"},
+            "performance_metrics": {"total_time": 0.15}
+        }
+        mock_manager.get_debug_summary.return_value = debug_summary
+        
+        # Enable state tracking
+        self.resolver.enable_state_tracking()
+        
+        template = "Test template"
+        result = self.resolver.resolve_template_stage1_and_stage2(
+            template, self.conversation_id, self.persona_id, self.mock_session
+        )
+        
+        # Get debug summary (should use finalized state)
+        summary = self.resolver.get_debug_summary()
+        assert summary == debug_summary
+        # Should be called with the finalized state (after finalize_state is called)
+        mock_manager.get_debug_summary.assert_called_once()
+    
+    @patch('app.services.staged_module_resolver.SystemPromptState')
+    @patch('app.services.staged_module_resolver.PromptStateManager')
+    def test_performance_summary_generation(self, mock_manager_class, mock_state_class):
+        """Test generation of performance summary from SystemPromptState."""
+        mock_manager = Mock()
+        mock_manager_class.return_value = mock_manager
+        
+        mock_state = Mock()
+        mock_manager.create_initial_state.return_value = mock_state
+        mock_manager.finalize_state.return_value = mock_state  # Return same state after finalization
+        
+        performance_summary = {
+            "total_time": 0.25,
+            "slowest_stage": 2,
+            "fastest_stage": 1,
+            "ai_stages_time": 0.20,
+            "non_ai_stages_time": 0.05
+        }
+        mock_state.get_performance_summary.return_value = performance_summary
+        
+        # Enable state tracking
+        self.resolver.enable_state_tracking()
+        
+        template = "Test template"
+        result = self.resolver.resolve_template_stage1_and_stage2(
+            template, self.conversation_id, self.persona_id, self.mock_session
+        )
+        
+        # Get performance summary (should work with finalized state)
+        summary = self.resolver.get_performance_summary()
+        assert summary == performance_summary
+        # The finalized state should have get_performance_summary called on it
+        # Since finalize_state returns a state, we need to check the return value

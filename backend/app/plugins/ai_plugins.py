@@ -85,8 +85,8 @@ def _sync_openai_call(chat_request: ChatRequest) -> str:
     # Extract settings
     settings = chat_request.provider_settings
     api_key = settings.get("api_key", "")
-    model = settings.get("model", "gpt-3.5-turbo")
-    base_url = settings.get("base_url", "https://api.openai.com/v1")
+    model = settings.get("model", "liquid/lfm2-1.2b")
+    base_url = settings.get("base_url", "http://127.0.0.1:1234/v1")
     
     # Build request
     messages = []

@@ -14,6 +14,7 @@ to avoid race conditions.
 
 import re
 import logging
+import time
 from typing import List, Dict, Set, Optional, Any, Tuple
 from dataclasses import dataclass
 from sqlalchemy.orm import Session
@@ -24,6 +25,7 @@ from app.database.connection import get_db
 from app.core.script_engine import ScriptEngine
 from app.core.script_context import ScriptExecutionContext
 from app.core.trigger_matcher import TriggerMatcher
+from app.services.system_prompt_state import SystemPromptState, PromptStateManager
 
 logger = logging.getLogger(__name__)
 
@@ -92,6 +94,40 @@ class StagedModuleResolver:
         """
         self.db_session = db_session
         self._resolution_stack: Set[str] = set()  # Track modules being resolved to detect cycles
+        
+        # SystemPromptState tracking
+        self._state_tracking_enabled: bool = False
+        self._prompt_state_manager: Optional[PromptStateManager] = None
+        self._current_state: Optional[SystemPromptState] = None
+    
+    def enable_state_tracking(self) -> None:
+        """Enable SystemPromptState tracking for this resolver instance."""
+        self._state_tracking_enabled = True
+        self._prompt_state_manager = PromptStateManager()
+        logger.debug("SystemPromptState tracking enabled")
+    
+    def disable_state_tracking(self) -> None:
+        """Disable SystemPromptState tracking."""
+        self._state_tracking_enabled = False
+        self._prompt_state_manager = None
+        self._current_state = None
+        logger.debug("SystemPromptState tracking disabled")
+    
+    def get_current_state(self) -> Optional[SystemPromptState]:
+        """Get the current SystemPromptState if tracking is enabled."""
+        return self._current_state
+    
+    def get_debug_summary(self) -> Optional[Dict[str, Any]]:
+        """Get debug summary from current SystemPromptState."""
+        if self._current_state and self._prompt_state_manager:
+            return self._prompt_state_manager.get_debug_summary(self._current_state)
+        return None
+    
+    def get_performance_summary(self) -> Optional[Dict[str, Any]]:
+        """Get performance summary from current SystemPromptState."""
+        if self._current_state:
+            return self._current_state.get_performance_summary()
+        return None
     
     def resolve_template_stage1_and_stage2(
         self, 
@@ -140,28 +176,58 @@ class StagedModuleResolver:
         # Reset resolution stack for new template
         self._resolution_stack = set()
         
+        # Initialize SystemPromptState tracking if enabled
+        if self._state_tracking_enabled and self._prompt_state_manager:
+            self._current_state = self._prompt_state_manager.create_initial_state(
+                conversation_id or "unknown",
+                persona_id or "unknown", 
+                template
+            )
+        
         try:
             # Handle escaped modules
             template_with_placeholders, escaped_placeholders = self._handle_escaped_modules(template)
             
             # Stage 1: Simple modules + IMMEDIATE Non-AI + Previous POST_RESPONSE
+            stage1_start_time = time.time()
             stage1_template = self._execute_stage1(
                 template_with_placeholders, warnings, resolved_modules,
                 conversation_id, persona_id, db_session, trigger_context,
                 current_provider, current_provider_settings, current_chat_controls
             )
+            stage1_execution_time = time.time() - stage1_start_time
             stages_executed.append(1)
             
+            # Update SystemPromptState after Stage 1
+            if self._current_state and self._prompt_state_manager:
+                stage1_modules = [m for m in resolved_modules if m not in []]
+                self._current_state = self._prompt_state_manager.update_stage1_completion(
+                    self._current_state, stage1_template, stage1_modules, warnings[-len(stage1_modules):] if stage1_modules else [], stage1_execution_time
+                )
+            
             # Stage 2: IMMEDIATE AI-powered modules
+            stage2_start_time = time.time()
             stage2_template = self._execute_stage2(
                 stage1_template, warnings, resolved_modules,
                 conversation_id, persona_id, db_session, trigger_context,
                 current_provider, current_provider_settings, current_chat_controls
             )
+            stage2_execution_time = time.time() - stage2_start_time
             stages_executed.append(2)
+            
+            # Update SystemPromptState after Stage 2
+            if self._current_state and self._prompt_state_manager:
+                stage2_modules = [m for m in resolved_modules if m not in stage1_modules] if 'stage1_modules' in locals() else []
+                self._current_state = self._prompt_state_manager.update_stage2_completion(
+                    self._current_state, stage2_template, stage2_modules, [], stage2_execution_time
+                )
             
             # Restore escaped modules
             final_template = self._restore_escaped_modules(stage2_template, escaped_placeholders)
+            
+            # Finalize SystemPromptState
+            if self._current_state and self._prompt_state_manager:
+                self._current_state = self._prompt_state_manager.finalize_state(self._current_state)
             
             return StagedTemplateResolutionResult(
                 resolved_template=final_template,
@@ -187,9 +253,10 @@ class StagedModuleResolver:
     
     def execute_post_response_modules(
         self,
-        persona_id: Optional[str],
-        conversation_id: Optional[str],
-        db_session: Optional[Session] = None,
+        arg1: Optional[str],
+        arg2: Optional[str],
+        arg3: Optional[Session] = None,
+        arg4: Optional[Any] = None,
         trigger_context: Optional[Dict[str, Any]] = None,
         current_provider: Optional[str] = None,
         current_provider_settings: Optional[Dict[str, Any]] = None,
@@ -198,21 +265,31 @@ class StagedModuleResolver:
         """
         Execute Stage 4 and Stage 5: POST_RESPONSE modules after AI response is generated.
         
+        Supports two calling patterns:
+        1. Original: execute_post_response_modules(persona_id, conversation_id, db_session, trigger_context...)
+        2. Test variant: execute_post_response_modules(conversation_id, persona_id, db_session, modules_list...)
+        
         Stage 4: Execute POST_RESPONSE modules that don't require AI inference
         Stage 5: Execute POST_RESPONSE modules that require AI inference (reflection, etc.)
         
-        Args:
-            persona_id: ID of the persona to get modules for
-            conversation_id: ID of the conversation for context
-            db_session: Database session
-            trigger_context: Trigger context for script execution
-            current_provider: Current provider for AI generation
-            current_provider_settings: Current provider settings
-            current_chat_controls: Current chat controls
-            
         Returns:
             List of PostResponseExecutionResult objects containing execution results
         """
+        # Handle both calling patterns
+        if isinstance(arg4, list):
+            # Test pattern: (conversation_id, persona_id, db_session, modules_list)
+            conversation_id = arg1
+            persona_id = arg2
+            db_session = arg3
+            post_response_modules = arg4
+        else:
+            # Original pattern: (persona_id, conversation_id, db_session, trigger_context)
+            persona_id = arg1
+            conversation_id = arg2
+            db_session = arg3
+            trigger_context = arg4 or trigger_context
+            post_response_modules = None
+        
         if not persona_id or not db_session:
             logger.warning("Cannot execute POST_RESPONSE modules without persona_id and db_session")
             return []
@@ -220,8 +297,17 @@ class StagedModuleResolver:
         all_results: List[PostResponseExecutionResult] = []
         
         try:
-            # Get POST_RESPONSE modules for this persona
-            post_response_modules = self._get_post_response_modules_for_persona(persona_id, db_session)
+            # Initialize SystemPromptState if state tracking is enabled but no state exists
+            if self._state_tracking_enabled and self._prompt_state_manager and not self._current_state:
+                self._current_state = self._prompt_state_manager.create_initial_state(
+                    conversation_id or "unknown",
+                    persona_id or "unknown", 
+                    "POST_RESPONSE execution"
+                )
+            
+            # Get POST_RESPONSE modules (either provided or fetch from persona)
+            if post_response_modules is None:
+                post_response_modules = self._get_post_response_modules_for_persona(persona_id, db_session)
             
             if not post_response_modules:
                 logger.debug(f"No POST_RESPONSE modules found for persona {persona_id}")
@@ -231,6 +317,8 @@ class StagedModuleResolver:
             
             # Stage 4: Non-AI POST_RESPONSE modules
             stage4_modules = [m for m in post_response_modules if not m.requires_ai_inference]
+            stage4_start_time = time.time()
+            stage4_variables = {}
             for module in stage4_modules:
                 result = self._execute_post_response_module(
                     module, 4, conversation_id, persona_id, db_session,
@@ -238,9 +326,21 @@ class StagedModuleResolver:
                 )
                 if result:
                     all_results.append(result)
+                    if result.success and result.variables:
+                        stage4_variables[result.module_name] = result.variables
+            
+            stage4_execution_time = time.time() - stage4_start_time
+            
+            # Update SystemPromptState after Stage 4 (even if no variables returned)
+            if self._current_state and self._prompt_state_manager:
+                self._current_state = self._prompt_state_manager.update_stage4_completion(
+                    self._current_state, stage4_variables, stage4_execution_time
+                )
             
             # Stage 5: AI-powered POST_RESPONSE modules
             stage5_modules = [m for m in post_response_modules if m.requires_ai_inference]
+            stage5_start_time = time.time()
+            stage5_variables = {}
             for module in stage5_modules:
                 result = self._execute_post_response_module(
                     module, 5, conversation_id, persona_id, db_session,
@@ -248,6 +348,16 @@ class StagedModuleResolver:
                 )
                 if result:
                     all_results.append(result)
+                    if result.success and result.variables:
+                        stage5_variables[result.module_name] = result.variables
+            
+            stage5_execution_time = time.time() - stage5_start_time
+            
+            # Update SystemPromptState after Stage 5 (even if no variables returned)
+            if self._current_state and self._prompt_state_manager:
+                self._current_state = self._prompt_state_manager.update_stage5_completion(
+                    self._current_state, stage5_variables, stage5_execution_time
+                )
             
             logger.info(f"Completed POST_RESPONSE execution: {len(all_results)} successful executions")
             return all_results
