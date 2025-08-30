@@ -44,7 +44,7 @@ class ConversationState(Base):
     executed_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     
     # Relationships
-    module = relationship("Module", backref="conversation_states")
+    module = relationship("Module", backref="conversation_states", passive_deletes=True)
     
     # Constraints
     __table_args__ = (

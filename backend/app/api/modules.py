@@ -442,7 +442,21 @@ def delete_module(
                 detail=f"Module with ID {module_id} not found"
             )
         
-        # Delete module
+        # Import ConversationState here to avoid circular imports
+        from app.models.conversation_state import ConversationState
+        
+        # First, delete all conversation_states referencing this module
+        # This works around SQLAlchemy trying to update the foreign key to NULL
+        conversation_states = db.query(ConversationState).filter(
+            ConversationState.module_id == module_id
+        ).all()
+        
+        if conversation_states:
+            logger.info(f"Found {len(conversation_states)} conversation states to delete for module {module_id}")
+            for state in conversation_states:
+                db.delete(state)
+        
+        # Now delete the module itself
         db.delete(module)
         db.commit()
         
