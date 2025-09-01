@@ -38,7 +38,11 @@ const {
   stageMessage,
   isProcessingAfter,
   messageCompleted,
-  hideStreamingUI
+  hideStreamingUI,
+  // Session management
+  currentSessionId,
+  cancelCurrentSession,
+  isSessionCancelling
 } = useChat()
 
 // Get chat controls from storage - no defaults, load what's actually saved
@@ -139,7 +143,7 @@ function handleKeydown(event: KeyboardEvent) {
 }
 
 async function sendMessage() {
-  if (!message.value.trim() || isStreaming.value) return
+  if (!message.value.trim()) return
   
   const userMessage = message.value.trim()
   message.value = ''
@@ -278,9 +282,9 @@ async function deleteMessage(messageId: string) {
   }
 }
 
-// Check if message can be edited (not system messages and not currently streaming)
+// Check if message can be edited (not system messages)
 function canEditMessage(msg: ChatMessage): boolean {
-  return msg.role !== 'system' && !isStreaming.value
+  return msg.role !== 'system'
 }
 
 // Get streaming indicator text based on processing stage
@@ -298,6 +302,25 @@ function getStreamingIndicatorText(): string {
     }
   }
   return 'Typing...'
+}
+
+// Handle stop button click
+async function handleStopChat() {
+  if (!currentSessionId.value || isSessionCancelling.value) {
+    return
+  }
+  
+  try {
+    console.log('Stopping chat session:', currentSessionId.value)
+    const success = await cancelCurrentSession()
+    if (success) {
+      console.log('Chat session stopped successfully')
+    } else {
+      console.warn('Failed to stop chat session')
+    }
+  } catch (error) {
+    console.error('Error stopping chat session:', error)
+  }
 }
 </script>
 
@@ -442,6 +465,8 @@ function getStreamingIndicatorText(): string {
 
           <!-- No visual feedback during AFTER processing - let it run silently in background -->
 
+          <!-- Remove multi-session indicator -->
+
         </div>
         
         <!-- Empty state -->
@@ -531,13 +556,26 @@ function getStreamingIndicatorText(): string {
           </div>
           
           <div class="right-controls">
+            <!-- Stop button when streaming/processing -->
             <button 
+              v-if="isStreaming && currentSessionId"
+              class="icon-btn stop-btn" 
+              @click="handleStopChat" 
+              :disabled="isSessionCancelling" 
+              :title="isSessionCancelling ? 'Stopping...' : 'Stop Generation'"
+            >
+              <i :class="isSessionCancelling ? 'fa-solid fa-spinner fa-spin' : 'fa-solid fa-stop'"></i>
+            </button>
+            
+            <!-- Send button when not streaming -->
+            <button 
+              v-else
               class="icon-btn send-btn" 
               @click="sendMessage" 
-              :disabled="!message.trim() || isStreaming" 
-              :title="isStreaming ? 'Sending...' : 'Send Message'"
+              :disabled="!message.trim()" 
+              title="Send Message"
             >
-              <i :class="isStreaming ? 'fa-solid fa-spinner fa-spin' : 'fa-solid fa-paper-plane'"></i>
+              <i class="fa-solid fa-paper-plane"></i>
             </button>
           </div>
         </div>
@@ -716,6 +754,7 @@ function getStreamingIndicatorText(): string {
 
 /* Icon buttons */
 .icon-btn {
+  position: relative;
   width: 32px;
   height: 32px;
   background: transparent;
@@ -756,6 +795,20 @@ function getStreamingIndicatorText(): string {
 .send-btn:not(:disabled) {
   opacity: 1;
 }
+
+.stop-btn:hover:not(:disabled) {
+  color: #ef4444;
+  border-color: #ef4444;
+  background: rgba(239, 68, 68, 0.1);
+}
+
+.stop-btn:not(:disabled) {
+  opacity: 1;
+  color: #f59e0b;
+  border-color: #f59e0b;
+}
+
+/* Removed multi-session UI elements */
 
 /* Chat Messages Styling */
 .messages-list {

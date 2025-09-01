@@ -140,22 +140,47 @@ class ProviderFactory:
     """Factory for creating AI provider instances."""
     
     @classmethod
-    def create_provider(cls, provider_type: ProviderType) -> AIProvider:
-        """Create a provider instance."""
-        # Import here to avoid circular imports
-        from .ollama_service import OllamaService
-        from .openai_service import OpenAIService
+    def create_provider(cls, provider_type: ProviderType, with_cancellation: bool = False) -> AIProvider:
+        """
+        Create a provider instance.
         
-        _providers = {
-            ProviderType.OLLAMA: OllamaService,
-            ProviderType.OPENAI: OpenAIService,
-        }
-        
-        if provider_type not in _providers:
-            raise UnsupportedProviderError(str(provider_type))
-        
-        provider_class = _providers[provider_type]
-        return provider_class()
+        Args:
+            provider_type: Type of provider to create
+            with_cancellation: Whether to create enhanced provider with cancellation support
+            
+        Returns:
+            AIProvider instance (enhanced or standard)
+        """
+        if with_cancellation:
+            # Import enhanced services
+            from .ollama_service_with_cancellation import OllamaServiceWithCancellation
+            from .openai_service_with_cancellation import OpenAIServiceWithCancellation
+            
+            _enhanced_providers = {
+                ProviderType.OLLAMA: OllamaServiceWithCancellation,
+                ProviderType.OPENAI: OpenAIServiceWithCancellation,
+            }
+            
+            if provider_type not in _enhanced_providers:
+                raise UnsupportedProviderError(str(provider_type))
+            
+            provider_class = _enhanced_providers[provider_type]
+            return provider_class()
+        else:
+            # Import standard services
+            from .ollama_service import OllamaService
+            from .openai_service import OpenAIService
+            
+            _providers = {
+                ProviderType.OLLAMA: OllamaService,
+                ProviderType.OPENAI: OpenAIService,
+            }
+            
+            if provider_type not in _providers:
+                raise UnsupportedProviderError(str(provider_type))
+            
+            provider_class = _providers[provider_type]
+            return provider_class()
     
     @classmethod
     def get_available_providers(cls) -> List[ProviderType]:

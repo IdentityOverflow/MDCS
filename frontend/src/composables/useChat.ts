@@ -81,6 +81,10 @@ const currentStreamingMessage = ref('')
 const currentStreamingThinking = ref('')
 const error = ref<string | null>(null)
 
+// Session management state
+const currentSessionId = ref<string | null>(null)
+const isSessionCancelling = ref(false)
+
 // Processing stage state
 const processingStage = ref<string | null>(null)
 const stageMessage = ref<string | null>(null)
@@ -416,6 +420,83 @@ export function useChat() {
     }
   }
 
+  // === SESSION MANAGEMENT FUNCTIONS ===
+
+  // Cancel current session
+  const cancelCurrentSession = async (): Promise<boolean> => {
+    if (!currentSessionId.value || isSessionCancelling.value) {
+      return false
+    }
+
+    isSessionCancelling.value = true
+    
+    try {
+      // Use the new cancellation endpoints
+      const response = await apiRequest(`/api/chat/cancel/${currentSessionId.value}`, {
+        method: 'POST'
+      })
+
+      if (response.ok) {
+        const result = await response.json()
+        console.log('Session cancellation result:', result)
+        
+        // Clean up session state
+        if (result.cancelled) {
+          currentSessionId.value = null
+          isStreaming.value = false
+          processingStage.value = null
+          stageMessage.value = null
+          currentStreamingMessage.value = ''
+          currentStreamingThinking.value = ''
+        }
+        
+        return result.cancelled
+      } else {
+        console.error('Failed to cancel session:', response.statusText)
+        return false
+      }
+    } catch (err) {
+      console.error('Error cancelling session:', err)
+      return false
+    } finally {
+      isSessionCancelling.value = false
+    }
+  }
+
+  // Get session status
+  const getSessionStatus = async (sessionId: string) => {
+    try {
+      const response = await apiRequest(`/api/chat/status/${sessionId}`)
+      if (response.ok) {
+        return await response.json()
+      }
+      return null
+    } catch (err) {
+      console.error('Error getting session status:', err)
+      return null
+    }
+  }
+
+  // Get all active sessions
+  const getActiveSessions = async () => {
+    try {
+      const response = await apiRequest('/api/chat/sessions/active')
+      if (response.ok) {
+        const data = await response.json()
+        return data.sessions || []
+      }
+      return []
+    } catch (err) {
+      console.error('Error getting active sessions:', err)
+      return []
+    }
+  }
+
+  // Extract session ID from response headers
+  const extractSessionId = (response: Response): string | null => {
+    return response.headers.get('X-Session-ID') || null
+  }
+
 
   // Build chat controls from current settings
   const buildChatControls = (chatControls: ChatControls): Record<string, any> => {
@@ -451,7 +532,11 @@ export function useChat() {
     userMessage: string, 
     chatControls: ChatControls
   ): Promise<void> => {
-    if (isStreaming.value) return
+    // If already streaming, cancel current session first
+    if (isStreaming.value && currentSessionId.value) {
+      console.log('Cancelling current session for new message')
+      await cancelCurrentSession()
+    }
 
     error.value = null
     isStreaming.value = true
@@ -491,6 +576,7 @@ export function useChat() {
         conversation_id: currentConversation.value?.id || undefined
       }
 
+      // Use the enhanced cancellation-aware endpoint
       const response = await apiRequest('/api/chat/stream', {
         method: 'POST',
         body: JSON.stringify(chatRequest)
@@ -499,6 +585,13 @@ export function useChat() {
       if (!response.ok) {
         const errorData = await response.json()
         throw new Error(errorData.detail?.message || errorData.message || 'Chat request failed')
+      }
+
+      // Extract and track session ID
+      const sessionId = extractSessionId(response)
+      if (sessionId) {
+        currentSessionId.value = sessionId
+        console.log('Started streaming session:', sessionId)
       }
 
       const reader = response.body?.getReader()
@@ -529,6 +622,21 @@ export function useChat() {
               }
 
               switch (chunk.event_type) {
+                case 'cancelled':
+                  console.log('Stream cancelled by server')
+                  // Clean up session and streaming state
+                  if (currentSessionId.value) {
+                    currentSessionId.value = null
+                  }
+                  isStreaming.value = false
+                  processingStage.value = null
+                  stageMessage.value = null
+                  currentStreamingMessage.value = ''
+                  currentStreamingThinking.value = ''
+                  
+                  // Add cancellation message to chat
+                  await addAssistantMessage('⏹️ Message generation was stopped.', undefined, undefined, undefined, undefined, false)
+                  return // Exit the streaming loop
                 case 'stage_update':
                   if (chunk.processing_stage === 'thinking_before') {
                     processingStage.value = 'thinking'
@@ -608,6 +716,12 @@ export function useChat() {
                   currentStreamingThinking.value = ''
                   processingStage.value = null
                   stageMessage.value = null
+                  
+                  // Clean up session tracking
+                  if (currentSessionId.value) {
+                    currentSessionId.value = null
+                    console.log('Completed streaming session')
+                  }
                   break
               }
             } catch (parseError) {
@@ -632,9 +746,16 @@ export function useChat() {
       error.value = message
       console.error('Chat streaming error:', err)
       await addAssistantMessage(`❌ Error: ${message}`, undefined, undefined, undefined, undefined, false)
+      
+      // Clean up session and streaming state
+      if (currentSessionId.value) {
+        currentSessionId.value = null
+      }
       isStreaming.value = false
       processingStage.value = null
       stageMessage.value = null
+      currentStreamingMessage.value = ''
+      currentStreamingThinking.value = ''
     }
   }
 
@@ -643,7 +764,11 @@ export function useChat() {
     userMessage: string,
     chatControls: ChatControls
   ): Promise<void> => {
-    if (isStreaming.value) return
+    // If already streaming, cancel current session first
+    if (isStreaming.value && currentSessionId.value) {
+      console.log('Cancelling current session for new message')
+      await cancelCurrentSession()
+    }
 
     error.value = null
     isStreaming.value = true
@@ -676,7 +801,7 @@ export function useChat() {
         conversation_id: currentConversation.value?.id || undefined
       }
       
-      // Keep showing "Thinking..." during the entire request
+      // Use the enhanced cancellation-aware endpoint  
       const response = await apiRequest('/api/chat/send', {
         method: 'POST',
         body: JSON.stringify(chatRequest)
@@ -685,6 +810,13 @@ export function useChat() {
       if (!response.ok) {
         const errorData = await response.json()
         throw new Error(errorData.detail?.message || errorData.message || 'Chat request failed')
+      }
+
+      // Extract and track session ID
+      const sessionId = extractSessionId(response)
+      if (sessionId) {
+        currentSessionId.value = sessionId
+        console.log('Started non-streaming session:', sessionId)
       }
 
       const data = await response.json()
@@ -718,6 +850,10 @@ export function useChat() {
       console.error('Chat error:', err)
       await addAssistantMessage(`❌ Error: ${message}`, undefined, undefined, undefined, undefined, false)
     } finally {
+      // Clean up session and streaming state
+      if (currentSessionId.value) {
+        currentSessionId.value = null
+      }
       isStreaming.value = false
       processingStage.value = null
       stageMessage.value = null
@@ -803,6 +939,10 @@ export function useChat() {
     currentStreamingThinking: computed(() => currentStreamingThinking.value),
     error: computed(() => error.value),
     
+    // Session management state
+    currentSessionId: computed(() => currentSessionId.value),
+    isSessionCancelling: computed(() => isSessionCancelling.value),
+    
     // Processing stage state
     processingStage: computed(() => processingStage.value),
     stageMessage: computed(() => stageMessage.value),
@@ -826,6 +966,11 @@ export function useChat() {
     addUserMessage,
     addAssistantMessage,
     addSystemMessage,
+    
+    // Session management methods
+    cancelCurrentSession,
+    getSessionStatus,
+    getActiveSessions,
     
     // Persistence methods
     loadConversationForPersona,

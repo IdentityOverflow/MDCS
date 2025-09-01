@@ -24,3 +24,6 @@ minversion = "6.0"
 addopts = "-ra -q --strict-markers"
 testpaths = ["tests"]
 pythonpath = [".", "app"]
+markers = [
+    "asyncio: marks tests as async (defers to pytest-asyncio for handling)"
+]
