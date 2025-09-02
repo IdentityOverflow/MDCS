@@ -91,12 +91,16 @@ class OpenAIServiceWithCancellation(BaseOpenAIService):
             )
         
         # Register the current task with session manager
-        self.session_manager.register_session(
-            session_id=session_id,
-            conversation_id=conversation_id,
-            asyncio_task=main_task,
-            current_stage=3  # Main AI response generation
-        )
+        try:
+            self.session_manager.register_session(
+                session_id=session_id,
+                conversation_id=conversation_id,
+                asyncio_task=main_task,
+                current_stage=3  # Main AI response generation
+            )
+        except ValueError:
+            # Session already registered by another component, continue
+            pass
         
         try:
             # Execute the original send_message method
@@ -157,12 +161,16 @@ class OpenAIServiceWithCancellation(BaseOpenAIService):
             return
         
         # Register the current task with session manager
-        self.session_manager.register_session(
-            session_id=session_id,
-            conversation_id=conversation_id,
-            asyncio_task=main_task,
-            current_stage=3  # Main AI response generation
-        )
+        try:
+            self.session_manager.register_session(
+                session_id=session_id,
+                conversation_id=conversation_id,
+                asyncio_task=main_task,
+                current_stage=3  # Main AI response generation
+            )
+        except ValueError:
+            # Session already registered by another component, continue
+            pass
         
         try:
             # Execute the original streaming method
