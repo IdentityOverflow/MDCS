@@ -59,7 +59,6 @@ export function usePersonas() {
       const data = await response.json()
       personas.value = data
       
-      console.log(`Fetched ${data.length} personas`)
       return data
       
     } catch (err) {

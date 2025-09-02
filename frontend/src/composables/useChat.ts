@@ -1,763 +1,165 @@
 /**
- * Composable for managing chat functionality
+ * Composable for managing chat functionality - Streamlined version
+ * Large functionality has been extracted to separate composables
  */
 
-import { ref, computed, nextTick, type Ref } from 'vue'
+import { ref, computed } from 'vue'
 import { useApiConfig } from './apiConfig'
 import { usePersonas } from './usePersonas'
 import { useDebug } from './useDebug'
+import { useConversationPersistence } from './useConversationPersistence'
+import { useSessionManagement } from './useSessionManagement'
+import { useStreamingChat } from './useStreamingChat'
 
-export interface ChatMessage {
-  id: string
-  role: 'user' | 'assistant' | 'system'
-  content: string
-  timestamp: number
-  thinking?: string
-  metadata?: {
-    model?: string
-    provider?: string
-    tokens_used?: number
-    response_time?: number
-  }
-  // Additional fields for persistence
-  conversation_id?: string
-  input_tokens?: number
-  output_tokens?: number
-  extra_data?: Record<string, any>
-  created_at?: string
-  updated_at?: string
-}
+// Re-export types from centralized location
+export type { 
+  ChatMessage, 
+  Conversation, 
+  ChatRequest, 
+  ChatControls, 
+  ProcessingStage, 
+  ChatProvider, 
+  MessageRole 
+} from '@/types/chat'
 
-export interface Conversation {
-  id: string
-  title: string
-  persona_id?: string
-  provider_type?: string
-  provider_config?: Record<string, any>
-  messages: ChatMessage[]
-  created_at: string
-  updated_at: string
-}
+import type { ChatMessage, ChatControls, ChatRequest } from '@/types/chat'
 
-export interface ChatRequest {
-  message: string
-  provider: 'ollama' | 'openai'
-  stream: boolean
-  chat_controls: Record<string, any>
-  provider_settings?: Record<string, any>
-  persona_id?: string
-  conversation_id?: string
-}
-
-export interface ChatControls {
-  provider: 'ollama' | 'openai'
-  selected_model: string
-  temperature: number
-  top_p: number
-  max_tokens: number
-  presence_penalty: number
-  frequency_penalty: number
-  seed: number | null
-  stop: string[]
-  json_mode: string
-  tools: any[]
-  tool_choice: string
-  stream: boolean
-  thinking_enabled: boolean
-  // Ollama specific
-  ollama_top_k: number
-  ollama_repeat_penalty: number
-  ollama_mirostat: number
-  ollama_num_ctx: number
-  // OpenAI specific
-  reasoning_effort: string
-  verbosity: string
-}
-
-// Global chat state
-const messages: Ref<ChatMessage[]> = ref([])
-const isStreaming = ref(false)
-const currentStreamingMessage = ref('')
-const currentStreamingThinking = ref('')
+// Core chat state
+const messages = ref<ChatMessage[]>([])
 const error = ref<string | null>(null)
-
-// Session management state
-const currentSessionId = ref<string | null>(null)
-const isSessionCancelling = ref(false)
-
-// Processing stage state
-const processingStage = ref<string | null>(null)
-const stageMessage = ref<string | null>(null)
-const isProcessingAfter = ref(false)
-const messageCompleted = ref(false)
-const hideStreamingUI = ref(false)
-
-// Conversation persistence state
-const currentConversation: Ref<Conversation | null> = ref(null)
-const isLoadingConversation = ref(false)
-const isSavingMessage = ref(false)
 
 export function useChat() {
   const { apiRequest } = useApiConfig()
   const { getPersonaById } = usePersonas()
   const { addDebugRecord } = useDebug()
+
+  // Initialize sub-composables
+  const conversationPersistence = useConversationPersistence(messages, error)
   
-  // Computed values
-  const chatHistory = computed(() => messages.value)
-  const hasMessages = computed(() => messages.value.length > 0)
-  const isLoading = computed(() => isStreaming.value)
-  
-  // Generate unique ID for messages (fallback for local messages)
-  const generateMessageId = () => `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
+  const sessionManagement = useSessionManagement(
+    ref(false), // isStreaming - will be overridden by streaming composable
+    ref(null),  // processingStage
+    ref(null),  // stageMessage  
+    ref(''),    // currentStreamingMessage
+    ref('')     // currentStreamingThinking
+  )
 
-  // === CONVERSATION PERSISTENCE FUNCTIONS ===
-  
-  // Load conversation for a persona
-  const loadConversationForPersona = async (personaId: string): Promise<void> => {
-    isLoadingConversation.value = true
-    error.value = null
-    
+  // Helper functions needed by streaming composable
+  const getFreshChatControls = (): ChatControls | null => {
     try {
-      const response = await apiRequest(`/api/conversations/by-persona/${personaId}`)
-      
-      if (response.ok) {
-        const conversation: Conversation = await response.json()
-        currentConversation.value = conversation
-        
-        // Convert API messages to chat messages format
-        messages.value = conversation.messages.map(msg => ({
-          id: msg.id,
-          role: msg.role as 'user' | 'assistant' | 'system',
-          content: msg.content,
-          timestamp: new Date(msg.created_at || Date.now()).getTime(),
-          thinking: msg.thinking || undefined,
-          conversation_id: conversation.id,
-          input_tokens: msg.input_tokens || undefined,
-          output_tokens: msg.output_tokens || undefined,
-          extra_data: msg.extra_data || undefined,
-          metadata: msg.extra_data?.metadata || undefined
-        }))
-      } else if (response.status === 404) {
-        // No existing conversation for this persona, create a new one
-        await createConversationForPersona(personaId)
-      } else {
-        const errorData = await response.json()
-        throw new Error(errorData.detail || 'Failed to load conversation')
-      }
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Failed to load conversation'
-      error.value = message
-      console.error('Load conversation error:', err)
-    } finally {
-      isLoadingConversation.value = false
+      const stored = localStorage.getItem('chat-controls')
+      return stored ? JSON.parse(stored) : null
+    } catch {
+      return null
     }
   }
 
-  // Create new conversation for persona
-  const createConversationForPersona = async (personaId: string): Promise<void> => {
+  const getProviderSettings = (provider: string) => {
     try {
-      const persona = getPersonaById(personaId)
-      const title = `Chat with ${persona?.name || 'AI'}`
-      
-      const response = await apiRequest('/api/conversations', {
-        method: 'POST',
-        body: JSON.stringify({
-          title,
-          persona_id: personaId,
-          provider_type: null,
-          provider_config: null
-        })
-      })
-
-      if (response.ok) {
-        const conversation: Conversation = await response.json()
-        currentConversation.value = conversation
-        messages.value = [] // Start with empty conversation
-      } else {
-        const errorData = await response.json()
-        throw new Error(errorData.detail || 'Failed to create conversation')
-      }
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Failed to create conversation'
-      error.value = message
-      console.error('Create conversation error:', err)
+      const key = `${provider}-connection`
+      const stored = localStorage.getItem(key)
+      return stored ? JSON.parse(stored) : null
+    } catch {
+      return null
     }
   }
 
-  // Save message to database
-  const saveMessageToDb = async (message: ChatMessage): Promise<ChatMessage> => {
-    if (!currentConversation.value) {
-      throw new Error('No active conversation')
-    }
+  const buildChatControls = (controls: ChatControls) => ({
+    temperature: controls.temperature,
+    max_tokens: controls.max_tokens,
+    top_p: controls.top_p,
+    frequency_penalty: controls.frequency_penalty,
+    presence_penalty: controls.presence_penalty,
+    stop_sequences: controls.stop_sequences || [],
+    seed: controls.seed,
+    repeat_penalty: controls.repeat_penalty,
+    top_k: controls.top_k,
+    response_format: controls.response_format,
+    tool_choice: controls.tool_choice,
+    parallel_tool_calls: controls.parallel_tool_calls
+  })
 
-    try {
-      const response = await apiRequest('/api/messages', {
-        method: 'POST',
-        body: JSON.stringify({
-          conversation_id: currentConversation.value.id,
-          role: message.role,
-          content: message.content,
-          thinking: message.thinking || null,
-          input_tokens: message.input_tokens || null,
-          output_tokens: message.output_tokens || null,
-          extra_data: message.extra_data || null
-        })
-      })
+  // Generate unique ID for messages
+  const generateMessageId = () => `msg_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`
 
-      if (response.ok) {
-        const savedMessage = await response.json()
-        // Return message with database ID
-        return {
-          ...message,
-          id: savedMessage.id,
-          conversation_id: savedMessage.conversation_id
-        }
-      } else {
-        const errorData = await response.json()
-        throw new Error(errorData.detail || 'Failed to save message')
-      }
-    } catch (err) {
-      console.error('Save message error:', err)
-      throw err
-    }
-  }
-
-  // Update message in database
-  const updateMessageInDb = async (messageId: string, updates: Partial<ChatMessage>): Promise<void> => {
-    try {
-      const response = await apiRequest(`/api/messages/${messageId}`, {
-        method: 'PUT',
-        body: JSON.stringify({
-          content: updates.content,
-          thinking: updates.thinking,
-          input_tokens: updates.input_tokens,
-          output_tokens: updates.output_tokens,
-          extra_data: updates.extra_data
-        })
-      })
-
-      if (!response.ok) {
-        const errorData = await response.json()
-        throw new Error(errorData.detail || 'Failed to update message')
-      }
-    } catch (err) {
-      console.error('Update message error:', err)
-      throw err
-    }
-  }
-
-  // Delete message from database
-  const deleteMessageFromDb = async (messageId: string): Promise<void> => {
-    try {
-      const response = await apiRequest(`/api/messages/${messageId}`, {
-        method: 'DELETE'
-      })
-
-      if (!response.ok) {
-        const errorData = await response.json()
-        throw new Error(errorData.detail || 'Failed to delete message')
-      }
-    } catch (err) {
-      console.error('Delete message error:', err)
-      throw err
-    }
-  }
-
-  // Clear conversation in database
-  const clearConversationInDb = async (): Promise<void> => {
-    if (!currentConversation.value) return
-
-    try {
-      const response = await apiRequest(`/api/conversations/${currentConversation.value.id}`, {
-        method: 'DELETE'
-      })
-
-      if (response.ok) {
-        // Create a new conversation for the same persona
-        if (currentConversation.value.persona_id) {
-          await createConversationForPersona(currentConversation.value.persona_id)
-        } else {
-          currentConversation.value = null
-        }
-      } else {
-        const errorData = await response.json()
-        throw new Error(errorData.detail || 'Failed to clear conversation')
-      }
-    } catch (err) {
-      console.error('Clear conversation error:', err)
-      throw err
-    }
-  }
-  
-  // Add user message to chat (with optional persistence)
+  // Add user message to chat
   const addUserMessage = async (content: string, persist: boolean = true): Promise<ChatMessage> => {
     const message: ChatMessage = {
       id: generateMessageId(),
       role: 'user',
-      content,
+      content: content.trim(),
       timestamp: Date.now()
     }
-    
+
     messages.value.push(message)
-    
-    // Save to database if persistence is enabled and we have an active conversation
-    if (persist && currentConversation.value) {
+
+    if (persist && conversationPersistence.currentConversation.value) {
       try {
-        isSavingMessage.value = true
-        const savedMessage = await saveMessageToDb(message)
-        // Update the message in our local state with the database ID (avoid replacing entire object to prevent blink)
+        const savedMessage = await conversationPersistence.saveMessageToDb(message)
+        // Update local message with saved data
         const index = messages.value.findIndex(m => m.id === message.id)
-        if (index >= 0) {
-          // Update only the ID and conversation_id in place to avoid full re-render
-          messages.value[index].id = savedMessage.id
-          messages.value[index].conversation_id = savedMessage.conversation_id
+        if (index !== -1) {
+          messages.value[index] = savedMessage
         }
-        return savedMessage
       } catch (err) {
         console.error('Failed to save user message:', err)
-        // Continue with local message even if persistence fails
-        return message
-      } finally {
-        isSavingMessage.value = false
       }
     }
-    
+
     return message
   }
-  
-  // Add assistant message to chat (with optional persistence)
+
+  // Add assistant message to chat
   const addAssistantMessage = async (
-    content: string, 
-    metadata?: ChatMessage['metadata'], 
+    content: string,
+    metadata?: any,
     thinking?: string,
     inputTokens?: number,
     outputTokens?: number,
     persist: boolean = true
   ): Promise<ChatMessage> => {
-    
     const message: ChatMessage = {
       id: generateMessageId(),
       role: 'assistant',
-      content,
+      content: content.trim(),
       timestamp: Date.now(),
       thinking,
-      metadata,
       input_tokens: inputTokens,
       output_tokens: outputTokens,
-      extra_data: metadata ? { metadata } : undefined
+      metadata
     }
-    
+
     messages.value.push(message)
-    
-    // Save to database if persistence is enabled and we have an active conversation
-    if (persist && currentConversation.value) {
+
+    if (persist && conversationPersistence.currentConversation.value) {
       try {
-        isSavingMessage.value = true
-        const savedMessage = await saveMessageToDb(message)
-        // Update the message in our local state with the database ID (avoid replacing entire object to prevent blink)
+        const savedMessage = await conversationPersistence.saveMessageToDb(message)
         const index = messages.value.findIndex(m => m.id === message.id)
-        if (index >= 0) {
-          // Update only the ID and conversation_id in place to avoid full re-render
-          messages.value[index].id = savedMessage.id
-          messages.value[index].conversation_id = savedMessage.conversation_id
+        if (index !== -1) {
+          messages.value[index] = savedMessage
         }
-        return savedMessage
       } catch (err) {
         console.error('Failed to save assistant message:', err)
-        // Continue with local message even if persistence fails
-        return message
-      } finally {
-        isSavingMessage.value = false
       }
     }
-    
+
     return message
   }
-  
-  // Add system message (for persona templates)
-  const addSystemMessage = (content: string): ChatMessage => {
-    const message: ChatMessage = {
-      id: generateMessageId(),
-      role: 'system',
-      content,
-      timestamp: Date.now()
-    }
-    // Insert system message at the beginning if no system message exists
-    const existingSystemIndex = messages.value.findIndex(m => m.role === 'system')
-    if (existingSystemIndex >= 0) {
-      messages.value[existingSystemIndex] = message
-    } else {
-      messages.value.unshift(message)
-    }
-    return message
-  }
-  
-  // Get provider settings from localStorage (always fresh)
-  const getProviderSettings = (provider: 'ollama' | 'openai'): Record<string, any> | null => {
-    try {
-      if (provider === 'ollama') {
-        const ollamaSettings = localStorage.getItem('ollama-connection')
-        return ollamaSettings ? JSON.parse(ollamaSettings) : null
-      } else if (provider === 'openai') {
-        const openaiSettings = localStorage.getItem('openai-connection')
-        return openaiSettings ? JSON.parse(openaiSettings) : null
-      }
-      return null
-    } catch (error) {
-      console.error(`Failed to load ${provider} settings from localStorage:`, error)
-      return null
-    }
-  }
 
-  // Get fresh chat controls from localStorage
-  const getFreshChatControls = (): ChatControls | null => {
-    try {
-      const controlsData = localStorage.getItem('chat-controls')
-      return controlsData ? JSON.parse(controlsData) : null
-    } catch (error) {
-      console.error('Failed to load chat controls from localStorage:', error)
-      return null
-    }
-  }
-
-  // === SESSION MANAGEMENT FUNCTIONS ===
-
-  // Cancel current session
-  const cancelCurrentSession = async (): Promise<boolean> => {
-    if (!currentSessionId.value || isSessionCancelling.value) {
-      return false
-    }
-
-    isSessionCancelling.value = true
-    
-    try {
-      // Use the new cancellation endpoints
-      const response = await apiRequest(`/api/chat/cancel/${currentSessionId.value}`, {
-        method: 'POST'
-      })
-
-      if (response.ok) {
-        const result = await response.json()
-        console.log('Session cancellation result:', result)
-        
-        // Clean up session state
-        if (result.cancelled) {
-          currentSessionId.value = null
-          isStreaming.value = false
-          processingStage.value = null
-          stageMessage.value = null
-          currentStreamingMessage.value = ''
-          currentStreamingThinking.value = ''
-        }
-        
-        return result.cancelled
-      } else {
-        console.error('Failed to cancel session:', response.statusText)
-        return false
-      }
-    } catch (err) {
-      console.error('Error cancelling session:', err)
-      return false
-    } finally {
-      isSessionCancelling.value = false
-    }
-  }
-
-  // Get session status
-  const getSessionStatus = async (sessionId: string) => {
-    try {
-      const response = await apiRequest(`/api/chat/status/${sessionId}`)
-      if (response.ok) {
-        return await response.json()
-      }
-      return null
-    } catch (err) {
-      console.error('Error getting session status:', err)
-      return null
-    }
-  }
-
-  // Get all active sessions
-  const getActiveSessions = async () => {
-    try {
-      const response = await apiRequest('/api/chat/sessions/active')
-      if (response.ok) {
-        const data = await response.json()
-        return data.sessions || []
-      }
-      return []
-    } catch (err) {
-      console.error('Error getting active sessions:', err)
-      return []
-    }
-  }
-
-  // Extract session ID from response headers
-  const extractSessionId = (response: Response): string | null => {
-    return response.headers.get('X-Session-ID') || null
-  }
-
-
-  // Build chat controls from current settings
-  const buildChatControls = (chatControls: ChatControls): Record<string, any> => {
-    const controls: Record<string, any> = {
-      temperature: chatControls.temperature,
-      top_p: chatControls.top_p,
-      max_tokens: chatControls.max_tokens,
-      presence_penalty: chatControls.presence_penalty,
-      frequency_penalty: chatControls.frequency_penalty,
-      seed: chatControls.seed,
-      stop: chatControls.stop,
-      json_mode: chatControls.json_mode,
-      tools: chatControls.tools,
-      tool_choice: chatControls.tool_choice,
-      stream: chatControls.stream,
-      thinking_enabled: chatControls.thinking_enabled,
-      // Ollama specific
-      ollama_top_k: chatControls.ollama_top_k,
-      ollama_repeat_penalty: chatControls.ollama_repeat_penalty,
-      ollama_mirostat: chatControls.ollama_mirostat,
-      ollama_num_ctx: chatControls.ollama_num_ctx,
-      // OpenAI specific
-      reasoning_effort: chatControls.reasoning_effort,
-      verbosity: chatControls.verbosity
-    }
-    
-    // Note: System prompt now comes from persona_id resolution on the backend
-    return controls
-  }
-  
-  // Send message with streaming
-  const sendMessageStreaming = async (
-    userMessage: string, 
-    chatControls: ChatControls
-  ): Promise<void> => {
-    // If already streaming, cancel current session first
-    if (isStreaming.value && currentSessionId.value) {
-      console.log('Cancelling current session for new message')
-      await cancelCurrentSession()
-    }
-
-    error.value = null
-    isStreaming.value = true
-    currentStreamingMessage.value = ''
-    currentStreamingThinking.value = ''
-    messageCompleted.value = false
-    hideStreamingUI.value = false
-    // Start with thinking stage immediately to show animation
-    processingStage.value = 'thinking'
-    stageMessage.value = 'Thinking...'
-
-    await addUserMessage(userMessage)
-
-    // Prepare debug data
-    let debugDataToRecord: any = null
-
-    try {
-      const freshControls = getFreshChatControls() || chatControls
-      const providerSettings = getProviderSettings(freshControls.provider)
-      if (!providerSettings) {
-        throw new Error(`${freshControls.provider.toUpperCase()} connection settings not found.`)
-      }
-
-      const selectedPersonaId = localStorage.getItem('selectedPersonaId')
-      const enhancedProviderSettings = {
-        ...providerSettings,
-        model: freshControls.selected_model || providerSettings.default_model
-      }
-
-      const chatRequest: ChatRequest = {
-        message: userMessage,
-        provider: freshControls.provider,
-        stream: true,
-        chat_controls: buildChatControls(freshControls),
-        provider_settings: enhancedProviderSettings,
-        persona_id: selectedPersonaId || undefined,
-        conversation_id: currentConversation.value?.id || undefined
-      }
-
-      // Use the enhanced cancellation-aware endpoint
-      const response = await apiRequest('/api/chat/stream', {
-        method: 'POST',
-        body: JSON.stringify(chatRequest)
-      })
-
-      if (!response.ok) {
-        const errorData = await response.json()
-        throw new Error(errorData.detail?.message || errorData.message || 'Chat request failed')
-      }
-
-      // Extract and track session ID
-      const sessionId = extractSessionId(response)
-      if (sessionId) {
-        currentSessionId.value = sessionId
-        console.log('Started streaming session:', sessionId)
-      }
-
-      const reader = response.body?.getReader()
-      if (!reader) throw new Error('Failed to get response stream')
-
-      const decoder = new TextDecoder()
-      let buffer = ''
-      let firstChunk = true
-
-      while (true) {
-        const { done, value } = await reader.read()
-        if (done) break
-
-        buffer += decoder.decode(value, { stream: true })
-        const lines = buffer.split('\n')
-        buffer = lines.pop() || ''
-
-        for (const line of lines) {
-          if (line.startsWith('data: ')) {
-            const data = line.slice(6).trim()
-            if (!data) continue
-
-            try {
-              const chunk = JSON.parse(data)
-
-              if (chunk.error_type) {
-                throw new Error(chunk.message || 'Streaming error')
-              }
-
-              switch (chunk.event_type) {
-                case 'cancelled':
-                  console.log('Stream cancelled by server')
-                  // Clean up session and streaming state
-                  if (currentSessionId.value) {
-                    currentSessionId.value = null
-                  }
-                  isStreaming.value = false
-                  processingStage.value = null
-                  stageMessage.value = null
-                  currentStreamingMessage.value = ''
-                  currentStreamingThinking.value = ''
-                  
-                  // Add cancellation message to chat
-                  await addAssistantMessage('⏹️ Message generation was stopped.', undefined, undefined, undefined, undefined, false)
-                  return // Exit the streaming loop
-                case 'stage_update':
-                  if (chunk.processing_stage === 'thinking_before') {
-                    processingStage.value = 'thinking'
-                    stageMessage.value = 'Thinking...'
-                  } else if (chunk.processing_stage === 'generating') {
-                    // Continue showing thinking until first chunk arrives
-                    processingStage.value = 'thinking'
-                    stageMessage.value = 'Thinking...'
-                  } else if (chunk.processing_stage === 'thinking_after') {
-                    // Show thinking animation for AFTER processing
-                    processingStage.value = 'thinking'
-                    stageMessage.value = 'Thinking...'
-                    // Clear ALL streaming content to avoid showing duplicates during AFTER processing
-                    currentStreamingMessage.value = ''
-                    currentStreamingThinking.value = ''
-                    isProcessingAfter.value = true
-                  }
-                  break
-                case 'chunk':
-                  if (firstChunk) {
-                    processingStage.value = null
-                    stageMessage.value = null
-                    firstChunk = false
-                  }
-                  if (chunk.content) {
-                    currentStreamingMessage.value += chunk.content
-                  }
-                  if (chunk.thinking) {
-                    currentStreamingThinking.value += chunk.thinking
-                  }
-                  if (chunk.done) {
-                    console.log('DEBUG: chunk.done received - saving message and forcing UI to hide')
-                    
-                    // Use debug_data from backend if available (contains actual AI provider API calls)
-                    if (chunk.debug_data) {
-                      const persona = selectedPersonaId ? getPersonaById(selectedPersonaId) : null
-                      debugDataToRecord = {
-                        provider_request: chunk.debug_data.provider_request,
-                        provider_response: chunk.debug_data.provider_response,
-                        request_timestamp: chunk.debug_data.request_timestamp,
-                        response_timestamp: chunk.debug_data.response_timestamp
-                      }
-                    }
-                    
-                    // FIRST: Clear all streaming content immediately to break template condition
-                    const savedContent = currentStreamingMessage.value
-                    const savedThinking = currentStreamingThinking.value
-                    currentStreamingMessage.value = ''
-                    currentStreamingThinking.value = ''
-                    hideStreamingUI.value = true
-                    messageCompleted.value = true
-                    processingStage.value = null
-                    stageMessage.value = null
-                    isProcessingAfter.value = true
-                    
-                    // THEN: Save the message using the saved content
-                    await addAssistantMessage(
-                      savedContent,
-                      chunk.metadata,
-                      savedThinking || undefined,
-                      chunk.metadata?.input_tokens,
-                      chunk.metadata?.output_tokens
-                    )
-                    
-                    console.log('DEBUG: Content cleared FIRST, message saved SECOND')
-                  }
-                  break
-                case 'after_module_result':
-                  // AFTER module results can be used for debugging if needed
-                  break
-                case 'done':
-                  isStreaming.value = false
-                  isProcessingAfter.value = false
-                  messageCompleted.value = false
-                  hideStreamingUI.value = false
-                  currentStreamingMessage.value = ''
-                  currentStreamingThinking.value = ''
-                  processingStage.value = null
-                  stageMessage.value = null
-                  
-                  // Clean up session tracking
-                  if (currentSessionId.value) {
-                    currentSessionId.value = null
-                    console.log('Completed streaming session')
-                  }
-                  break
-              }
-            } catch (parseError) {
-              console.warn('Failed to parse streaming chunk:', data, parseError)
-            }
-          }
-        }
-      }
-
-      // Record debug data after successful streaming
-      if (debugDataToRecord) {
-        const persona = selectedPersonaId ? getPersonaById(selectedPersonaId) : null
-        addDebugRecord({
-          debugData: debugDataToRecord,
-          personaName: persona?.name,
-          personaId: selectedPersonaId || undefined,
-          responseTime: (debugDataToRecord.response_timestamp - debugDataToRecord.request_timestamp)
-        })
-      }
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Unknown error occurred'
-      error.value = message
-      console.error('Chat streaming error:', err)
-      await addAssistantMessage(`❌ Error: ${message}`, undefined, undefined, undefined, undefined, false)
-      
-      // Clean up session and streaming state
-      if (currentSessionId.value) {
-        currentSessionId.value = null
-      }
-      isStreaming.value = false
-      processingStage.value = null
-      stageMessage.value = null
-      currentStreamingMessage.value = ''
-      currentStreamingThinking.value = ''
-    }
-  }
+  // Initialize streaming composable with required dependencies
+  const streamingChat = useStreamingChat(
+    messages,
+    error,
+    conversationPersistence.currentConversation,
+    addUserMessage,
+    addAssistantMessage,
+    sessionManagement.cancelCurrentSession,
+    sessionManagement.extractSessionId,
+    sessionManagement.startSession,
+    getFreshChatControls,
+    getProviderSettings,
+    buildChatControls
+  )
 
   // Send message without streaming
   const sendMessage = async (
@@ -765,22 +167,21 @@ export function useChat() {
     chatControls: ChatControls
   ): Promise<void> => {
     // If already streaming, cancel current session first
-    if (isStreaming.value && currentSessionId.value) {
-      console.log('Cancelling current session for new message')
-      await cancelCurrentSession()
+    if (streamingChat.isStreaming.value) {
+      await sessionManagement.cancelCurrentSession()
     }
 
     error.value = null
-    isStreaming.value = true
-    processingStage.value = 'thinking'
-    stageMessage.value = 'Thinking...'
+    streamingChat.isStreaming.value = true
+    streamingChat.processingStage.value = 'thinking'
+    streamingChat.stageMessage.value = 'Thinking...'
 
     await addUserMessage(userMessage)
-
 
     try {
       const freshControls = getFreshChatControls() || chatControls
       const providerSettings = getProviderSettings(freshControls.provider)
+      
       if (!providerSettings) {
         throw new Error(`${freshControls.provider.toUpperCase()} connection settings not found.`)
       }
@@ -798,10 +199,9 @@ export function useChat() {
         chat_controls: buildChatControls(freshControls),
         provider_settings: enhancedProviderSettings,
         persona_id: selectedPersonaId || undefined,
-        conversation_id: currentConversation.value?.id || undefined
+        conversation_id: conversationPersistence.currentConversation.value?.id || undefined
       }
-      
-      // Use the enhanced cancellation-aware endpoint  
+
       const response = await apiRequest('/api/chat/send', {
         method: 'POST',
         body: JSON.stringify(chatRequest)
@@ -812,35 +212,24 @@ export function useChat() {
         throw new Error(errorData.detail?.message || errorData.message || 'Chat request failed')
       }
 
-      // Extract and track session ID
-      const sessionId = extractSessionId(response)
-      if (sessionId) {
-        currentSessionId.value = sessionId
-        console.log('Started non-streaming session:', sessionId)
-      }
-
-      const data = await response.json()
+      const result = await response.json()
       
-      // After getting the response, clear all stages.
-      processingStage.value = null
-      stageMessage.value = null
-
       await addAssistantMessage(
-        data.content,
-        data.metadata,
-        data.thinking || undefined,
-        data.metadata?.input_tokens,
-        data.metadata?.output_tokens
+        result.content,
+        result.metadata,
+        result.thinking,
+        result.metadata?.input_tokens,
+        result.metadata?.output_tokens
       )
 
-      // Record debug data for non-streaming using backend-provided debug_data
-      if (data.debug_data) {
+      // Record debug data if available
+      if (result.debug_data) {
         const persona = selectedPersonaId ? getPersonaById(selectedPersonaId) : null
         addDebugRecord({
-          debugData: data.debug_data,
+          debugData: result.debug_data,
           personaName: persona?.name,
           personaId: selectedPersonaId || undefined,
-          responseTime: (data.debug_data.response_timestamp - data.debug_data.request_timestamp)
+          responseTime: result.debug_data.response_timestamp - result.debug_data.request_timestamp
         })
       }
 
@@ -850,16 +239,12 @@ export function useChat() {
       console.error('Chat error:', err)
       await addAssistantMessage(`❌ Error: ${message}`, undefined, undefined, undefined, undefined, false)
     } finally {
-      // Clean up session and streaming state
-      if (currentSessionId.value) {
-        currentSessionId.value = null
-      }
-      isStreaming.value = false
-      processingStage.value = null
-      stageMessage.value = null
+      streamingChat.isStreaming.value = false
+      streamingChat.processingStage.value = null
+      streamingChat.stageMessage.value = null
     }
   }
-  
+
   // Main send function that chooses streaming or non-streaming
   const sendChatMessage = async (
     userMessage: string,
@@ -867,96 +252,89 @@ export function useChat() {
     _personaTemplate?: string
   ): Promise<void> => {
     if (chatControls.stream) {
-      await sendMessageStreaming(userMessage, chatControls)
-    }
-    else {
+      await streamingChat.sendMessageStreaming(userMessage, chatControls)
+    } else {
       await sendMessage(userMessage, chatControls)
     }
   }
-  
-  // Clear chat history (with optional database clearing)
+
+  // Clear chat history
   const clearChat = async (clearFromDb: boolean = true) => {
     messages.value = []
-    currentStreamingMessage.value = ''
-    currentStreamingThinking.value = ''
+    streamingChat.resetStreamingContent()
     error.value = null
     
-    // Reset processing stage
-    processingStage.value = null
-    stageMessage.value = null
-    
-    // Clear from database if requested and we have an active conversation
-    if (clearFromDb && currentConversation.value) {
-      try {
-        await clearConversationInDb()
-      } catch (err) {
-        console.error('Failed to clear conversation from database:', err)
-        // Continue with local clear even if database clear fails
-      }
+    if (clearFromDb && conversationPersistence.currentConversation.value) {
+      await conversationPersistence.clearConversationInDb()
     }
   }
-  
-  // Remove a specific message (with optional database removal)
+
+  // Remove a specific message
   const removeMessage = async (messageId: string, removeFromDb: boolean = true) => {
     const index = messages.value.findIndex(m => m.id === messageId)
-    if (index >= 0) {
-      messages.value.splice(index, 1)
-      
-      // Remove from database if requested
-      if (removeFromDb) {
-        try {
-          await deleteMessageFromDb(messageId)
-        } catch (err) {
-          console.error('Failed to remove message from database:', err)
-          // Message was already removed locally, so don't re-add it
-        }
+    if (index === -1) {
+      console.warn(`Message with ID ${messageId} not found`)
+      return
+    }
+
+    messages.value.splice(index, 1)
+
+    if (removeFromDb) {
+      try {
+        await conversationPersistence.deleteMessageFromDb(messageId)
+      } catch (err) {
+        console.error('Failed to remove message from database:', err)
       }
     }
   }
-  
-  // Update message content (with database sync)
+
+  // Update message content
   const updateMessage = async (messageId: string, updates: Partial<ChatMessage>) => {
     const index = messages.value.findIndex(m => m.id === messageId)
-    if (index >= 0) {
-      // Update local message
-      messages.value[index] = { ...messages.value[index], ...updates }
-      
-      // Sync with database
-      try {
-        await updateMessageInDb(messageId, updates)
-      } catch (err) {
-        console.error('Failed to update message in database:', err)
-        throw err
-      }
+    if (index === -1) {
+      console.warn(`Message with ID ${messageId} not found`)
+      return
+    }
+
+    // Update local message
+    Object.assign(messages.value[index], updates)
+
+    // Update in database
+    try {
+      await conversationPersistence.updateMessageInDb(messageId, updates)
+    } catch (err) {
+      console.error('Failed to update message in database:', err)
     }
   }
-  
+
+  // Computed values
+  const chatHistory = computed(() => messages.value)
+  const hasMessages = computed(() => messages.value.length > 0)
+  const isLoading = computed(() => streamingChat.isStreaming.value)
+
   return {
     // State
     messages: chatHistory,
     isStreaming: isLoading,
-    currentStreamingMessage: computed(() => currentStreamingMessage.value),
-    currentStreamingThinking: computed(() => currentStreamingThinking.value),
+    currentStreamingMessage: computed(() => streamingChat.currentStreamingMessage.value),
+    currentStreamingThinking: computed(() => streamingChat.currentStreamingThinking.value),
     error: computed(() => error.value),
-    
-    // Session management state
-    currentSessionId: computed(() => currentSessionId.value),
-    isSessionCancelling: computed(() => isSessionCancelling.value),
-    
-    // Processing stage state
-    processingStage: computed(() => processingStage.value),
-    stageMessage: computed(() => stageMessage.value),
-    isProcessingAfter: computed(() => isProcessingAfter.value),
-    messageCompleted: computed(() => messageCompleted.value),
-    hideStreamingUI: computed(() => hideStreamingUI.value),
-    
-    // Conversation persistence state
-    currentConversation: computed(() => currentConversation.value),
-    isLoadingConversation: computed(() => isLoadingConversation.value),
-    isSavingMessage: computed(() => isSavingMessage.value),
-    
-    // Computed
     hasMessages,
+    processingStage: computed(() => streamingChat.processingStage.value),
+    stageMessage: computed(() => streamingChat.stageMessage.value),
+    isProcessingAfter: computed(() => streamingChat.isProcessingAfter.value),
+    messageCompleted: computed(() => streamingChat.messageCompleted.value),
+    hideStreamingUI: computed(() => streamingChat.hideStreamingUI.value),
+    
+    // Session management
+    currentSessionId: sessionManagement.currentSessionId,
+    cancelCurrentSession: sessionManagement.cancelCurrentSession,
+    isSessionCancelling: sessionManagement.isSessionCancelling,
+    
+    // Conversation persistence
+    currentConversation: conversationPersistence.currentConversation,
+    isLoadingConversation: conversationPersistence.isLoadingConversation,
+    loadConversationForPersona: conversationPersistence.loadConversationForPersona,
     
     // Chat methods
     sendChatMessage,
@@ -964,16 +342,6 @@ export function useChat() {
     removeMessage,
     updateMessage,
     addUserMessage,
-    addAssistantMessage,
-    addSystemMessage,
-    
-    // Session management methods
-    cancelCurrentSession,
-    getSessionStatus,
-    getActiveSessions,
-    
-    // Persistence methods
-    loadConversationForPersona,
-    createConversationForPersona
+    addAssistantMessage
   }
 }

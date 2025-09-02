@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
-import MainChat from '../components/MainChat.vue'
+import { MainChat } from '../components/chat'
 import DisplayArea from '../components/DisplayArea.vue'
 import ControlPanel from '../components/ControlPanel.vue'
 import Info from '../components/Info.vue'
@@ -13,25 +13,31 @@ const selectedPersona = ref<Persona | null>(null)
 
 // Use chat composable for conversation loading
 const { loadConversationForPersona, currentConversation, isLoadingConversation } = useChat()
-const { getPersonaById } = usePersonas()
+const { getPersonaById, fetchPersonas } = usePersonas()
 
 // Load selected persona from localStorage on mount
 onMounted(async () => {
   const savedPersonaId = localStorage.getItem('selectedPersonaId')
   if (savedPersonaId) {
-    // Load the persona details and its conversation
-    const persona = getPersonaById(savedPersonaId)
-    if (persona) {
-      selectedPersona.value = persona
-      // Load conversation for this persona
-      try {
-        await loadConversationForPersona(savedPersonaId)
-        console.log('Loaded conversation for persona:', persona.name)
-      } catch (error) {
-        console.error('Failed to load conversation for persona:', error)
+    try {
+      // First load personas from API
+      await fetchPersonas()
+      
+      // Then look up the saved persona
+      const persona = getPersonaById(savedPersonaId)
+      if (persona) {
+        selectedPersona.value = persona
+        // Load conversation for this persona
+        try {
+          await loadConversationForPersona(savedPersonaId)
+        } catch (error) {
+          console.error('Failed to load conversation for persona:', error)
+        }
+      } else {
+        console.log('Saved persona ID not found after API fetch:', savedPersonaId)
       }
-    } else {
-      console.log('Saved persona ID not found, will fetch from API:', savedPersonaId)
+    } catch (error) {
+      console.error('Failed to fetch personas:', error)
     }
   }
 })
@@ -59,7 +65,10 @@ async function handlePersonaSelect(persona: Persona) {
 <template>
   <div class="container">
     <MainChat />
-    <DisplayArea :selected-component="selectedComponent" @select-persona="handlePersonaSelect" @select-component="handleComponentSelect" />
+    <DisplayArea 
+      :selected-component="selectedComponent"
+      @select-persona="handlePersonaSelect"
+      @select-component="handleComponentSelect" />
     <ControlPanel @select-component="handleComponentSelect" />
     <Info 
       :selected-persona="selectedPersona" 
