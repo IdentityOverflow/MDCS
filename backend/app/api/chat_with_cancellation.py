@@ -254,11 +254,53 @@ async def send_chat_message_with_cancellation(
             debug_data=debug_data
         )
         
-        # Execute POST_RESPONSE modules asynchronously (Stages 4 & 5)
+        # Execute POST_RESPONSE modules synchronously (Stages 4 & 5)
         if request.persona_id:
-            asyncio.create_task(execute_post_response_modules_async(
-                request, db, session_id
-            ))
+            try:
+                resolver = StagedModuleResolverWithCancellation()
+                resolver.enable_state_tracking()  # Enable SystemPromptState tracking for AI plugins
+                
+                # Create SystemPromptState with the resolved system prompt from template resolution
+                from app.services.system_prompt_state import PromptStateManager
+                state_manager = PromptStateManager()
+                post_response_state = state_manager.create_initial_state(
+                    request.conversation_id or "unknown",
+                    request.persona_id or "unknown", 
+                    "cancellation_context"  # We don't have access to persona.template here
+                )
+                # Set the resolved system prompt as the main response prompt
+                post_response_state.main_response_prompt = resolved_system_prompt
+                resolver._current_state = post_response_state
+                resolver._prompt_state_manager = state_manager
+                
+                trigger_context = {}
+                current_provider = request.provider.value if request.provider else None
+                current_provider_settings = request.provider_settings
+                current_chat_controls = request.chat_controls
+                
+                # Execute POST_RESPONSE modules with cancellation support
+                results = await resolver.execute_post_response_modules_async(
+                    request.persona_id,
+                    request.conversation_id,
+                    db,
+                    trigger_context=trigger_context,
+                    current_provider=current_provider,
+                    current_provider_settings=current_provider_settings,
+                    current_chat_controls=current_chat_controls,
+                    session_id=session_id
+                )
+                
+                # Commit ConversationState changes from POST_RESPONSE modules
+                db.commit()
+                
+                logger.info(f"Executed {len(results)} POST_RESPONSE modules for session {session_id}")
+                for result in results:
+                    logger.info(f"POST_RESPONSE result: {result.module_name} -> {result.variables}")
+                
+            except Exception as post_response_error:
+                logger.error(f"Error executing POST_RESPONSE modules for session {session_id}: {post_response_error}")
+                # Don't break the response, just log the error
+                pass
         
         return api_response
         
@@ -393,15 +435,72 @@ async def stream_chat_message_with_cancellation(
                     # Continue with next chunk instead of breaking the entire stream
                     continue
             
+            # Execute POST_RESPONSE modules synchronously (like original system)
+            if request.persona_id:
+                # Execute POST_RESPONSE modules and stream results
+                try:
+                    resolver = StagedModuleResolverWithCancellation()
+                    resolver.enable_state_tracking()  # Enable SystemPromptState tracking for AI plugins
+                    
+                    # Create SystemPromptState with the resolved system prompt from template resolution
+                    from app.services.system_prompt_state import PromptStateManager
+                    state_manager = PromptStateManager()
+                    post_response_state = state_manager.create_initial_state(
+                        request.conversation_id or "unknown",
+                        request.persona_id or "unknown", 
+                        "streaming_cancellation_context"  # We don't have access to persona.template here
+                    )
+                    # Set the resolved system prompt as the main response prompt
+                    post_response_state.main_response_prompt = resolved_system_prompt
+                    resolver._current_state = post_response_state
+                    resolver._prompt_state_manager = state_manager
+                    
+                    trigger_context = {}
+                    current_provider = request.provider.value if request.provider else None
+                    current_provider_settings = request.provider_settings
+                    current_chat_controls = request.chat_controls
+                    
+                    # Execute POST_RESPONSE modules with cancellation support
+                    results = await resolver.execute_post_response_modules_async(
+                        request.persona_id,
+                        request.conversation_id,
+                        db,
+                        trigger_context=trigger_context,
+                        current_provider=current_provider,
+                        current_provider_settings=current_provider_settings,
+                        current_chat_controls=current_chat_controls,
+                        session_id=session_id
+                    )
+                    
+                    # Only send stage update if there are actually modules that executed
+                    if results:
+                        yield f"data: {StreamingChatResponse.create_stage_update(ProcessingStage.THINKING_AFTER, 'Executing post-response modules...').model_dump_json()}\n\n"
+                    
+                    logger.info(f"Executed {len(results)} POST_RESPONSE modules for streaming session {session_id}")
+                    for result in results:
+                        logger.info(f"POST_RESPONSE streaming result: {result.module_name} -> {result.variables}")
+                    
+                    # Commit ConversationState changes from POST_RESPONSE modules
+                    db.commit()
+                    
+                    # Stream POST_RESPONSE module results
+                    for result in results:
+                        # Convert PostResponseExecutionResult to old format for compatibility
+                        legacy_result = {
+                            "module_name": result.module_name,
+                            "outputs": result.variables
+                        }
+                        event = StreamingChatResponse.create_event("after_module_result", legacy_result)
+                        yield f"data: {event.model_dump_json()}\n\n"
+                        
+                except Exception as post_response_error:
+                    logger.error(f"Error executing POST_RESPONSE modules for session {session_id}: {post_response_error}")
+                    # Don't break the stream, just log the error
+                    pass
+            
             # Send final done message
             done_chunk = StreamingChatResponse.done_event()
             yield f"data: {done_chunk.model_dump_json()}\n\n"
-            
-            # Execute POST_RESPONSE modules asynchronously
-            if request.persona_id:
-                asyncio.create_task(execute_post_response_modules_async(
-                    request, db, session_id
-                ))
                 
         except asyncio.CancelledError:
             logger.info(f"Streaming chat cancelled for session {session_id}")

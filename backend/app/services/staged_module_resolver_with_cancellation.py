@@ -574,16 +574,34 @@ class StagedModuleResolverWithCancellation(BaseStagedModuleResolver):
         current_provider_settings: Optional[Dict[str, Any]],
         current_chat_controls: Optional[Dict[str, Any]]
     ) -> PostResponseExecutionResult:
-        """Execute a single post-response module."""
-        # This would delegate to the base implementation
-        # For now, return a basic result
-        return PostResponseExecutionResult(
-            module_name=module.name,
-            stage=4 if not module.requires_ai_inference else 5,
-            variables={},
-            execution_metadata={},
-            success=True
+        """Execute a single post-response module using base class implementation."""
+        stage = 4 if not module.requires_ai_inference else 5
+        
+        # Use the base class method to actually execute the module
+        result = self._execute_post_response_module(
+            module=module,
+            stage=stage,
+            conversation_id=conversation_id,
+            persona_id=persona_id,
+            db_session=db_session,
+            trigger_context=trigger_context,
+            current_provider=current_provider,
+            current_provider_settings=current_provider_settings,
+            current_chat_controls=current_chat_controls
         )
+        
+        # If the base method returns None (e.g., module didn't execute), create a basic result
+        if result is None:
+            return PostResponseExecutionResult(
+                module_name=module.name,
+                stage=stage,
+                variables={},
+                execution_metadata={},
+                success=True,
+                error_message="Module execution skipped (trigger not matched or no script)"
+            )
+        
+        return result
     
     # Backward compatibility methods - delegate to async versions when session ID is available
     def resolve_template_stage1_and_stage2(
