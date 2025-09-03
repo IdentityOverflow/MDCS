@@ -15,8 +15,8 @@ from app.services.ai_providers import (
     ProviderType
 )
 from app.services.exceptions import ProviderConnectionError, ProviderAuthenticationError
-from app.services.openai_service import (
-    OpenAIService,
+from app.services.openai_service import OpenAIService
+from app.services.openai_service_base import (
     OpenAIRequestBuilder,
     OpenAIResponseParser,
     OpenAIStreamParser

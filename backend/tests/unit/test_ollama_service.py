@@ -15,8 +15,8 @@ from app.services.ai_providers import (
     ProviderType
 )
 from app.services.exceptions import ProviderConnectionError, ProviderAuthenticationError
-from app.services.ollama_service import (
-    OllamaService,
+from app.services.ollama_service import OllamaService
+from app.services.ollama_service_base import (
     OllamaRequestBuilder,
     OllamaResponseParser,
     OllamaStreamParser

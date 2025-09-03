@@ -9,8 +9,8 @@ import uuid
 from unittest.mock import Mock, patch, MagicMock
 from datetime import datetime
 
-from app.services.staged_module_resolver import (
-    StagedModuleResolver, 
+from app.services.staged_module_resolver import StagedModuleResolver
+from app.services.staged_module_resolver_base import (
     StagedTemplateResolutionResult,
     PostResponseExecutionResult,
     ModuleResolutionWarning,
