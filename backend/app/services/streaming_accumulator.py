@@ -117,9 +117,15 @@ class StreamingAccumulator:
                 if chunk.thinking:
                     accumulated_thinking += chunk.thinking
                 
-                # Update metadata from final chunk
-                if chunk.done and chunk.metadata:
+                # Update metadata from any chunk (not just final ones)
+                if chunk.metadata:
                     final_metadata.update(chunk.metadata)
+                
+                # Also capture model and provider_type from chunk itself
+                if chunk.model and "model" not in final_metadata:
+                    final_metadata["model"] = chunk.model
+                if chunk.provider_type and "provider_type" not in final_metadata:
+                    final_metadata["provider_type"] = chunk.provider_type
                 
                 chunks_processed += 1
                 

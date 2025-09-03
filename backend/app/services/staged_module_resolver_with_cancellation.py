@@ -561,11 +561,7 @@ class StagedModuleResolverWithCancellation(BaseStagedModuleResolver):
     def _get_post_response_modules(self, persona_id: str, db_session: Session) -> List[Module]:
         """Get POST_RESPONSE modules for a persona."""
         # Delegate to base implementation
-        return db_session.query(Module).filter(
-            Module.persona_id == persona_id,
-            Module.execution_context == ExecutionContext.POST_RESPONSE,
-            Module.is_active == True
-        ).all()
+        return self._get_post_response_modules_for_persona(persona_id, db_session)
     
     def _execute_single_post_response_module(
         self,

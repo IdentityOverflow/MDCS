@@ -202,9 +202,11 @@ export function useChat() {
         conversation_id: conversationPersistence.currentConversation.value?.id || undefined
       }
 
-      const response = await apiRequest('/api/chat/send', {
+      // Use streaming endpoint for cancellation support but accumulate results
+      const streamingRequest = { ...chatRequest, stream: true }
+      const response = await apiRequest('/api/chat/stream', {
         method: 'POST',
-        body: JSON.stringify(chatRequest)
+        body: JSON.stringify(streamingRequest)
       })
 
       if (!response.ok) {
@@ -212,7 +214,81 @@ export function useChat() {
         throw new Error(errorData.detail?.message || errorData.message || 'Chat request failed')
       }
 
-      const result = await response.json()
+      // Extract and track session ID for cancellation support
+      const sessionId = sessionManagement.extractSessionId(response)
+      if (sessionId) {
+        sessionManagement.startSession(sessionId)
+      }
+
+      // Process stream but accumulate to single result
+      const reader = response.body?.getReader()
+      if (!reader) throw new Error('Failed to get response stream')
+
+      let accumulatedContent = ''
+      let accumulatedThinking = ''
+      let finalMetadata: any = {}
+      let resolvedSystemPrompt = ''
+      let debugData: any = null
+
+      const decoder = new TextDecoder()
+      let buffer = ''
+
+      try {
+        while (true) {
+          // Check for cancellation before each chunk
+          if (sessionManagement.currentSessionId.value !== sessionId) {
+            break
+          }
+
+          const { done, value } = await reader.read()
+          if (done) break
+
+          buffer += decoder.decode(value, { stream: true })
+          const lines = buffer.split('\n')
+          buffer = lines.pop() || ''
+
+          for (const line of lines) {
+            if (!line.trim() || !line.startsWith('data: ')) continue
+            
+            try {
+              const jsonStr = line.slice(6) // Remove 'data: '
+              const chunk = JSON.parse(jsonStr)
+              
+              if (chunk.event_type === 'chunk') {
+                accumulatedContent += chunk.content || ''
+                accumulatedThinking += chunk.thinking || ''
+                if (chunk.metadata) {
+                  finalMetadata = { ...finalMetadata, ...chunk.metadata }
+                }
+                if (chunk.resolved_system_prompt) {
+                  resolvedSystemPrompt = chunk.resolved_system_prompt
+                }
+                if (chunk.debug_data) {
+                  debugData = chunk.debug_data
+                }
+              } else {
+                // Also check for debug_data in other event types (done, etc.)
+                if (chunk.debug_data && !debugData) {
+                  debugData = chunk.debug_data
+                }
+              }
+            } catch (parseError) {
+              // Silently skip invalid chunks
+            }
+          }
+        }
+      } finally {
+        reader.releaseLock()
+      }
+
+      // Create accumulated result matching the old format
+      const result = {
+        content: accumulatedContent,
+        thinking: accumulatedThinking,
+        metadata: finalMetadata,
+        resolved_system_prompt: resolvedSystemPrompt,
+        debug_data: debugData
+      }
       
       await addAssistantMessage(
         result.content,
@@ -239,6 +315,8 @@ export function useChat() {
       console.error('Chat error:', err)
       await addAssistantMessage(`❌ Error: ${message}`, undefined, undefined, undefined, undefined, false)
     } finally {
+      // Clean up session and streaming state
+      sessionManagement.resetSession()
       streamingChat.isStreaming.value = false
       streamingChat.processingStage.value = null
       streamingChat.stageMessage.value = null

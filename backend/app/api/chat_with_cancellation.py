@@ -318,7 +318,11 @@ async def stream_chat_message_with_cancellation(
     
     async def generate_streaming_response():
         """Generate streaming response with cancellation support."""
+        request_start_time = time.time()  # Define start time in generator scope
         try:
+            # Stage 1: Thinking before
+            yield f"data: {StreamingChatResponse.create_stage_update(ProcessingStage.THINKING_BEFORE, 'Resolving system prompt...').model_dump_json()}\n\n"
+            
             # Resolve system prompt with session support
             resolved_system_prompt = await resolve_system_prompt_with_session(
                 request, db, session_id
@@ -335,6 +339,9 @@ async def stream_chat_message_with_cancellation(
             # Convert to provider request
             provider_request = request.to_provider_request(system_prompt=resolved_system_prompt)
             
+            # Stage 2: Generating
+            yield f"data: {StreamingChatResponse.create_stage_update(ProcessingStage.GENERATING, 'Generating AI response...').model_dump_json()}\n\n"
+            
             # Stream response with session management
             if hasattr(provider, 'send_message_stream_with_session'):
                 stream_generator = provider.send_message_stream_with_session(
@@ -347,26 +354,48 @@ async def stream_chat_message_with_cancellation(
             
             # Convert provider chunks to API chunks and stream them
             async for provider_chunk in stream_generator:
-                # Check for cancellation before each chunk
-                session_manager = get_chat_session_manager()
-                token = session_manager.get_session(session_id)
-                if token and token.is_cancelled():
-                    logger.info(f"Streaming cancelled for session {session_id}")
-                    break
-                
-                # Convert to API format
-                api_chunk = StreamingChatResponse.from_provider_chunk(
-                    provider_chunk,
-                    resolved_system_prompt=resolved_system_prompt if provider_chunk.done else None
-                )
-                
-                # Send chunk as JSON line
-                chunk_json = api_chunk.model_dump_json()
-                yield f"{chunk_json}\n"
+                try:
+                    # Check for cancellation before each chunk
+                    session_manager = get_chat_session_manager()
+                    token = session_manager.get_session(session_id)
+                    if token and token.is_cancelled():
+                        logger.info(f"Streaming cancelled for session {session_id}")
+                        break
+                    
+                    # Create debug data for final chunk
+                    debug_data = None
+                    if provider_chunk.done:
+                        response_timestamp = time.time()
+                        from .chat_models import DebugData
+                        debug_data = DebugData(
+                            provider_request=provider_chunk.metadata.get("debug_api_request", {}),
+                            provider_response=provider_chunk.metadata.get("debug_api_response", {}),
+                            request_timestamp=request_start_time,
+                            response_timestamp=response_timestamp
+                        )
+                    
+                    response_time = time.time() - request_start_time if provider_chunk.done else None
+                    
+                    # Convert to API format
+                    api_chunk = StreamingChatResponse.from_provider_chunk(
+                        provider_chunk,
+                        response_time=response_time,
+                        resolved_system_prompt=resolved_system_prompt if provider_chunk.done else None,
+                        debug_data=debug_data
+                    )
+                    
+                    # Send chunk as Server-Sent Event
+                    chunk_json = api_chunk.model_dump_json()
+                    yield f"data: {chunk_json}\n\n"
+                    
+                except Exception as chunk_error:
+                    logger.error(f"Error processing chunk for session {session_id}: {chunk_error}")
+                    # Continue with next chunk instead of breaking the entire stream
+                    continue
             
             # Send final done message
             done_chunk = StreamingChatResponse.done_event()
-            yield f"{done_chunk.model_dump_json()}\n"
+            yield f"data: {done_chunk.model_dump_json()}\n\n"
             
             # Execute POST_RESPONSE modules asynchronously
             if request.persona_id:
@@ -381,7 +410,7 @@ async def stream_chat_message_with_cancellation(
                 "session_id": session_id,
                 "message": "Request was cancelled"
             })
-            yield f"{cancel_event.model_dump_json()}\n"
+            yield f"data: {cancel_event.model_dump_json()}\n\n"
         except Exception as e:
             logger.error(f"Error in streaming endpoint for session {session_id}: {e}")
             # Send error event
@@ -389,12 +418,12 @@ async def stream_chat_message_with_cancellation(
                 "session_id": session_id,
                 "error": str(e)
             })
-            yield f"{error_event.model_dump_json()}\n"
+            yield f"data: {error_event.model_dump_json()}\n\n"
     
     # Return streaming response with session ID in headers
     return StreamingResponse(
         generate_streaming_response(),
-        media_type="text/plain",
+        media_type="text/event-stream",
         headers={"X-Session-ID": session_id}
     )
 

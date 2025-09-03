@@ -5,7 +5,7 @@ Integration tests for the chat API endpoints.
 import pytest
 import json
 from fastapi.testclient import TestClient
-from unittest.mock import patch, AsyncMock
+from unittest.mock import patch, AsyncMock, Mock
 
 from app.main import app
 from app.api.chat_models import ChatProvider
@@ -114,17 +114,22 @@ class TestChatSendEndpoint:
     def test_chat_send_ollama_success(self, mock_factory, client, ollama_chat_request):
         """Test successful chat send with Ollama provider."""
         # Mock provider response
-        from app.services.ai_providers import ChatResponse, ProviderType
+        from app.services.ai_providers import StreamingChatResponse, ProviderType
         
-        mock_response = ChatResponse(
-            content="Hello! How can I help you?",
-            model="llama3:8b",
-            provider_type=ProviderType.OLLAMA,
-            metadata={"eval_count": 15}
-        )
+        # Create mock streaming responses
+        async def mock_stream():
+            yield StreamingChatResponse(
+                content="Hello! How can I help you?",
+                done=True,
+                model="llama3:8b",
+                provider_type=ProviderType.OLLAMA,
+                metadata={"eval_count": 15}
+            )
         
         mock_provider = AsyncMock()
-        mock_provider.send_message.return_value = mock_response
+        mock_provider.send_message_stream_with_session = Mock(return_value=mock_stream())
+        mock_provider.send_message_stream = Mock(return_value=mock_stream())
+        mock_provider.set_session_id = Mock()
         mock_factory.return_value = mock_provider
         
         response = client.post("/api/chat/send", json=ollama_chat_request)
@@ -140,20 +145,25 @@ class TestChatSendEndpoint:
     @patch('app.services.ai_providers.ProviderFactory.create_provider')
     def test_chat_send_openai_success(self, mock_factory, client, openai_chat_request):
         """Test successful chat send with OpenAI provider."""
-        from app.services.ai_providers import ChatResponse, ProviderType
+        from app.services.ai_providers import StreamingChatResponse, ProviderType
         
-        mock_response = ChatResponse(
-            content="Hello! How can I help you today?",
-            model="gpt-4",
-            provider_type=ProviderType.OPENAI,
-            metadata={
-                "usage": {"total_tokens": 25},
-                "finish_reason": "stop"
-            }
-        )
+        # Create mock streaming responses
+        async def mock_stream():
+            yield StreamingChatResponse(
+                content="Hello! How can I help you today?",
+                done=True,
+                model="gpt-4",
+                provider_type=ProviderType.OPENAI,
+                metadata={
+                    "usage": {"total_tokens": 25},
+                    "finish_reason": "stop"
+                }
+            )
         
         mock_provider = AsyncMock()
-        mock_provider.send_message.return_value = mock_response
+        mock_provider.send_message_stream_with_session = Mock(return_value=mock_stream())
+        mock_provider.send_message_stream = Mock(return_value=mock_stream())
+        mock_provider.set_session_id = Mock()
         mock_factory.return_value = mock_provider
         
         response = client.post("/api/chat/send", json=openai_chat_request)
@@ -284,7 +294,9 @@ class TestChatStreamEndpoint:
         from unittest.mock import Mock
         
         mock_provider = Mock()
-        mock_provider.send_message_stream.return_value = MockAsyncIterator(mock_responses)
+        mock_provider.send_message_stream_with_session = Mock(return_value=MockAsyncIterator(mock_responses))
+        mock_provider.send_message_stream = Mock(return_value=MockAsyncIterator(mock_responses))
+        mock_provider.set_session_id = Mock()
         mock_factory.return_value = mock_provider
         
         response = client.post("/api/chat/stream", json={

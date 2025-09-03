@@ -96,7 +96,6 @@ export function useStreamingChat(
       const sessionId = extractSessionId(response)
       if (sessionId) {
         startSession(sessionId)
-        console.log('Started streaming session:', sessionId)
       }
 
       const reader = response.body?.getReader()
@@ -141,6 +140,12 @@ export function useStreamingChat(
 
           try {
             const chunk = JSON.parse(data)
+            if (chunk.event_type === 'error') {
+              console.error('Backend streaming error:', {
+                error: chunk.event_data?.error || 'Unknown error',
+                session_id: chunk.event_data?.session_id
+              })
+            }
             const chunkDebugData = await processStreamChunk(chunk, firstChunk, selectedPersonaId)
             if (chunkDebugData) {
               debugDataToRecord = chunkDebugData
@@ -222,7 +227,6 @@ export function useStreamingChat(
     }
     
     if (chunk.done) {
-      console.log('DEBUG: chunk.done received - saving message and forcing UI to hide')
       
       let debugDataToReturn: any = null
       
@@ -253,7 +257,6 @@ export function useStreamingChat(
         chunk.metadata?.output_tokens
       )
       
-      console.log('DEBUG: Content cleared FIRST, message saved SECOND')
       return debugDataToReturn
     }
     
