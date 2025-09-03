@@ -16,7 +16,7 @@ from app.models import Base
 from app.api.database import router as database_router
 from app.api.modules import router as modules_router
 from app.api.personas import router as personas_router
-from app.api.chat_with_cancellation import router as chat_router
+from app.api.chat import router as chat_router
 from app.api.connections import router as connections_router
 from app.api.conversations import router as conversations_router
 from app.api.messages import router as messages_router

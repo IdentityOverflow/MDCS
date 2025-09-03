@@ -90,7 +90,7 @@ class AIProvider(ABC):
         """
         messages = []
         
-        # Add system message if present (from resolved persona template or legacy chat controls)
+        # Add system message if present (from resolved persona template or chat controls)
         system_message = request.system_prompt or request.chat_controls.get("system_or_instructions")
         
         # Debug logging for system prompt handling
@@ -115,7 +115,7 @@ class AIProvider(ABC):
         return messages
 
 
-# Placeholder class for backwards compatibility
+# OpenAI provider implementation 
 class OpenAIProvider(AIProvider):
     """OpenAI-compatible provider implementation."""
     
@@ -140,47 +140,30 @@ class ProviderFactory:
     """Factory for creating AI provider instances."""
     
     @classmethod
-    def create_provider(cls, provider_type: ProviderType, with_cancellation: bool = False) -> AIProvider:
+    def create_provider(cls, provider_type: ProviderType) -> AIProvider:
         """
-        Create a provider instance.
+        Create a provider instance with cancellation support.
         
         Args:
             provider_type: Type of provider to create
-            with_cancellation: Whether to create enhanced provider with cancellation support
             
         Returns:
-            AIProvider instance (enhanced or standard)
+            AIProvider instance with cancellation support
         """
-        if with_cancellation:
-            # Import enhanced services
-            from .ollama_service_with_cancellation import OllamaServiceWithCancellation
-            from .openai_service_with_cancellation import OpenAIServiceWithCancellation
-            
-            _enhanced_providers = {
-                ProviderType.OLLAMA: OllamaServiceWithCancellation,
-                ProviderType.OPENAI: OpenAIServiceWithCancellation,
-            }
-            
-            if provider_type not in _enhanced_providers:
-                raise UnsupportedProviderError(str(provider_type))
-            
-            provider_class = _enhanced_providers[provider_type]
-            return provider_class()
-        else:
-            # Import standard services
-            from .ollama_service import OllamaService
-            from .openai_service import OpenAIService
-            
-            _providers = {
-                ProviderType.OLLAMA: OllamaService,
-                ProviderType.OPENAI: OpenAIService,
-            }
-            
-            if provider_type not in _providers:
-                raise UnsupportedProviderError(str(provider_type))
-            
-            provider_class = _providers[provider_type]
-            return provider_class()
+        # Import unified services with cancellation support
+        from .ollama_service import OllamaService
+        from .openai_service import OpenAIService
+        
+        _providers = {
+            ProviderType.OLLAMA: OllamaService,
+            ProviderType.OPENAI: OpenAIService,
+        }
+        
+        if provider_type not in _providers:
+            raise UnsupportedProviderError(str(provider_type))
+        
+        provider_class = _providers[provider_type]
+        return provider_class()
     
     @classmethod
     def get_available_providers(cls) -> List[ProviderType]:

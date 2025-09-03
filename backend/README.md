@@ -10,7 +10,7 @@ The backend follows a clean, modular architecture with complete staged execution
 backend/
 ├── app/
 │   ├── api/                    # API route handlers
-│   │   ├── chat.py             # Chat endpoints (streaming & non-streaming)
+│   │   ├── chat_with_cancellation.py # Chat endpoints with cancellation support
 │   │   ├── conversations.py    # Conversation management
 │   │   ├── messages.py         # Message operations
 │   │   ├── personas.py         # AI persona management

@@ -238,6 +238,18 @@ The staged execution system has been **fully implemented and integrated** across
 
 The staged execution redesign successfully transforms Project 2501's cognitive system architecture from ad-hoc timing to a robust, scalable, and maintainable execution pipeline.
 
+## 🔄 **NEXT: Services Layer Refactoring** *(Planned - See SERVICES_REFACTORING.md)*
+
+**Current Challenge**: The services layer has grown into large monolithic files with inheritance-based duplication:
+- `staged_module_resolver_base.py`: **1,073 lines** 😱
+- Multiple base + enhanced service pairs creating maintenance complexity
+
+**Planned Solution**: Domain-driven modular architecture detailed in `SERVICES_REFACTORING.md`
+- **5-Phase migration plan** from monolithic to modular services  
+- **Domain separation**: `providers/`, `session/`, `modules/`, `utils/`
+- **Composition over inheritance** - eliminate base/enhanced duplication
+- **Single responsibility** - each file has one clear purpose
+
 ## 🚀 **CHAT CANCELLATION SYSTEM - COMPLETE!** *(2025-01-27)*
 
 **Problem Solved**: Users were blocked during AI inference across stages 2, 3, and 5, unable to interrupt processing or send consecutive messages.
