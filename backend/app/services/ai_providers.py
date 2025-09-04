@@ -150,9 +150,9 @@ class ProviderFactory:
         Returns:
             AIProvider instance with cancellation support
         """
-        # Import unified services with cancellation support
-        from .ollama_service import OllamaService
-        from .openai_service import OpenAIService
+        # Import new modular services
+        from .providers.ollama import OllamaService
+        from .providers.openai import OpenAIService
         
         _providers = {
             ProviderType.OLLAMA: OllamaService,

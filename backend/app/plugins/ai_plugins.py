@@ -13,8 +13,8 @@ from sqlalchemy.orm import Session
 
 from app.core.script_plugins import plugin_registry
 from app.services.ai_providers import ChatRequest, ProviderType
-from app.services.ollama_service import OllamaService
-from app.services.openai_service import OpenAIService
+from app.services.providers.ollama import OllamaService
+from app.services.providers.openai import OpenAIService
 
 logger = logging.getLogger(__name__)
 

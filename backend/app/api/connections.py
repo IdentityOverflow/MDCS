@@ -8,8 +8,8 @@ from typing import Dict, Any
 from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel, Field, field_validator
 
-from ..services.ollama_service import OllamaService
-from ..services.openai_service import OpenAIService
+from ..services.providers.ollama import OllamaService
+from ..services.providers.openai import OpenAIService
 from ..services.exceptions import (
     ProviderConnectionError,
     ProviderAuthenticationError
@@ -111,14 +111,22 @@ async def test_ollama_connection(request: OllamaConnectionTestRequest) -> Connec
         
         # Create service instance and test connection
         ollama_service = OllamaService()
-        result = await ollama_service.test_connection(settings)
+        is_connected = await ollama_service.test_connection(settings)
         
-        return ConnectionTestResponse(
-            status=result["status"],
-            message=result["message"],
-            model=result.get("model", ""),
-            version=result.get("version", "")
-        )
+        if is_connected:
+            return ConnectionTestResponse(
+                status="connected",
+                message="Connection successful",
+                model=request.model,
+                version=""
+            )
+        else:
+            return ConnectionTestResponse(
+                status="failed",
+                message="Connection failed",
+                model=request.model,
+                version=""
+            )
         
     except ProviderConnectionError as e:
         logger.error(f"Ollama connection test failed: {e}")
@@ -204,7 +212,19 @@ async def list_provider_models(provider: str, request: ModelsListRequest) -> Mod
             }
             models = await openai_service.list_models(settings)
         
-        return ModelsListResponse(data=models)
+        # Convert model strings to ModelInfo objects
+        model_infos = []
+        for model_name in models:
+            model_info = ModelInfo(
+                id=model_name,
+                name=model_name,
+                object="model",
+                created=0,
+                owned_by=f"{provider}"
+            )
+            model_infos.append(model_info)
+        
+        return ModelsListResponse(data=model_infos)
         
     except ProviderConnectionError as e:
         logger.error(f"{provider.capitalize()} models list failed: {e}")
@@ -258,14 +278,22 @@ async def test_openai_connection(request: OpenAIConnectionTestRequest) -> Connec
         
         # Create service instance and test connection
         openai_service = OpenAIService()
-        result = await openai_service.test_connection(settings)
+        is_connected = await openai_service.test_connection(settings)
         
-        return ConnectionTestResponse(
-            status=result["status"],
-            message=result["message"],
-            model=result.get("model", ""),
-            organization=result.get("organization", "")
-        )
+        if is_connected:
+            return ConnectionTestResponse(
+                status="connected",
+                message="Connection successful",
+                model=request.default_model,
+                organization=request.organization
+            )
+        else:
+            return ConnectionTestResponse(
+                status="failed",
+                message="Connection failed",
+                model=request.default_model,
+                organization=request.organization
+            )
         
     except ProviderAuthenticationError as e:
         logger.error(f"OpenAI authentication failed: {e}")
