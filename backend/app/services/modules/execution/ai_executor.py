@@ -50,8 +50,8 @@ class AIExecutor(ScriptExecutor):
         Raises:
             ValueError: If module is not an advanced module requiring AI
         """
-        if module.module_type != ModuleType.ADVANCED:
-            raise ValueError(f"AIExecutor can only execute ADVANCED modules, got {module.module_type}")
+        if module.type != ModuleType.ADVANCED:
+            raise ValueError(f"AIExecutor can only execute ADVANCED modules, got {module.type}")
         
         if not module.requires_ai_inference:
             logger.warning(f"Module '{module.name}' doesn't require AI inference, consider using ScriptExecutor instead")
@@ -142,7 +142,7 @@ class AIExecutor(ScriptExecutor):
         Returns:
             True if module can be executed by AIExecutor
         """
-        return (module.module_type == ModuleType.ADVANCED and 
+        return (module.type == ModuleType.ADVANCED and 
                 module.requires_ai_inference)
     
     def set_ai_provider(self, provider: str, settings: Dict[str, Any]) -> None:

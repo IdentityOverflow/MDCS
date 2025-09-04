@@ -14,7 +14,7 @@ from app.services.system_prompt_state import (
     SystemPromptState,
     PromptStateManager
 )
-from app.services.staged_module_resolver import ModuleResolutionWarning
+from app.services.modules.resolver import ModuleResolutionWarning
 
 
 class TestSystemPromptState:

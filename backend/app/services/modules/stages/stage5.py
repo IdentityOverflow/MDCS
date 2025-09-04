@@ -144,7 +144,7 @@ class Stage5Executor(BaseStageExecutor):
         from ....models import ExecutionContext, ModuleType
         
         # Advanced modules with POST_RESPONSE context that require AI
-        if (module.module_type == ModuleType.ADVANCED and 
+        if (module.type == ModuleType.ADVANCED and 
             module.execution_context == ExecutionContext.POST_RESPONSE and
             module.requires_ai_inference):
             return True
@@ -186,12 +186,12 @@ class Stage5Executor(BaseStageExecutor):
         from ..execution import SimpleExecutor, ScriptExecutor, AIExecutor
         
         try:
-            if module.module_type == ModuleType.SIMPLE:
+            if module.type == ModuleType.SIMPLE:
                 # Simple text module (shouldn't be in Stage 5, but handle gracefully)
                 executor = SimpleExecutor()
                 return executor.execute(module, {})
             
-            elif module.module_type == ModuleType.ADVANCED:
+            elif module.type == ModuleType.ADVANCED:
                 # Advanced script module with AI support
                 if module.requires_ai_inference:
                     # Use AI-enabled executor
@@ -216,8 +216,8 @@ class Stage5Executor(BaseStageExecutor):
                 return executor.execute(module, context)
             
             else:
-                logger.warning(f"Unknown module type: {module.module_type}")
-                return f"[Unknown module type: {module.module_type}]"
+                logger.warning(f"Unknown module type: {module.type}")
+                return f"[Unknown module type: {module.type}]"
                 
         except Exception as e:
             logger.error(f"Error executing Stage 5 module '{module.name}': {e}")

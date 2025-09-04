@@ -7,7 +7,7 @@ with focused, realistic scenarios.
 
 import pytest
 from unittest.mock import Mock, patch
-from app.services.staged_module_resolver import StagedModuleResolver
+from app.services.modules import StagedModuleResolver
 from app.models import Module, ModuleType, ExecutionContext
 from app.core.script_context import ScriptExecutionContext
 from app.plugins.ai_plugins import reflect

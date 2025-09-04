@@ -131,11 +131,11 @@ class Stage1Executor(BaseStageExecutor):
         from ....models import ExecutionContext, ModuleType
         
         # Simple modules always execute in Stage 1
-        if module.module_type == ModuleType.SIMPLE:
+        if module.type == ModuleType.SIMPLE:
             return True
         
         # Advanced modules with IMMEDIATE context but no AI requirement
-        if (module.module_type == ModuleType.ADVANCED and 
+        if (module.type == ModuleType.ADVANCED and 
             module.execution_context == ExecutionContext.IMMEDIATE and
             not module.requires_ai_inference):
             return True

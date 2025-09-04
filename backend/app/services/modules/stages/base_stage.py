@@ -230,12 +230,12 @@ class BaseStageExecutor(ABC):
         from ..execution import SimpleExecutor, ScriptExecutor
         
         try:
-            if module.module_type == ModuleType.SIMPLE:
+            if module.type == ModuleType.SIMPLE:
                 # Simple text module
                 executor = SimpleExecutor()
                 return executor.execute(module, {})
             
-            elif module.module_type == ModuleType.ADVANCED:
+            elif module.type == ModuleType.ADVANCED:
                 # Advanced script module
                 executor = ScriptExecutor()
                 context = {
@@ -250,8 +250,8 @@ class BaseStageExecutor(ABC):
                 return executor.execute(module, context)
             
             else:
-                logger.warning(f"Unknown module type: {module.module_type}")
-                return f"[Unknown module type: {module.module_type}]"
+                logger.warning(f"Unknown module type: {module.type}")
+                return f"[Unknown module type: {module.type}]"
                 
         except Exception as e:
             logger.error(f"Error executing module '{module.name}': {e}")

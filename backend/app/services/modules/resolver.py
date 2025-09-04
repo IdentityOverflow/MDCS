@@ -9,6 +9,7 @@ import logging
 import time
 from typing import List, Dict, Set, Optional, Any, Tuple, AsyncIterator
 from dataclasses import dataclass
+from enum import Enum
 from sqlalchemy.orm import Session
 
 from ...models import Module, ModuleType, ExecutionContext, ConversationState
@@ -56,6 +57,14 @@ class CompleteResolutionResult:
     stage_timings: Dict[int, float]
 
 
+class ExecutionStage(Enum):
+    """Enumeration of template resolution stages."""
+    STAGE1 = 1  # Simple + IMMEDIATE Non-AI + Previous POST_RESPONSE
+    STAGE2 = 2  # IMMEDIATE AI-powered
+    STAGE4 = 4  # POST_RESPONSE Non-AI
+    STAGE5 = 5  # POST_RESPONSE AI-powered
+
+
 class StagedModuleResolver:
     """
     Unified orchestrator for the complete 5-stage module resolution pipeline.
@@ -70,12 +79,13 @@ class StagedModuleResolver:
     - Stage 5: POST_RESPONSE AI-powered modules
     """
     
-    def __init__(self, db_session: Optional[Session] = None):
+    def __init__(self, db_session: Optional[Session] = None, session_manager=None):
         """
         Initialize the unified staged module resolver.
         
         Args:
             db_session: Optional database session. If not provided, will get one from connection pool.
+            session_manager: Optional session manager for cancellation support.
         """
         self.db_session = db_session
         
@@ -86,9 +96,43 @@ class StagedModuleResolver:
         self.stage4 = Stage4Executor(db_session)
         self.stage5 = Stage5Executor(db_session)
         
+        # Session management and cancellation support
+        from ...services.chat_session_manager import get_chat_session_manager
+        self.session_manager = session_manager or get_chat_session_manager()
+        self._current_session_id: Optional[str] = None
+        
         # SystemPromptState tracking
         self._state_tracking_enabled: bool = False
         self._prompt_state_manager: Optional[PromptStateManager] = None
+    
+    def set_session_id(self, session_id: str) -> None:
+        """
+        Set the current session ID for this resolver instance.
+        
+        Args:
+            session_id: Session ID to associate with operations
+        """
+        self._current_session_id = session_id
+        logger.debug(f"Resolver session ID set to: {session_id}")
+    
+    def _check_cancellation(self, session_id: Optional[str] = None) -> None:
+        """
+        Check if the current operation should be cancelled.
+        
+        Args:
+            session_id: Session ID to check, uses current session if not provided
+            
+        Raises:
+            asyncio.CancelledError: If the session has been cancelled
+        """
+        import asyncio
+        
+        check_session_id = session_id or self._current_session_id
+        if check_session_id and self.session_manager:
+            token = self.session_manager.get_session(check_session_id)
+            if token and token.is_cancelled():
+                logger.info(f"Operation cancelled for session {check_session_id}")
+                raise asyncio.CancelledError()
     
     def enable_state_tracking(self) -> None:
         """Enable SystemPromptState tracking for AI plugins."""
@@ -123,7 +167,8 @@ class StagedModuleResolver:
         trigger_context: Optional[Dict[str, Any]] = None,
         current_provider: Optional[str] = None,
         current_provider_settings: Optional[Dict[str, Any]] = None,
-        current_chat_controls: Optional[Dict[str, Any]] = None
+        current_chat_controls: Optional[Dict[str, Any]] = None,
+        session_id: Optional[str] = None
     ) -> StagedTemplateResolutionResult:
         """
         Execute Stage 1 and Stage 2 of template resolution.
@@ -148,6 +193,13 @@ class StagedModuleResolver:
         """
         logger.debug("Starting template resolution: Stages 1 and 2")
         start_time = time.time()
+        
+        # Set session ID if provided
+        if session_id:
+            self.set_session_id(session_id)
+        
+        # Check for cancellation before starting
+        self._check_cancellation(session_id)
         
         warnings: List[ModuleResolutionWarning] = []
         resolved_modules: List[str] = []
@@ -186,6 +238,9 @@ class StagedModuleResolver:
                 message=f"Stage 1 execution failed: {str(e)}",
                 stage=1
             ))
+        
+        # Check for cancellation between stages
+        self._check_cancellation(session_id)
         
         # Stage 2: IMMEDIATE AI-powered modules
         try:
@@ -231,6 +286,7 @@ class StagedModuleResolver:
         self,
         template: str,
         user_message: str,
+        session_id: Optional[str] = None,
         conversation_id: Optional[str] = None,
         persona_id: Optional[str] = None,
         db_session: Optional[Session] = None,
@@ -245,6 +301,7 @@ class StagedModuleResolver:
         Args:
             template: The template string containing @module_name references
             user_message: User's message to respond to
+            session_id: Optional session ID for cancellation support
             conversation_id: Optional conversation ID
             persona_id: Optional persona ID
             db_session: Optional database session
@@ -260,9 +317,17 @@ class StagedModuleResolver:
         pipeline_start = time.time()
         stage_timings: Dict[int, float] = {}
         
+        # Set session ID if provided
+        if session_id:
+            self.set_session_id(session_id)
+        
+        # Check for cancellation before starting pipeline
+        self._check_cancellation(session_id)
+        
         # Stage 1 & 2: Template Resolution
         template_result = await self.resolve_template_stages_1_and_2(
             template=template,
+            session_id=session_id,
             conversation_id=conversation_id,
             persona_id=persona_id,
             db_session=db_session,
@@ -271,6 +336,9 @@ class StagedModuleResolver:
             current_provider_settings=current_provider_settings,
             current_chat_controls=current_chat_controls
         )
+        
+        # Check for cancellation before Stage 3
+        self._check_cancellation(session_id)
         
         # Stage 3: Main AI Response Generation
         stage3_start = time.time()
@@ -304,11 +372,15 @@ class StagedModuleResolver:
             ai_response = f"[AI Response Generation Error: {str(e)}]"
             ai_response_metadata = {"error": str(e)}
             stage_timings[3] = time.time() - stage3_start
+        
+        # Check for cancellation before post-response stages
+        self._check_cancellation(session_id)
             
         # Stages 4 & 5: Post-Response Processing
         post_response_results = await self.execute_post_response_stages(
             template=template,
             ai_response=ai_response,
+            session_id=session_id,
             conversation_id=conversation_id,
             persona_id=persona_id,
             db_session=db_session,
@@ -334,6 +406,7 @@ class StagedModuleResolver:
         self,
         template: str,
         ai_response: str,
+        session_id: Optional[str] = None,
         conversation_id: Optional[str] = None,
         persona_id: Optional[str] = None,
         db_session: Optional[Session] = None,
@@ -349,6 +422,7 @@ class StagedModuleResolver:
         Args:
             template: Original template (for module discovery)
             ai_response: AI response from Stage 3
+            session_id: Optional session ID for cancellation support
             conversation_id: Optional conversation ID
             persona_id: Optional persona ID  
             db_session: Optional database session
@@ -362,6 +436,13 @@ class StagedModuleResolver:
             List of PostResponseExecutionResult for each executed module
         """
         logger.debug("Starting post-response processing: Stages 4 and 5")
+        
+        # Set session ID if provided
+        if session_id:
+            self.set_session_id(session_id)
+        
+        # Check for cancellation before starting post-response stages
+        self._check_cancellation(session_id)
         
         db = db_session or next(get_db()) if self.db_session is None else self.db_session
         warnings: List[ModuleResolutionWarning] = []
@@ -389,6 +470,9 @@ class StagedModuleResolver:
             logger.debug(f"Stage 4 completed in {stage4_time:.3f}s")
         except Exception as e:
             logger.error(f"Stage 4 execution failed: {e}")
+        
+        # Check for cancellation between Stage 4 and Stage 5
+        self._check_cancellation(session_id)
         
         # Stage 5: POST_RESPONSE AI-powered modules  
         try:
@@ -421,6 +505,7 @@ class StagedModuleResolver:
         self,
         template: str,
         user_message: str,
+        session_id: Optional[str] = None,
         conversation_id: Optional[str] = None,
         persona_id: Optional[str] = None,
         db_session: Optional[Session] = None,
@@ -432,14 +517,25 @@ class StagedModuleResolver:
         """
         Execute the complete pipeline with streaming Stage 3 response.
         
+        Args:
+            session_id: Optional session ID for cancellation support
+            
         Yields:
             Various result types including template resolution, streaming chunks, and post-response results
         """
         logger.debug("Starting streaming 5-stage resolution pipeline")
         
+        # Set session ID if provided
+        if session_id:
+            self.set_session_id(session_id)
+        
+        # Check for cancellation before starting pipeline
+        self._check_cancellation(session_id)
+        
         # Stage 1 & 2: Template Resolution
         template_result = await self.resolve_template_stages_1_and_2(
             template=template,
+            session_id=session_id,
             conversation_id=conversation_id,
             persona_id=persona_id,
             db_session=db_session,
@@ -450,6 +546,9 @@ class StagedModuleResolver:
         )
         
         yield template_result
+        
+        # Check for cancellation before Stage 3
+        self._check_cancellation(session_id)
         
         # Stage 3: Streaming AI Response Generation
         accumulated_response = ""
@@ -474,6 +573,7 @@ class StagedModuleResolver:
             post_response_results = await self.execute_post_response_stages(
                 template=template,
                 ai_response=accumulated_response,
+                session_id=session_id,
                 conversation_id=conversation_id,
                 persona_id=persona_id,
                 db_session=db_session,
@@ -485,3 +585,96 @@ class StagedModuleResolver:
             )
             
             yield post_response_results
+    
+    def _parse_module_references(self, template: str) -> List[str]:
+        """Parse module references from template for backward compatibility."""
+        return TemplateParser.parse_module_references(template)
+    
+    @staticmethod
+    def validate_module_name(name: str) -> bool:
+        """Validate module name format for backward compatibility."""
+        import re
+        # Module names should be lowercase alphanumeric with underscores, starting with a letter
+        pattern = r'^[a-z][a-z0-9_]*$'
+        return bool(re.match(pattern, name)) and len(name) <= 50
+
+
+def resolve_template_for_response(
+    template: str, 
+    conversation_id: Optional[str] = None,
+    persona_id: Optional[str] = None,
+    db_session: Optional[Session] = None
+) -> StagedTemplateResolutionResult:
+    """
+    Convenience function to resolve a template for main AI response (Stage 1 + Stage 2).
+    
+    If db_session is not provided, a new session will be obtained and closed.
+    """
+    local_db_session = None
+    try:
+        if db_session is None:
+            local_db_session = next(get_db())
+            db_session = local_db_session
+            
+        resolver = StagedModuleResolver(db_session=db_session)
+        
+        # Use asyncio.run to handle the async method
+        import asyncio
+        try:
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                # We're in an async context, create a new thread
+                import concurrent.futures
+                with concurrent.futures.ThreadPoolExecutor() as executor:
+                    future = executor.submit(
+                        asyncio.run,
+                        resolver.resolve_template_stages_1_and_2(
+                            template=template,
+                            conversation_id=conversation_id,
+                            persona_id=persona_id,
+                            db_session=db_session
+                        )
+                    )
+                    return future.result()
+            else:
+                # No event loop running, we can use asyncio.run directly
+                return asyncio.run(
+                    resolver.resolve_template_stages_1_and_2(
+                        template=template,
+                        conversation_id=conversation_id,
+                        persona_id=persona_id,
+                        db_session=db_session
+                    )
+                )
+        except RuntimeError:
+            # Fallback: create a new event loop
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            try:
+                return loop.run_until_complete(
+                    resolver.resolve_template_stages_1_and_2(
+                        template=template,
+                        conversation_id=conversation_id,
+                        persona_id=persona_id,
+                        db_session=db_session
+                    )
+                )
+            finally:
+                loop.close()
+    finally:
+        if local_db_session:
+            local_db_session.close()
+
+
+def _parse_module_references(template: str) -> List[str]:
+    """Parse module references from template for backward compatibility."""
+    from .template_parser import TemplateParser
+    return TemplateParser.parse_module_references(template)
+
+
+def validate_module_name(name: str) -> bool:
+    """Validate module name format for backward compatibility."""
+    import re
+    # Module names should be lowercase alphanumeric with underscores, starting with a letter
+    pattern = r'^[a-z][a-z0-9_]*$'
+    return bool(re.match(pattern, name)) and len(name) <= 50

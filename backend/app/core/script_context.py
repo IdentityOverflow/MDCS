@@ -79,7 +79,34 @@ class ScriptExecutionContext:
         self._system_prompt_state: Optional['SystemPromptState'] = None
         self._current_execution_stage: Optional[int] = None
         
+        # User variables storage for script executor
+        self._user_variables: Dict[str, Any] = {}
+        
         logger.debug(f"Initialized script context for conversation {conversation_id}")
+    
+    def set_variable(self, name: str, value: Any) -> None:
+        """
+        Set a user variable that can be accessed from script execution.
+        
+        Args:
+            name: Variable name
+            value: Variable value
+        """
+        self._user_variables[name] = value
+        logger.debug(f"Set user variable '{name}' = {value}")
+    
+    def get_variable(self, name: str, default: Any = None) -> Any:
+        """
+        Get a user variable value.
+        
+        Args:
+            name: Variable name
+            default: Default value if variable doesn't exist
+            
+        Returns:
+            Variable value or default
+        """
+        return self._user_variables.get(name, default)
     
     def set_system_prompt_state(self, state: Optional['SystemPromptState'], current_stage: Optional[int] = None) -> None:
         """
@@ -112,17 +139,22 @@ class ScriptExecutionContext:
     
     def __getattr__(self, name: str):
         """
-        Provide attribute access to plugin functions.
+        Provide attribute access to user variables and plugin functions.
         
         Args:
-            name: Name of the plugin function to access
+            name: Name of the variable or plugin function to access
             
         Returns:
-            Plugin function wrapper with db_session injection
+            User variable value or plugin function wrapper with db_session injection
             
         Raises:
-            AttributeError: If plugin function doesn't exist
+            AttributeError: If variable or plugin function doesn't exist
         """
+        # Check user variables first
+        if name in self._user_variables:
+            return self._user_variables[name]
+        
+        # Then check plugin functions
         if name in self._plugin_functions:
             func = self._plugin_functions[name]
             
@@ -145,7 +177,7 @@ class ScriptExecutionContext:
             
             return wrapper
         
-        raise AttributeError(f"Function '{name}' not available in script context")
+        raise AttributeError(f"Variable or function '{name}' not available in script context")
     
     def get_available_functions(self) -> Dict[str, str]:
         """

@@ -14,7 +14,8 @@ from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from app.database.connection import get_db
-from app.services.staged_module_resolver import StagedModuleResolver, ModuleResolutionWarning
+from app.services.modules import StagedModuleResolver
+from app.services.modules.resolver import ModuleResolutionWarning
 
 logger = logging.getLogger(__name__)
 
@@ -42,7 +43,7 @@ class TemplateResolveResponse(BaseModel):
 
 
 @router.post("/resolve", response_model=TemplateResolveResponse, status_code=200)
-def resolve_template(
+async def resolve_template(
     request: TemplateResolveRequest,
     db: Session = Depends(get_db)
 ) -> TemplateResolveResponse:
@@ -103,8 +104,8 @@ def resolve_template(
                 # Invalid UUID format, use None
                 pass
                 
-        result = resolver.resolve_template_stage1_and_stage2(
-            request.template,
+        result = await resolver.resolve_template_stages_1_and_2(
+            template=request.template,
             conversation_id="api-template-resolution",  # Placeholder for API usage
             persona_id=safe_persona_id,
             db_session=db,
@@ -264,10 +265,9 @@ def validate_template(
     logger.info("Validating template")
     
     try:
-        from app.services.module_resolver import ModuleResolver
         from app.models import Module
         
-        resolver = ModuleResolver(db_session=db)
+        resolver = StagedModuleResolver(db_session=db)
         
         # Parse module references
         module_names = resolver._parse_module_references(request.template)

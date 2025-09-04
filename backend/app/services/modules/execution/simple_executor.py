@@ -35,8 +35,8 @@ class SimpleExecutor:
         Raises:
             ValueError: If module is not a simple module
         """
-        if module.module_type != ModuleType.SIMPLE:
-            raise ValueError(f"SimpleExecutor can only execute SIMPLE modules, got {module.module_type}")
+        if module.type != ModuleType.SIMPLE:
+            raise ValueError(f"SimpleExecutor can only execute SIMPLE modules, got {module.type}")
         
         logger.debug(f"Executing simple module: {module.name}")
         
@@ -59,4 +59,4 @@ class SimpleExecutor:
         Returns:
             True if module can be executed by SimpleExecutor
         """
-        return module.module_type == ModuleType.SIMPLE
+        return module.type == ModuleType.SIMPLE

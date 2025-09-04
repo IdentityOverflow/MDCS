@@ -42,15 +42,15 @@ class ScriptExecutor:
         Raises:
             ValueError: If module is not an advanced module
         """
-        if module.module_type != ModuleType.ADVANCED:
-            raise ValueError(f"ScriptExecutor can only execute ADVANCED modules, got {module.module_type}")
+        if module.type != ModuleType.ADVANCED:
+            raise ValueError(f"ScriptExecutor can only execute ADVANCED modules, got {module.type}")
         
         logger.debug(f"Executing advanced module: {module.name}")
         
-        # Get script content
-        script_content = module.content or ""
+        # Get script content from the script field (not content field)
+        script_content = module.script or ""
         if not script_content.strip():
-            logger.warning(f"Advanced module '{module.name}' has empty content")
+            logger.warning(f"Advanced module '{module.name}' has empty script")
             return ""
         
         # Build execution context
@@ -59,8 +59,8 @@ class ScriptExecutor:
         try:
             # Execute script using ScriptEngine
             execution_result = self.script_engine.execute_script(
-                script_content=script_content,
-                context=script_context
+                script=script_content,
+                context={'ctx': script_context}
             )
             
             # Extract output from execution result
@@ -77,7 +77,7 @@ class ScriptExecutor:
             
             else:
                 # Script execution failed
-                error_msg = execution_result.error or "Unknown execution error"
+                error_msg = execution_result.error_message or "Unknown execution error"
                 logger.error(f"Advanced module '{module.name}' execution failed: {error_msg}")
                 return f"[Error in module {module.name}: {error_msg}]"
                 
@@ -116,7 +116,7 @@ class ScriptExecutor:
             conversation_id=conversation_id,
             persona_id=persona_id,
             db_session=db_session,
-            user_message=trigger_context.get('user_message', ''),
+            trigger_data=trigger_context,
             current_provider=current_provider,
             current_provider_settings=current_provider_settings,
             current_chat_controls=current_chat_controls
@@ -154,4 +154,4 @@ class ScriptExecutor:
         Returns:
             True if module can be executed by ScriptExecutor
         """
-        return module.module_type == ModuleType.ADVANCED
+        return module.type == ModuleType.ADVANCED

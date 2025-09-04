@@ -32,7 +32,7 @@ from ..services.exceptions import (
     ProviderAuthenticationError,
     UnsupportedProviderError
 )
-from ..services.staged_module_resolver import StagedModuleResolver
+from ..services.modules import StagedModuleResolver
 from ..services.streaming_accumulator import StreamingAccumulator, StreamingToNonStreamingConverter
 from ..services.chat_session_manager import get_chat_session_manager, ChatSessionManager, SessionStatus
 from ..database.connection import get_db
@@ -113,16 +113,16 @@ async def resolve_system_prompt_with_session(
             resolver.set_session_id(session_id)
         
         # Resolve template using async method with cancellation support
-        result = await resolver.resolve_template_stage1_and_stage2_async(
-            persona.template,
+        result = await resolver.resolve_template_stages_1_and_2(
+            template=persona.template,
+            session_id=session_id,
             conversation_id=conversation_id,
             persona_id=request.persona_id,
             db_session=db,
             trigger_context=trigger_context,
             current_provider=current_provider,
             current_provider_settings=current_provider_settings,
-            current_chat_controls=current_chat_controls,
-            session_id=session_id
+            current_chat_controls=current_chat_controls
         )
         
         # Log warnings for debugging
@@ -260,18 +260,7 @@ async def send_chat_message_with_cancellation(
                 resolver = StagedModuleResolver()
                 resolver.enable_state_tracking()  # Enable SystemPromptState tracking for AI plugins
                 
-                # Create SystemPromptState with the resolved system prompt from template resolution
-                from app.services.system_prompt_state import PromptStateManager
-                state_manager = PromptStateManager()
-                post_response_state = state_manager.create_initial_state(
-                    request.conversation_id or "unknown",
-                    request.persona_id or "unknown", 
-                    "cancellation_context"  # We don't have access to persona.template here
-                )
-                # Set the resolved system prompt as the main response prompt
-                post_response_state.main_response_prompt = resolved_system_prompt
-                resolver._current_state = post_response_state
-                resolver._prompt_state_manager = state_manager
+                # The resolver will handle state management internally through enable_state_tracking()
                 
                 trigger_context = {}
                 current_provider = request.provider.value if request.provider else None
@@ -279,15 +268,18 @@ async def send_chat_message_with_cancellation(
                 current_chat_controls = request.chat_controls
                 
                 # Execute POST_RESPONSE modules with cancellation support
-                results = await resolver.execute_post_response_modules_async(
-                    request.persona_id,
-                    request.conversation_id,
-                    db,
+                results = await resolver.execute_post_response_stages(
+                    template=resolved_system_prompt,
+                    ai_response=provider_response.content,
+                    session_id=session_id,
+                    conversation_id=request.conversation_id,
+                    persona_id=request.persona_id,
+                    db_session=db,
                     trigger_context=trigger_context,
                     current_provider=current_provider,
                     current_provider_settings=current_provider_settings,
                     current_chat_controls=current_chat_controls,
-                    session_id=session_id
+                    response_metadata=provider_response.metadata
                 )
                 
                 # Commit ConversationState changes from POST_RESPONSE modules
@@ -395,6 +387,7 @@ async def stream_chat_message_with_cancellation(
                 stream_generator = provider.send_message_stream(provider_request)
             
             # Convert provider chunks to API chunks and stream them
+            accumulated_response = ""  # Track accumulated response for POST_RESPONSE modules
             async for provider_chunk in stream_generator:
                 try:
                     # Check for cancellation before each chunk
@@ -426,6 +419,10 @@ async def stream_chat_message_with_cancellation(
                         debug_data=debug_data
                     )
                     
+                    # Accumulate response content for POST_RESPONSE modules
+                    if hasattr(provider_chunk, 'content') and provider_chunk.content:
+                        accumulated_response += provider_chunk.content
+                    
                     # Send chunk as Server-Sent Event
                     chunk_json = api_chunk.model_dump_json()
                     yield f"data: {chunk_json}\n\n"
@@ -442,18 +439,7 @@ async def stream_chat_message_with_cancellation(
                     resolver = StagedModuleResolver()
                     resolver.enable_state_tracking()  # Enable SystemPromptState tracking for AI plugins
                     
-                    # Create SystemPromptState with the resolved system prompt from template resolution
-                    from app.services.system_prompt_state import PromptStateManager
-                    state_manager = PromptStateManager()
-                    post_response_state = state_manager.create_initial_state(
-                        request.conversation_id or "unknown",
-                        request.persona_id or "unknown", 
-                        "streaming_cancellation_context"  # We don't have access to persona.template here
-                    )
-                    # Set the resolved system prompt as the main response prompt
-                    post_response_state.main_response_prompt = resolved_system_prompt
-                    resolver._current_state = post_response_state
-                    resolver._prompt_state_manager = state_manager
+                    # The resolver will handle state management internally through enable_state_tracking()
                     
                     trigger_context = {}
                     current_provider = request.provider.value if request.provider else None
@@ -461,15 +447,17 @@ async def stream_chat_message_with_cancellation(
                     current_chat_controls = request.chat_controls
                     
                     # Execute POST_RESPONSE modules with cancellation support
-                    results = await resolver.execute_post_response_modules_async(
-                        request.persona_id,
-                        request.conversation_id,
-                        db,
+                    results = await resolver.execute_post_response_stages(
+                        template=resolved_system_prompt,
+                        ai_response=accumulated_response,
+                        session_id=session_id,
+                        conversation_id=request.conversation_id,
+                        persona_id=request.persona_id,
+                        db_session=db,
                         trigger_context=trigger_context,
                         current_provider=current_provider,
                         current_provider_settings=current_provider_settings,
-                        current_chat_controls=current_chat_controls,
-                        session_id=session_id
+                        current_chat_controls=current_chat_controls
                     )
                     
                     # Only send stage update if there are actually modules that executed
