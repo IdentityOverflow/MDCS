@@ -1,0 +1,157 @@
+"""
+Script module executor for Python-based advanced modules.
+
+Handles execution of Python scripts using the RestrictedPython sandbox
+with the full plugin function ecosystem.
+"""
+
+import logging
+from typing import Dict, Any, Optional
+
+from ....models import Module, ModuleType
+from ....core.script_engine import ScriptEngine
+from ....core.script_context import ScriptExecutionContext
+
+logger = logging.getLogger(__name__)
+
+
+class ScriptExecutor:
+    """
+    Executes advanced Python script modules.
+    
+    Advanced modules contain Python scripts that are executed in a
+    RestrictedPython sandbox with access to plugin functions and
+    conversation context.
+    """
+    
+    def __init__(self):
+        """Initialize the script executor with ScriptEngine."""
+        self.script_engine = ScriptEngine()
+    
+    def execute(self, module: Module, context: Dict[str, Any]) -> str:
+        """
+        Execute an advanced Python script module.
+        
+        Args:
+            module: Module to execute (must be ModuleType.ADVANCED)
+            context: Execution context containing conversation info, etc.
+            
+        Returns:
+            Module execution result as string
+            
+        Raises:
+            ValueError: If module is not an advanced module
+        """
+        if module.module_type != ModuleType.ADVANCED:
+            raise ValueError(f"ScriptExecutor can only execute ADVANCED modules, got {module.module_type}")
+        
+        logger.debug(f"Executing advanced module: {module.name}")
+        
+        # Get script content
+        script_content = module.content or ""
+        if not script_content.strip():
+            logger.warning(f"Advanced module '{module.name}' has empty content")
+            return ""
+        
+        # Build execution context
+        script_context = self._build_script_context(module, context)
+        
+        try:
+            # Execute script using ScriptEngine
+            execution_result = self.script_engine.execute_script(
+                script_content=script_content,
+                context=script_context
+            )
+            
+            # Extract output from execution result
+            if execution_result.success and execution_result.outputs:
+                # Join all outputs (scripts can produce multiple outputs)
+                result = "\n".join(str(output) for output in execution_result.outputs)
+                logger.debug(f"Advanced module '{module.name}' executed successfully, {len(result)} characters output")
+                return result
+            
+            elif execution_result.success:
+                # Script executed but produced no output
+                logger.debug(f"Advanced module '{module.name}' executed successfully but produced no output")
+                return ""
+            
+            else:
+                # Script execution failed
+                error_msg = execution_result.error or "Unknown execution error"
+                logger.error(f"Advanced module '{module.name}' execution failed: {error_msg}")
+                return f"[Error in module {module.name}: {error_msg}]"
+                
+        except Exception as e:
+            logger.error(f"Error executing advanced module '{module.name}': {e}")
+            return f"[Error in module {module.name}: {str(e)}]"
+    
+    def _build_script_context(self, module: Module, context: Dict[str, Any]) -> ScriptExecutionContext:
+        """
+        Build ScriptExecutionContext for module execution.
+        
+        Args:
+            module: Module being executed
+            context: Execution context from stage executor
+            
+        Returns:
+            ScriptExecutionContext for script execution
+        """
+        # Extract key context parameters
+        conversation_id = context.get('conversation_id')
+        persona_id = context.get('persona_id')
+        db_session = context.get('db_session')
+        trigger_context = context.get('trigger_context', {})
+        current_provider = context.get('current_provider')
+        current_provider_settings = context.get('current_provider_settings', {})
+        current_chat_controls = context.get('current_chat_controls', {})
+        
+        # Additional stage-specific context
+        stage = context.get('stage')
+        stage_name = context.get('stage_name')
+        ai_response = context.get('ai_response')
+        response_metadata = context.get('response_metadata', {})
+        
+        # Create script execution context
+        script_context = ScriptExecutionContext(
+            conversation_id=conversation_id,
+            persona_id=persona_id,
+            db_session=db_session,
+            user_message=trigger_context.get('user_message', ''),
+            current_provider=current_provider,
+            current_provider_settings=current_provider_settings,
+            current_chat_controls=current_chat_controls
+        )
+        
+        # Add module-specific information
+        script_context.set_variable('module_name', module.name)
+        script_context.set_variable('module_id', str(module.id))
+        
+        # Add stage information if available
+        if stage is not None:
+            script_context.set_variable('stage', stage)
+            script_context.set_variable('stage_name', stage_name)
+        
+        # Add AI response information for post-response stages
+        if ai_response is not None:
+            script_context.set_variable('ai_response', ai_response)
+            script_context.set_variable('response_metadata', response_metadata)
+        
+        # Add any additional trigger context
+        for key, value in trigger_context.items():
+            if key not in ['user_message']:  # Avoid overriding already set values
+                script_context.set_variable(key, value)
+        
+        return script_context
+    
+    @staticmethod
+    def can_execute(module: Module) -> bool:
+        """
+        Check if this executor can handle the given module.
+        
+        Args:
+            module: Module to check
+            
+        Returns:
+            True if module can be executed by ScriptExecutor
+        """
+        return module.module_type == ModuleType.ADVANCED
