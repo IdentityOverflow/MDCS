@@ -203,6 +203,18 @@ class ScriptExecutionContext:
         """
         return name in self._plugin_functions
     
+    def get_all_variables(self) -> Dict[str, str]:
+        """
+        Get all user-defined variables for template resolution.
+        
+        Returns:
+            Dictionary mapping variable names to their string values
+        """
+        # Convert all user variables to strings for template substitution
+        return {
+            name: str(value) for name, value in self._user_variables.items()
+        }
+    
     def can_reflect(self, current_module_id: Optional[str], timing: str) -> bool:
         """
         Check if reflection is allowed based on current safety constraints.

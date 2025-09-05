@@ -88,12 +88,13 @@ class BaseProviderService(AIProvider):
         2. Build URL, headers, and payload
         3. Execute HTTP request via shared client
         4. Parse response using provider-specific logic
+        5. Add debug metadata for debugger support
         
         Args:
             request: ChatRequest with message and provider settings
             
         Returns:
-            ChatResponse with provider's response
+            ChatResponse with provider's response and debug metadata
             
         Raises:
             ProviderConnectionError: For validation or connection failures
@@ -111,7 +112,14 @@ class BaseProviderService(AIProvider):
         response_data = await self.http_client.post_json(url, payload, headers)
         
         # Parse response using provider-specific logic
-        return self._parse_response(response_data)
+        parsed_response = self._parse_response(response_data)
+        
+        # Add debug metadata for debugger support (matches old provider behavior)
+        parsed_response.metadata["debug_api_request"] = payload
+        parsed_response.metadata["debug_api_response"] = response_data
+        parsed_response.metadata["debug_api_url"] = url
+        
+        return parsed_response
     
     async def send_message_stream(self, request: ChatRequest) -> AsyncIterator[StreamingChatResponse]:
         """
@@ -122,12 +130,13 @@ class BaseProviderService(AIProvider):
         2. Build URL, headers, and payload  
         3. Execute streaming request via shared client
         4. Process stream using shared processor with provider-specific parsing
+        5. Add debug metadata to final chunk for debugger support
         
         Args:
             request: ChatRequest with message and provider settings
             
         Yields:
-            StreamingChatResponse objects from the provider
+            StreamingChatResponse objects from the provider with debug metadata on final chunk
             
         Raises:
             ProviderConnectionError: For validation or connection failures
@@ -150,6 +159,12 @@ class BaseProviderService(AIProvider):
         
         # Process stream using shared processor with provider-specific parsing
         async for response_chunk in self._stream_processor.process_stream(chunk_stream):
+            # Add debug metadata to the final chunk (matches old provider behavior)
+            if response_chunk.done:
+                response_chunk.metadata["debug_api_request"] = payload
+                response_chunk.metadata["debug_api_response"] = {}  # We don't have access to raw chunk data here
+                response_chunk.metadata["debug_api_url"] = url
+            
             yield response_chunk
     
     # Session management support (for Phase 2 integration)

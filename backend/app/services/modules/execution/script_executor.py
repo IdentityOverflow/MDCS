@@ -63,17 +63,41 @@ class ScriptExecutor:
                 context={'ctx': script_context}
             )
             
-            # Extract output from execution result
-            if execution_result.success and execution_result.outputs:
-                # Join all outputs (scripts can produce multiple outputs)
-                result = "\n".join(str(output) for output in execution_result.outputs)
-                logger.debug(f"Advanced module '{module.name}' executed successfully, {len(result)} characters output")
-                return result
-            
-            elif execution_result.success:
-                # Script executed but produced no output
-                logger.debug(f"Advanced module '{module.name}' executed successfully but produced no output")
-                return ""
+            if execution_result.success:
+                # Script executed successfully - now resolve the module's template using script variables
+                logger.debug(f"Advanced module '{module.name}' script executed successfully")
+                
+                # Capture script outputs as variables for template resolution
+                if execution_result.outputs:
+                    for var_name, var_value in execution_result.outputs.items():
+                        script_context.set_variable(var_name, var_value)
+                
+                # Get the module's template (content field)
+                template_content = module.content or ""
+                
+                if template_content.strip():
+                    # Resolve template variables using script context variables
+                    from ..template_parser import TemplateParser
+                    
+                    # Get variables set by the script (including captured outputs)
+                    script_variables = script_context.get_all_variables()
+                    
+                    # Substitute variables in template
+                    resolved_template = TemplateParser.substitute_variables(template_content, script_variables)
+                    
+                    logger.debug(f"Advanced module '{module.name}' template resolved, {len(resolved_template)} characters")
+                    return resolved_template
+                
+                elif execution_result.outputs:
+                    # No template, but script had output - return the output
+                    result = "\n".join(str(output) for output in execution_result.outputs)
+                    logger.debug(f"Advanced module '{module.name}' returned script output, {len(result)} characters")
+                    return result
+                
+                else:
+                    # No template and no script output
+                    logger.debug(f"Advanced module '{module.name}' executed but produced no output or template")
+                    return ""
             
             else:
                 # Script execution failed
