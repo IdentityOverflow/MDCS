@@ -59,7 +59,7 @@ class AIExecutor(ScriptExecutor):
         logger.debug(f"Executing AI-powered module: {module.name}")
         
         # Get script content
-        script_content = module.content or ""
+        script_content = module.script or ""
         if not script_content.strip():
             logger.warning(f"AI module '{module.name}' has empty content")
             return ""
@@ -70,8 +70,8 @@ class AIExecutor(ScriptExecutor):
         try:
             # Execute script using ScriptEngine with AI support
             execution_result = self.script_engine.execute_script(
-                script_content=script_content,
-                context=script_context
+                script=script_content,
+                context={'ctx': script_context}
             )
             
             # Extract output from execution result
@@ -88,7 +88,7 @@ class AIExecutor(ScriptExecutor):
             
             else:
                 # Script execution failed
-                error_msg = execution_result.error or "Unknown execution error"
+                error_msg = execution_result.error_message or "Unknown execution error"
                 logger.error(f"AI module '{module.name}' execution failed: {error_msg}")
                 return f"[Error in AI module {module.name}: {error_msg}]"
                 
