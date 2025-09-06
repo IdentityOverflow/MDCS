@@ -93,9 +93,16 @@ class StreamingAccumulator:
                     asyncio_task=current_task,
                     current_stage=3  # Main response accumulation
                 )
-            except ValueError:
+                logger.debug(f"Successfully registered session {session_id} for cancellation")
+            except ValueError as e:
                 # Session already exists, continue
+                logger.debug(f"Session {session_id} already registered: {e}")
                 pass
+            except Exception as e:
+                # Log other registration errors
+                logger.warning(f"Failed to register session {session_id} for cancellation: {e}")
+        else:
+            logger.warning(f"No current asyncio task found for session {session_id} - cancellation may not work")
         
         try:
             # Track active accumulation

@@ -69,8 +69,12 @@ class ScriptExecutor:
                 
                 # Capture script outputs as variables for template resolution
                 if execution_result.outputs:
+                    logger.info(f"Script outputs: {execution_result.outputs}")
                     for var_name, var_value in execution_result.outputs.items():
+                        logger.info(f"Setting variable '{var_name}' = '{var_value}' (type: {type(var_value)})")
                         script_context.set_variable(var_name, var_value)
+                else:
+                    logger.warning(f"No script outputs captured for module '{module.name}'")
                 
                 # Get the module's template (content field)
                 template_content = module.content or ""
@@ -81,9 +85,12 @@ class ScriptExecutor:
                     
                     # Get variables set by the script (including captured outputs)
                     script_variables = script_context.get_all_variables()
+                    logger.info(f"Variables available for template substitution: {script_variables}")
+                    logger.info(f"Template content: '{template_content}'")
                     
                     # Substitute variables in template
                     resolved_template = TemplateParser.substitute_variables(template_content, script_variables)
+                    logger.info(f"Resolved template: '{resolved_template}'")
                     
                     logger.debug(f"Advanced module '{module.name}' template resolved, {len(resolved_template)} characters")
                     return resolved_template
@@ -134,6 +141,7 @@ class ScriptExecutor:
         stage_name = context.get('stage_name')
         ai_response = context.get('ai_response')
         response_metadata = context.get('response_metadata', {})
+        session_id = context.get('session_id')
         
         # Create script execution context
         script_context = ScriptExecutionContext(
@@ -149,6 +157,16 @@ class ScriptExecutor:
         # Add module-specific information
         script_context.set_variable('module_name', module.name)
         script_context.set_variable('module_id', str(module.id))
+        
+        # Add session ID for cancellation support
+        if session_id:
+            script_context.session_id = session_id
+        else:
+            # Try to get session_id from resolver session manager if available
+            if hasattr(self, 'session_manager') and self.session_manager:
+                current_session_id = self.session_manager.get_current_session_id()
+                if current_session_id:
+                    script_context.session_id = current_session_id
         
         # Add stage information if available
         if stage is not None:

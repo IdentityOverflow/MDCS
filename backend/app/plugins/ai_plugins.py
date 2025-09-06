@@ -333,6 +333,8 @@ Input:
         # Use synchronous wrapper to call AI provider
         result = _run_async_ai_call(provider, chat_request)
         
+        logger.info(f"Generate result: '{result}' (type: {type(result)}, len: {len(str(result))})")
+        
         return result
         
     except Exception as e:

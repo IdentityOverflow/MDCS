@@ -187,6 +187,30 @@ async def send_chat_message_with_cancellation(
     # Add session ID to response headers
     response.headers["X-Session-ID"] = session_id
     
+    # Pre-register session for early cancellation support
+    current_task = asyncio.current_task()
+    if current_task:
+        try:
+            session_manager.register_session(
+                session_id=session_id,
+                conversation_id=request.conversation_id,
+                asyncio_task=current_task,
+                current_stage=3  # Main AI response generation
+            )
+            logger.info(f"✅ Pre-registered session {session_id} at API level with task {id(current_task)}")
+            
+            # Verify registration worked
+            token = session_manager.get_session(session_id)
+            if token:
+                logger.info(f"✅ Session {session_id} verified in session manager")
+            else:
+                logger.error(f"❌ Session {session_id} NOT FOUND after registration!")
+                
+        except Exception as e:
+            logger.error(f"❌ Failed to pre-register session {session_id}: {e}")
+    else:
+        logger.error(f"❌ No current task found for pre-registering session {session_id}")
+    
     # Get provider settings from request
     provider_settings = get_provider_settings_from_request(request)
     if not provider_settings:
@@ -292,12 +316,13 @@ async def send_chat_message_with_cancellation(
             except Exception as post_response_error:
                 logger.error(f"Error executing POST_RESPONSE modules for session {session_id}: {post_response_error}")
                 # Don't break the response, just log the error
-                pass
         
         return api_response
         
     except asyncio.CancelledError:
         logger.info(f"Chat message cancelled for session {session_id}")
+        # Clean up session on cancellation
+        await session_manager.cancel_session(session_id)
         # Return partial response or error as appropriate
         raise HTTPException(
             status_code=499,  # Client Closed Request
@@ -316,6 +341,13 @@ async def send_chat_message_with_cancellation(
             message=f"An unexpected error occurred: {str(e)}"
         )
         raise HTTPException(status_code=500, detail=error.model_dump())
+    finally:
+        # Always clean up session when request completes
+        try:
+            session_manager.remove_session(session_id)
+            logger.debug(f"Cleaned up session {session_id}")
+        except Exception as cleanup_error:
+            logger.warning(f"Failed to cleanup session {session_id}: {cleanup_error}")
 
 
 @router.post("/stream")
@@ -340,6 +372,32 @@ async def stream_chat_message_with_cancellation(
     """
     # Generate session ID for this request
     session_id = str(uuid.uuid4())
+    
+    # Register session with a simple cancellation flag instead of task cancellation
+    # This prevents the ASGI connection from being cancelled
+    from dataclasses import dataclass
+    
+    @dataclass
+    class SimpleCancellationToken:
+        session_id: str
+        cancelled: bool = False
+        
+        def cancel(self):
+            self.cancelled = True
+            
+        def is_cancelled(self):
+            return self.cancelled
+            
+        def is_active(self):
+            return not self.cancelled
+            
+        def is_completed(self):
+            return False  # Streaming never reports as "completed"
+    
+    # Create and register simple cancellation token
+    simple_token = SimpleCancellationToken(session_id=session_id)
+    session_manager.active_sessions[session_id] = simple_token
+    logger.info(f"✅ Registered streaming session {session_id} with simple cancellation token")
     
     # Get provider settings from request
     provider_settings = get_provider_settings_from_request(request)
@@ -391,11 +449,16 @@ async def stream_chat_message_with_cancellation(
             async for provider_chunk in stream_generator:
                 try:
                     # Check for cancellation before each chunk
-                    session_manager = get_chat_session_manager()
                     token = session_manager.get_session(session_id)
                     if token and token.is_cancelled():
                         logger.info(f"Streaming cancelled for session {session_id}")
-                        break
+                        # Send cancellation event and break the loop instead of raising
+                        cancel_event = StreamingChatResponse.create_event("cancelled", {
+                            "session_id": session_id,
+                            "message": "Request was cancelled"
+                        })
+                        yield f"data: {cancel_event.model_dump_json()}\n\n"
+                        return
                     
                     # Create debug data for final chunk
                     debug_data = None
@@ -484,7 +547,6 @@ async def stream_chat_message_with_cancellation(
                 except Exception as post_response_error:
                     logger.error(f"Error executing POST_RESPONSE modules for session {session_id}: {post_response_error}")
                     # Don't break the stream, just log the error
-                    pass
             
             # Send final done message
             done_chunk = StreamingChatResponse.done_event()
@@ -498,6 +560,8 @@ async def stream_chat_message_with_cancellation(
                 "message": "Request was cancelled"
             })
             yield f"data: {cancel_event.model_dump_json()}\n\n"
+            # Don't re-raise - this breaks the ASGI streaming response
+            return
         except Exception as e:
             logger.error(f"Error in streaming endpoint for session {session_id}: {e}")
             # Send error event
@@ -507,9 +571,22 @@ async def stream_chat_message_with_cancellation(
             })
             yield f"data: {error_event.model_dump_json()}\n\n"
     
+    async def streaming_response_with_cleanup():
+        """Wrapper to ensure session cleanup after streaming completes."""
+        try:
+            async for chunk in generate_streaming_response():
+                yield chunk
+        finally:
+            # Always clean up session when streaming completes
+            try:
+                session_manager.remove_session(session_id)
+                logger.debug(f"Cleaned up streaming session {session_id}")
+            except Exception as cleanup_error:
+                logger.warning(f"Failed to cleanup streaming session {session_id}: {cleanup_error}")
+
     # Return streaming response with session ID in headers
     return StreamingResponse(
-        generate_streaming_response(),
+        streaming_response_with_cleanup(),
         media_type="text/event-stream",
         headers={"X-Session-ID": session_id}
     )
@@ -530,7 +607,23 @@ async def cancel_chat_session(
     Returns:
         Cancellation result
     """
+    logger.info(f"🛑 Cancel request received for session {session_id}")
+    
+    # Debug: Check what sessions are active
+    active_sessions = list(session_manager.active_sessions.keys())
+    logger.info(f"🔍 Active sessions in manager: {active_sessions}")
+    
+    # Debug: Check specific session
+    token = session_manager.get_session(session_id)
+    if token:
+        logger.info(f"✅ Found session {session_id} - Active: {token.is_active()}, Cancelled: {token.is_cancelled()}")
+    else:
+        logger.error(f"❌ Session {session_id} not found in manager!")
+        logger.error(f"❌ Available sessions: {list(session_manager.active_sessions.keys())}")
+    
     cancelled = await session_manager.cancel_session(session_id)
+    
+    logger.info(f"🛑 Cancel result for {session_id}: {cancelled}")
     
     return {
         "cancelled": cancelled,
@@ -646,7 +739,7 @@ async def execute_post_response_modules_async(
                 
     except asyncio.CancelledError:
         logger.info(f"POST_RESPONSE execution cancelled for session {session_id}")
-        # Don't re-raise - this is background processing
+        raise
     except Exception as e:
         logger.error(f"Error executing POST_RESPONSE modules for session {session_id}: {e}")
         # Don't re-raise - this is background processing

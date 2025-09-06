@@ -112,7 +112,7 @@ class ChatSessionManager:
         )
         
         self.active_sessions[session_id] = token
-        logger.info(f"Registered chat session {session_id} (stage {current_stage})")
+        logger.info(f"✅ Registered chat session {session_id} (stage {current_stage}) - Total active: {len(self.active_sessions)}")
         
         return token
     
@@ -152,20 +152,33 @@ class ChatSessionManager:
             True if session was cancelled, False if not found or already cancelled
         """
         async with self._lock:
+            logger.info(f"🛑 Attempting to cancel session {session_id} - Active sessions: {list(self.active_sessions.keys())}")
+            
             token = self.get_session(session_id)
             if token is None:
-                logger.warning(f"Cannot cancel session {session_id}: not found")
+                logger.warning(f"❌ Cannot cancel session {session_id}: not found")
+                logger.warning(f"❌ Available sessions: {list(self.active_sessions.keys())}")
                 return False
             
             if token.is_cancelled():
-                logger.info(f"Session {session_id} already cancelled")
+                logger.info(f"⚠️ Session {session_id} already cancelled")
                 return False
             
-            # Cancel the asyncio task
-            token.asyncio_task.cancel()
-            token.cancelled = True
+            # Handle different token types
+            if hasattr(token, 'asyncio_task'):
+                # ChatCancellationToken - cancel asyncio task
+                token.asyncio_task.cancel()
+                token.cancelled = True
+                stage_info = f" (stage {token.current_stage})" if hasattr(token, 'current_stage') else ""
+                logger.info(f"✅ Cancelled chat session {session_id}{stage_info}")
+            elif hasattr(token, 'cancel'):
+                # Simple cancellation token - just set flag
+                token.cancel()
+                logger.info(f"✅ Cancelled streaming session {session_id}")
+            else:
+                logger.warning(f"⚠️ Unknown token type for session {session_id}")
+                return False
             
-            logger.info(f"Cancelled chat session {session_id} (stage {token.current_stage})")
             return True
     
     def remove_session(self, session_id: str) -> bool:
@@ -180,8 +193,10 @@ class ChatSessionManager:
         """
         if session_id in self.active_sessions:
             del self.active_sessions[session_id]
-            logger.debug(f"Removed session {session_id} from active tracking")
+            logger.info(f"🗑️ Removed session {session_id} from active tracking - Remaining: {len(self.active_sessions)}")
             return True
+        else:
+            logger.warning(f"⚠️ Attempted to remove session {session_id} but it was not found")
         return False
     
     async def cleanup_completed_sessions(self) -> int:

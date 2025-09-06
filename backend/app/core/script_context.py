@@ -137,6 +137,27 @@ class ScriptExecutionContext:
         """
         return self._current_execution_stage
     
+    def set_current_provider(self, provider: str, provider_settings: Dict[str, Any]) -> None:
+        """
+        Set current AI provider and settings for this execution context.
+        
+        Args:
+            provider: Provider name ("ollama" or "openai")
+            provider_settings: Provider connection settings
+        """
+        self.current_provider = provider
+        self.current_provider_settings = provider_settings or {}
+        logger.debug(f"Updated script context provider to: {provider}")
+    
+    def get_all_variables(self) -> Dict[str, Any]:
+        """
+        Get all user variables for template substitution.
+        
+        Returns:
+            Dictionary of all user variables
+        """
+        return self._user_variables.copy()
+    
     def __getattr__(self, name: str):
         """
         Provide attribute access to user variables and plugin functions.
