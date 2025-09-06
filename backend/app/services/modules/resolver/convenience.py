@@ -1,41 +1,19 @@
 """
-Clean modular staged module resolver.
+Convenience functions for backward compatibility with the resolver API.
 
-This replaces the monolithic 679-line implementation with direct imports
-from focused components that handle specific responsibilities.
+These functions provide the same interface as the original monolithic resolver.py
+for API endpoints and other modules that depend on them.
 """
 
 import asyncio
 import concurrent.futures
-from typing import List, Optional, Dict, Any, AsyncIterator
+from typing import List, Optional
 from sqlalchemy.orm import Session
 
-from ...database.connection import get_db
-from .template_parser import TemplateParser
-
-# Direct imports from modular components
-from .resolver.orchestrator import StagedModuleResolver
-from .resolver.result_models import (
-    StagedTemplateResolutionResult,
-    PostResponseExecutionResult,
-    CompleteResolutionResult,
-    ExecutionStage,
-    validate_module_name
-)
-from .stages.base_stage import ModuleResolutionWarning
-
-# Re-export for API compatibility
-__all__ = [
-    "StagedModuleResolver",
-    "StagedTemplateResolutionResult", 
-    "PostResponseExecutionResult",
-    "CompleteResolutionResult",
-    "ExecutionStage",
-    "ModuleResolutionWarning",
-    "resolve_template_for_response",
-    "_parse_module_references",
-    "validate_module_name"
-]
+from ....database.connection import get_db
+from ..template_parser import TemplateParser
+from .orchestrator import StagedModuleResolver
+from .result_models import StagedTemplateResolutionResult
 
 
 def resolve_template_for_response(
