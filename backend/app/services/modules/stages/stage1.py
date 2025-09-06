@@ -77,11 +77,17 @@ class Stage1Executor(BaseStageExecutor):
             logger.debug("No Stage 1 modules found")
             return template
         
-        logger.debug(f"Found {len(stage1_modules)} modules for Stage 1")
+        logger.debug(f"Found {len(stage1_modules)} modules for Stage 1: {[m.name for m in stage1_modules]}")
         
-        # Resolve modules in template
+        # First, resolve any POST_RESPONSE module references (both with and without conversation state)
+        current_template = self._resolve_previous_post_response_results(
+            template, conversation_id, db, resolved_modules, warnings
+        )
+        logger.debug(f"After POST_RESPONSE resolution, resolved_modules: {resolved_modules}")
+        
+        # Then resolve regular Stage 1 modules in the updated template
         return self._resolve_modules_in_template(
-            template=template,
+            template=current_template,
             modules=stage1_modules,
             warnings=warnings,
             resolved_modules=resolved_modules,
@@ -140,7 +146,152 @@ class Stage1Executor(BaseStageExecutor):
             not module.requires_ai_inference):
             return True
         
-        # TODO: Add logic for previous POST_RESPONSE results from conversation state
-        # This would check ConversationState for stored POST_RESPONSE results
+        # Previous POST_RESPONSE results are handled in _resolve_previous_post_response_results
+        # This method only determines if a module should execute in Stage 1
         
         return False
+    
+    def _resolve_previous_post_response_results(
+        self,
+        template: str,
+        conversation_id: Optional[str],
+        db_session: Session,
+        resolved_modules: List[str],
+        warnings: List[ModuleResolutionWarning]
+    ) -> str:
+        """
+        Resolve module references that have previous POST_RESPONSE results stored.
+        
+        This checks ConversationState for modules that executed in previous
+        POST_RESPONSE stages and replaces their @module_name references with
+        the stored variable outputs.
+        
+        Args:
+            template: Template string with @module_name references
+            conversation_id: Conversation ID to look up state
+            db_session: Database session
+            resolved_modules: List to append resolved module names to
+            warnings: List to append warnings to
+            
+        Returns:
+            Template with previous POST_RESPONSE results resolved
+        """
+        if not conversation_id:
+            return template
+            
+        try:
+            from ....models.conversation_state import ConversationState
+            from ....models import Module, ExecutionContext
+            from ..template_parser import TemplateParser
+            
+            # Get all module references in the template
+            module_references = TemplateParser.parse_module_references(template)
+            if not module_references:
+                return template
+                
+            # Get all conversation states for this conversation
+            conversation_states = ConversationState.get_for_conversation(db_session, conversation_id).all()
+            logger.debug(f"Found {len(conversation_states)} conversation states for conversation {conversation_id}")
+            
+            current_template = template
+            
+            # Handle modules that have no conversation state (first message case)
+            # These should resolve to empty string entirely, but only if they are POST_RESPONSE modules
+            if not conversation_states:
+                # Check each module reference to see if it's a POST_RESPONSE module
+                for module_ref in module_references:
+                    # Check if this is a POST_RESPONSE module
+                    module = db_session.query(Module).filter(Module.name == module_ref).first()
+                    if module and module.execution_context == ExecutionContext.POST_RESPONSE:
+                        # This is a POST_RESPONSE module with no conversation state - resolve to empty string
+                        module_pattern = f"@{module_ref}"
+                        if module_pattern in current_template:
+                            current_template = current_template.replace(module_pattern, "")
+                            resolved_modules.append(module_ref)
+                            logger.debug(f"Resolved POST_RESPONSE module '{module_ref}' to empty string (no conversation state)")
+                    else:
+                        logger.debug(f"Skipping non-POST_RESPONSE module '{module_ref}' for normal Stage 1 processing")
+                return current_template
+            
+            # Track which modules have conversation state
+            modules_with_state = {state.module.name for state in conversation_states if state.module}
+            logger.debug(f"Modules with conversation state: {modules_with_state}")
+            logger.debug(f"All module references in template: {module_references}")
+            
+            for state in conversation_states:
+                module = state.module
+                if not module or module.name not in module_references:
+                    continue
+                    
+                # Get the output from the stored variables
+                variables = state.variables or {}
+                logger.debug(f"Module '{module.name}' has stored variables: {variables}")
+                
+                # For modules with ${variable} syntax, we need to resolve the template
+                if module.content and '${' in module.content:
+                    try:
+                        logger.debug(f"Resolving template '{module.content}' with variables: {variables}")
+                        resolved_content = self._resolve_template_variables(module.content, variables)
+                        logger.debug(f"Resolved POST_RESPONSE module '{module.name}' to: {resolved_content}")
+                    except Exception as e:
+                        logger.warning(f"Failed to resolve variables for module '{module.name}': {e}")
+                        resolved_content = module.content  # Fallback to original content
+                else:
+                    # Simple content or no variable substitution needed
+                    resolved_content = module.content or ""
+                    logger.debug(f"Module '{module.name}' has no template variables, using content: {resolved_content}")
+                
+                # Replace @module_name with resolved content
+                module_pattern = f"@{module.name}"
+                if module_pattern in current_template:
+                    current_template = current_template.replace(module_pattern, resolved_content)
+                    resolved_modules.append(module.name)
+                    logger.debug(f"Resolved previous POST_RESPONSE result for module '{module.name}'")
+            
+            # Handle POST_RESPONSE modules that are referenced but don't have conversation state
+            # These should resolve to empty string
+            for module_ref in module_references:
+                if module_ref not in modules_with_state:
+                    # Check if this is a POST_RESPONSE module
+                    module = db_session.query(Module).filter(Module.name == module_ref).first()
+                    if module and module.execution_context == ExecutionContext.POST_RESPONSE:
+                        # This is a POST_RESPONSE module without stored state - resolve to empty string
+                        module_pattern = f"@{module_ref}"
+                        if module_pattern in current_template:
+                            current_template = current_template.replace(module_pattern, "")
+                            resolved_modules.append(module_ref)
+                            logger.debug(f"Resolved POST_RESPONSE module '{module_ref}' to empty string (no stored state)")
+                    else:
+                        logger.debug(f"Skipping non-POST_RESPONSE module '{module_ref}' (no stored state) for normal Stage 1 processing")
+            
+            return current_template
+            
+        except Exception as e:
+            logger.error(f"Error resolving previous POST_RESPONSE results: {e}")
+            warnings.append(ModuleResolutionWarning(
+                module_name="post_response_resolution",
+                warning_type="previous_results_error", 
+                message=f"Failed to resolve previous POST_RESPONSE results: {str(e)}",
+                stage=1
+            ))
+            return template
+    
+    def _resolve_template_variables(self, template: str, variables: Dict[str, Any]) -> str:
+        """
+        Resolve ${variable} references in a template using provided variables.
+        
+        Args:
+            template: Template string with ${variable} syntax
+            variables: Dictionary of variable name -> value mappings
+            
+        Returns:
+            Resolved template string
+        """
+        import re
+        
+        def replace_variable(match):
+            var_name = match.group(1)
+            return str(variables.get(var_name, f"${{{var_name}}}"))  # Keep unresolved if not found
+        
+        # Replace all ${variable} patterns
+        return re.sub(r'\$\{([^}]+)\}', replace_variable, template)

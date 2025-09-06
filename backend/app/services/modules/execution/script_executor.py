@@ -167,6 +167,113 @@ class ScriptExecutor:
         
         return script_context
     
+    def execute_with_details(self, module: Module, context: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Execute an advanced Python script module and return detailed results.
+        
+        This method returns both the final resolved template and the raw script variables,
+        which is useful for POST_RESPONSE stages that need to store the variables.
+        
+        Args:
+            module: Module to execute (must be ModuleType.ADVANCED)
+            context: Execution context containing conversation info, etc.
+            
+        Returns:
+            Dictionary containing:
+            - final_output: The resolved template string
+            - script_variables: Raw variables from script execution
+            - success: Whether execution was successful
+            - error_message: Error message if execution failed
+        """
+        if module.type != ModuleType.ADVANCED:
+            return {
+                "final_output": "",
+                "script_variables": {},
+                "success": False,
+                "error_message": f"ScriptExecutor can only execute ADVANCED modules, got {module.type}"
+            }
+        
+        logger.debug(f"Executing advanced module with details: {module.name}")
+        
+        # Get script content from the script field (not content field)
+        script_content = module.script or ""
+        if not script_content.strip():
+            logger.warning(f"Advanced module '{module.name}' has empty script")
+            return {
+                "final_output": "",
+                "script_variables": {},
+                "success": True,
+                "error_message": None
+            }
+        
+        # Build execution context
+        script_context = self._build_script_context(module, context)
+        
+        try:
+            # Execute script using ScriptEngine
+            execution_result = self.script_engine.execute_script(
+                script=script_content,
+                context={'ctx': script_context}
+            )
+            
+            if execution_result.success:
+                # Script executed successfully - now resolve the module's template using script variables
+                logger.debug(f"Advanced module '{module.name}' script executed successfully")
+                
+                # Capture script outputs as variables for template resolution
+                script_variables = execution_result.outputs or {}
+                if script_variables:
+                    for var_name, var_value in script_variables.items():
+                        script_context.set_variable(var_name, var_value)
+                
+                # Get the module's template (content field)
+                template_content = module.content or ""
+                
+                final_output = ""
+                if template_content.strip():
+                    # Resolve template variables using script context variables
+                    from ..template_parser import TemplateParser
+                    
+                    # Get variables set by the script (including captured outputs)
+                    all_script_variables = script_context.get_all_variables()
+                    
+                    # Substitute variables in template
+                    resolved_template = TemplateParser.substitute_variables(template_content, all_script_variables)
+                    final_output = resolved_template
+                    logger.debug(f"Advanced module '{module.name}' template resolved, {len(final_output)} characters")
+                
+                elif script_variables:
+                    # No template, but script had output - return the output
+                    final_output = "\n".join(str(output) for output in script_variables.values())
+                    logger.debug(f"Advanced module '{module.name}' returned script output, {len(final_output)} characters")
+                
+                return {
+                    "final_output": final_output,
+                    "script_variables": script_variables,
+                    "success": True,
+                    "error_message": None
+                }
+            
+            else:
+                # Script execution failed
+                error_msg = execution_result.error_message or "Unknown execution error"
+                logger.error(f"Advanced module '{module.name}' execution failed: {error_msg}")
+                return {
+                    "final_output": f"[Error in module {module.name}: {error_msg}]",
+                    "script_variables": {},
+                    "success": False,
+                    "error_message": error_msg
+                }
+                
+        except Exception as e:
+            logger.error(f"Error executing advanced module '{module.name}': {e}")
+            return {
+                "final_output": f"[Error in module {module.name}: {str(e)}]",
+                "script_variables": {},
+                "success": False,
+                "error_message": str(e)
+            }
+    
     @staticmethod
     def can_execute(module: Module) -> bool:
         """
