@@ -87,7 +87,8 @@ class BaseStageExecutor(ABC):
         trigger_context: Optional[Dict[str, Any]] = None,
         current_provider: Optional[str] = None,
         current_provider_settings: Optional[Dict[str, Any]] = None,
-        current_chat_controls: Optional[Dict[str, Any]] = None
+        current_chat_controls: Optional[Dict[str, Any]] = None,
+        session_id: Optional[str] = None
     ) -> str:
         """
         Resolve specific modules in a template.
@@ -157,7 +158,8 @@ class BaseStageExecutor(ABC):
                     warnings=warnings,
                     current_provider=current_provider,
                     current_provider_settings=current_provider_settings,
-                    current_chat_controls=current_chat_controls
+                    current_chat_controls=current_chat_controls,
+                    session_id=session_id
                 )
                 
                 # Replace module reference with resolved content
@@ -205,7 +207,8 @@ class BaseStageExecutor(ABC):
         warnings: Optional[List[ModuleResolutionWarning]] = None,
         current_provider: Optional[str] = None,
         current_provider_settings: Optional[Dict[str, Any]] = None,
-        current_chat_controls: Optional[Dict[str, Any]] = None
+        current_chat_controls: Optional[Dict[str, Any]] = None,
+        session_id: Optional[str] = None
     ) -> str:
         """
         Process a single module and return its resolved content.
@@ -245,7 +248,8 @@ class BaseStageExecutor(ABC):
                     'trigger_context': trigger_context or {},
                     'current_provider': current_provider,
                     'current_provider_settings': current_provider_settings or {},
-                    'current_chat_controls': current_chat_controls or {}
+                    'current_chat_controls': current_chat_controls or {},
+                    'session_id': session_id
                 }
                 return executor.execute(module, context)
             

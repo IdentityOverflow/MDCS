@@ -45,7 +45,8 @@ class Stage1Executor(BaseStageExecutor):
         trigger_context: Optional[Dict[str, Any]] = None,
         current_provider: Optional[str] = None,
         current_provider_settings: Optional[Dict[str, Any]] = None,
-        current_chat_controls: Optional[Dict[str, Any]] = None
+        current_chat_controls: Optional[Dict[str, Any]] = None,
+        session_id: Optional[str] = None
     ) -> str:
         """
         Execute Stage 1 module resolution.
@@ -97,7 +98,8 @@ class Stage1Executor(BaseStageExecutor):
             trigger_context=trigger_context,
             current_provider=current_provider,
             current_provider_settings=current_provider_settings,
-            current_chat_controls=current_chat_controls
+            current_chat_controls=current_chat_controls,
+            session_id=session_id
         )
     
     def _get_modules_for_stage(self, db_session: Session, persona_id: Optional[str]) -> List[Module]:

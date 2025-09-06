@@ -82,6 +82,85 @@ def _run_async_ai_call(provider: str, chat_request: ChatRequest) -> str:
         return f"Error processing with AI: {str(e)}"
 
 
+def _run_cancellable_ai_call(provider: str, chat_request: ChatRequest, session_id: str = None) -> str:
+    """
+    Run an AI call with full cancellation support using StreamingAccumulator.
+    
+    This converts non-streaming requests to streaming internally for cancellation support.
+    
+    Args:
+        provider: Provider type ("ollama" or "openai")
+        chat_request: The chat request to process
+        session_id: Session ID for cancellation tracking
+        
+    Returns:
+        AI response content
+        
+    Raises:
+        asyncio.CancelledError: If the operation is cancelled
+    """
+    if not session_id:
+        # No session ID - fall back to regular synchronous call
+        return _run_async_ai_call(provider, chat_request)
+    
+    # Check if we're already in an async context or need to run one
+    try:
+        import asyncio
+        from ..services.streaming_accumulator import StreamingAccumulator
+        
+        async def _async_cancellable_wrapper():
+            try:
+                # Initialize appropriate service
+                if provider == "ollama":
+                    from ..services.providers.ollama.service import OllamaService
+                    service = OllamaService()
+                else:
+                    from ..services.providers.openai.service import OpenAIService
+                    service = OpenAIService()
+                
+                # Validate provider settings
+                if not service.validate_settings(chat_request.provider_settings):
+                    raise ValueError(f"Invalid provider settings for {provider}")
+                
+                # Force streaming mode for cancellation support
+                chat_request.chat_controls["stream"] = True
+                
+                # Get streaming response
+                stream = service.send_message_stream(chat_request)
+                
+                # Use StreamingAccumulator for cancellation support
+                accumulator = StreamingAccumulator()
+                result = await accumulator.accumulate_stream(
+                    stream, 
+                    session_id=session_id,
+                    conversation_id=getattr(chat_request, 'conversation_id', None)
+                )
+                return result.content
+            except asyncio.CancelledError:
+                logger.info(f"AI plugin call cancelled for session {session_id}")
+                raise
+            except Exception as e:
+                logger.error(f"Error in cancellable AI call: {e}")
+                raise
+        
+        # Try to run in current event loop or create new one
+        try:
+            loop = asyncio.get_running_loop()
+            # We're in an async context - run using run_in_executor for thread safety
+            import concurrent.futures
+            with concurrent.futures.ThreadPoolExecutor() as executor:
+                future = executor.submit(asyncio.run, _async_cancellable_wrapper())
+                return future.result(timeout=30)  # 30 second timeout
+        except RuntimeError:
+            # No event loop running - safe to run directly
+            return asyncio.run(_async_cancellable_wrapper())
+            
+    except Exception as e:
+        logger.error(f"Error setting up cancellable AI call: {e}")
+        # Fall back to regular synchronous call
+        return _run_async_ai_call(provider, chat_request)
+
+
 def _sync_ollama_call(chat_request: ChatRequest) -> str:
     """Make a synchronous HTTP call to Ollama."""
     import requests
@@ -330,8 +409,20 @@ Input:
         
         logger.debug(f"AI generation: {provider} - {instructions[:30]}...")
         
-        # Use synchronous wrapper to call AI provider
-        result = _run_async_ai_call(provider, chat_request)
+        # Get session ID for cancellation support
+        session_id = None
+        if _script_context and hasattr(_script_context, 'session_id'):
+            session_id = getattr(_script_context, 'session_id', None)
+        
+        logger.info(f"Generate function: script_context={_script_context is not None}, session_id={session_id}")
+        
+        # Use cancellable AI call if session ID is available, otherwise fall back to sync
+        if session_id:
+            logger.debug(f"Using cancellable AI call for session {session_id}")
+            result = _run_cancellable_ai_call(provider, chat_request, session_id)
+        else:
+            logger.debug("No session ID available, using synchronous AI call")
+            result = _run_async_ai_call(provider, chat_request)
         
         logger.info(f"Generate result: '{result}' (type: {type(result)}, len: {len(str(result))})")
         
@@ -447,8 +538,18 @@ def reflect(instructions: str, _script_context=None, **kwargs) -> str:
                 system_prompt=system_prompt
             )
             
-            # Use synchronous wrapper to call AI provider
-            result = _run_async_ai_call(provider, chat_request)
+            # Get session ID for cancellation support
+            session_id = None
+            if hasattr(_script_context, 'session_id'):
+                session_id = getattr(_script_context, 'session_id', None)
+            
+            # Use cancellable AI call if session ID is available, otherwise fall back to sync
+            if session_id:
+                logger.debug(f"Using cancellable reflection call for session {session_id}")
+                result = _run_cancellable_ai_call(provider, chat_request, session_id)
+            else:
+                logger.debug("No session ID available, using synchronous reflection call")
+                result = _run_async_ai_call(provider, chat_request)
             
             return result
             

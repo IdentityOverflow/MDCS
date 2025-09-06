@@ -177,7 +177,8 @@ class TemplateResolver:
                     trigger_context=trigger_context,
                     current_provider=current_provider,
                     current_provider_settings=current_provider_settings,
-                    current_chat_controls=current_chat_controls
+                    current_chat_controls=current_chat_controls,
+                    session_id=session_id
                 )
                 elapsed_time = stage_timer.elapsed or 0.0
                 logger.debug(f"Stage 1 completed in {elapsed_time:.3f}s")
@@ -215,7 +216,8 @@ class TemplateResolver:
                     trigger_context=trigger_context,
                     current_provider=current_provider,
                     current_provider_settings=current_provider_settings,
-                    current_chat_controls=current_chat_controls
+                    current_chat_controls=current_chat_controls,
+                    session_id=session_id
                 )
                 elapsed_time = stage_timer.elapsed or 0.0
                 logger.debug(f"Stage 2 completed in {elapsed_time:.3f}s")

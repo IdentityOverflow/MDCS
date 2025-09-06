@@ -44,7 +44,8 @@ class Stage2Executor(BaseStageExecutor):
         trigger_context: Optional[Dict[str, Any]] = None,
         current_provider: Optional[str] = None,
         current_provider_settings: Optional[Dict[str, Any]] = None,
-        current_chat_controls: Optional[Dict[str, Any]] = None
+        current_chat_controls: Optional[Dict[str, Any]] = None,
+        session_id: Optional[str] = None
     ) -> str:
         """
         Execute Stage 2 AI-powered module resolution.
@@ -90,7 +91,8 @@ class Stage2Executor(BaseStageExecutor):
             trigger_context=trigger_context,
             current_provider=current_provider,
             current_provider_settings=current_provider_settings,
-            current_chat_controls=current_chat_controls
+            current_chat_controls=current_chat_controls,
+            session_id=session_id
         )
     
     def _get_modules_for_stage(self, db_session: Session, persona_id: Optional[str]) -> List[Module]:
@@ -146,7 +148,8 @@ class Stage2Executor(BaseStageExecutor):
         warnings: Optional[List[ModuleResolutionWarning]] = None,
         current_provider: Optional[str] = None,
         current_provider_settings: Optional[Dict[str, Any]] = None,
-        current_chat_controls: Optional[Dict[str, Any]] = None
+        current_chat_controls: Optional[Dict[str, Any]] = None,
+        session_id: Optional[str] = None
     ) -> str:
         """
         Process a Stage 2 module with AI inference support.
@@ -194,7 +197,8 @@ class Stage2Executor(BaseStageExecutor):
                     'current_provider_settings': current_provider_settings or {},
                     'current_chat_controls': current_chat_controls or {},
                     'stage': self.STAGE_NUMBER,
-                    'stage_name': self.STAGE_NAME
+                    'stage_name': self.STAGE_NAME,
+                    'session_id': session_id
                 }
                 return executor.execute(module, context)
             

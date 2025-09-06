@@ -161,12 +161,18 @@ class ScriptExecutor:
         # Add session ID for cancellation support
         if session_id:
             script_context.session_id = session_id
+            logger.info(f"Set session_id={session_id} in script context for module {module.name}")
         else:
             # Try to get session_id from resolver session manager if available
             if hasattr(self, 'session_manager') and self.session_manager:
                 current_session_id = self.session_manager.get_current_session_id()
                 if current_session_id:
                     script_context.session_id = current_session_id
+                    logger.info(f"Got session_id={current_session_id} from session manager for module {module.name}")
+                else:
+                    logger.warning(f"No session_id available from session manager for module {module.name}")
+            else:
+                logger.warning(f"No session_id or session manager available for module {module.name}")
         
         # Add stage information if available
         if stage is not None:
