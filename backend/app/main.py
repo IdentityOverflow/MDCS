@@ -24,7 +24,7 @@ from app.api.templates import router as templates_router
 from app.core.script_plugins import plugin_registry
 
 # Configure logging
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(level=logging.WARNING)
 logger = logging.getLogger(__name__)
 
 
@@ -144,5 +144,5 @@ if __name__ == "__main__":
         host="0.0.0.0",
         port=8000,
         reload=settings.debug,
-        log_level="info"
+        log_level="warning"
     )

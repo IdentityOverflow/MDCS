@@ -45,7 +45,7 @@ class ScriptExecutor:
         if module.type != ModuleType.ADVANCED:
             raise ValueError(f"ScriptExecutor can only execute ADVANCED modules, got {module.type}")
         
-        logger.debug(f"Executing advanced module: {module.name}")
+        logger.debug(f"Executing script module: {module.name}")
         
         # Get script content from the script field (not content field)
         script_content = module.script or ""
@@ -69,9 +69,9 @@ class ScriptExecutor:
                 
                 # Capture script outputs as variables for template resolution
                 if execution_result.outputs:
-                    logger.info(f"Script outputs: {execution_result.outputs}")
+                    logger.debug(f"Script outputs: {execution_result.outputs}")
                     for var_name, var_value in execution_result.outputs.items():
-                        logger.info(f"Setting variable '{var_name}' = '{var_value}' (type: {type(var_value)})")
+                        logger.debug(f"Setting variable '{var_name}' = '{var_value}' (type: {type(var_value)})")
                         script_context.set_variable(var_name, var_value)
                 else:
                     logger.warning(f"No script outputs captured for module '{module.name}'")
@@ -85,12 +85,12 @@ class ScriptExecutor:
                     
                     # Get variables set by the script (including captured outputs)
                     script_variables = script_context.get_all_variables()
-                    logger.info(f"Variables available for template substitution: {script_variables}")
-                    logger.info(f"Template content: '{template_content}'")
+                    logger.debug(f"Variables available for template substitution: {script_variables}")
+                    logger.debug(f"Template content: '{template_content}'")
                     
                     # Substitute variables in template
                     resolved_template = TemplateParser.substitute_variables(template_content, script_variables)
-                    logger.info(f"Resolved template: '{resolved_template}'")
+                    logger.debug(f"Resolved template: '{resolved_template}'")
                     
                     logger.debug(f"Advanced module '{module.name}' template resolved, {len(resolved_template)} characters")
                     return resolved_template
@@ -161,18 +161,18 @@ class ScriptExecutor:
         # Add session ID for cancellation support
         if session_id:
             script_context.session_id = session_id
-            logger.info(f"Set session_id={session_id} in script context for module {module.name}")
+            logger.debug(f"Set session_id={session_id} in script context for module {module.name}")
         else:
             # Try to get session_id from resolver session manager if available
             if hasattr(self, 'session_manager') and self.session_manager:
                 current_session_id = self.session_manager.get_current_session_id()
                 if current_session_id:
                     script_context.session_id = current_session_id
-                    logger.info(f"Got session_id={current_session_id} from session manager for module {module.name}")
+                    logger.debug(f"Got session_id={current_session_id} from session manager for module {module.name}")
                 else:
-                    logger.warning(f"No session_id available from session manager for module {module.name}")
+                    logger.debug(f"No session_id available from session manager for module {module.name}")
             else:
-                logger.warning(f"No session_id or session manager available for module {module.name}")
+                logger.debug(f"No session_id or session manager available for module {module.name}")
         
         # Add stage information if available
         if stage is not None:

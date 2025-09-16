@@ -203,7 +203,7 @@ def list_modules(
     Returns:
         List of modules
     """
-    logger.info(f"Listing modules with filters: type={type}, active_only={active_only}")
+    logger.debug(f"Listing modules with filters: type={type}, active_only={active_only}")
     
     try:
         query = db.query(Module)
@@ -217,7 +217,7 @@ def list_modules(
         # Order by creation date, newest first
         modules = query.order_by(Module.created_at.desc()).all()
         
-        logger.info(f"Found {len(modules)} modules")
+        logger.debug(f"Found {len(modules)} modules")
         return [ModuleResponse.from_module(module) for module in modules]
         
     except SQLAlchemyError as e:

@@ -124,16 +124,20 @@ def _run_cancellable_ai_call(provider: str, chat_request: ChatRequest, session_i
                 
                 # Force streaming mode for cancellation support
                 chat_request.chat_controls["stream"] = True
+                logger.info(f"AI module streaming request - provider_settings: {chat_request.provider_settings}")
+                logger.info(f"AI module streaming request - chat_controls: {chat_request.chat_controls}")
                 
-                # Get streaming response
-                stream = service.send_message_stream(chat_request)
+                # Get streaming response with session ID for cancellation
+                stream = service.send_message_stream(chat_request, session_id=session_id)
                 
                 # Use StreamingAccumulator for cancellation support
+                # Pass session_id for cancellation but don't let it manage session cleanup
                 accumulator = StreamingAccumulator()
                 result = await accumulator.accumulate_stream(
                     stream, 
-                    session_id=session_id,
-                    conversation_id=getattr(chat_request, 'conversation_id', None)
+                    session_id=session_id,  # Enable cancellation
+                    conversation_id=getattr(chat_request, 'conversation_id', None),
+                    manage_session=False  # Let main endpoint manage session cleanup
                 )
                 return result.content
             except asyncio.CancelledError:
@@ -180,7 +184,7 @@ def _sync_ollama_call(chat_request: ChatRequest) -> str:
     payload = {
         "model": model,
         "messages": messages,
-        "stream": False,
+        "stream": chat_request.chat_controls.get("stream", False),
         "options": {
             "temperature": chat_request.chat_controls.get("temperature", 0.1),
             "num_predict": chat_request.chat_controls.get("max_tokens", 1000)
@@ -384,7 +388,11 @@ def generate(*args, _script_context=None, **kwargs) -> str:
         # Set defaults for missing chat controls
         chat_controls.setdefault("temperature", 0.1)  # Lower for consistency
         chat_controls.setdefault("max_tokens", 1000)
-        chat_controls.setdefault("stream", False)  # Always non-streaming for scripts
+        
+        # Force streaming mode for cancellation support
+        chat_controls["stream"] = True
+        logger.info(f"AI module streaming request - provider_settings: {provider_settings}")
+        logger.info(f"AI module streaming request - chat_controls: {chat_controls}")
         
         # Build the generation prompt
         if input_text and input_text.strip():
@@ -515,7 +523,11 @@ def reflect(instructions: str, _script_context=None, **kwargs) -> str:
             # Set reasonable defaults for reflection
             chat_controls.setdefault("temperature", 0.3)  # Moderate temperature for balanced reflection
             chat_controls.setdefault("max_tokens", 200)   # Reasonable default for reflections
-            chat_controls.setdefault("stream", False)     # Always non-streaming for scripts
+            
+            # Force streaming mode for cancellation support
+            chat_controls["stream"] = True
+            logger.info(f"AI reflection streaming request - provider_settings: {provider_settings}")
+            logger.info(f"AI reflection streaming request - chat_controls: {chat_controls}")
             
             # Apply keyword arguments to override defaults
             chat_controls.update(kwargs)

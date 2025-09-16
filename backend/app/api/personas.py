@@ -190,7 +190,7 @@ def list_personas(
     Returns:
         List of personas
     """
-    logger.info(f"Listing personas with filters: mode={mode}, active_only={active_only}")
+    logger.debug(f"Listing personas with filters: mode={mode}, active_only={active_only}")
     
     try:
         query = db.query(Persona)
@@ -204,7 +204,7 @@ def list_personas(
         # Order by creation date, newest first
         personas = query.order_by(Persona.created_at.desc()).all()
         
-        logger.info(f"Found {len(personas)} personas")
+        logger.debug(f"Found {len(personas)} personas")
         return [PersonaResponse.from_persona(persona) for persona in personas]
         
     except SQLAlchemyError as e:
@@ -233,7 +233,7 @@ def get_persona(
     Raises:
         HTTPException: If persona not found
     """
-    logger.info(f"Getting persona: {persona_id}")
+    logger.debug(f"Getting persona: {persona_id}")
     
     try:
         persona = db.query(Persona).filter(Persona.id == persona_id).first()

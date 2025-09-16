@@ -134,7 +134,7 @@ async def resolve_system_prompt_with_session(
         return result.resolved_template
         
     except asyncio.CancelledError:
-        logger.info(f"System prompt resolution cancelled for session {session_id}")
+        logger.debug(f"System prompt resolution cancelled for session {session_id}")
         raise
     except ValueError:
         # Invalid UUID format
@@ -181,8 +181,8 @@ async def send_chat_message_with_cancellation(
     """
     start_time = time.time()
     
-    # Generate session ID for this request
-    session_id = str(uuid.uuid4())
+    # Use client-provided session ID or generate new one
+    session_id = request.session_id or str(uuid.uuid4())
     
     # Add session ID to response headers
     response.headers["X-Session-ID"] = session_id
@@ -197,12 +197,12 @@ async def send_chat_message_with_cancellation(
                 asyncio_task=current_task,
                 current_stage=3  # Main AI response generation
             )
-            logger.info(f"✅ Pre-registered session {session_id} at API level with task {id(current_task)}")
+            logger.debug(f"✅ Pre-registered session {session_id} at API level with task {id(current_task)}")
             
             # Verify registration worked
             token = session_manager.get_session(session_id)
             if token:
-                logger.info(f"✅ Session {session_id} verified in session manager")
+                logger.debug(f"✅ Session {session_id} verified in session manager")
             else:
                 logger.error(f"❌ Session {session_id} NOT FOUND after registration!")
                 
@@ -320,7 +320,7 @@ async def send_chat_message_with_cancellation(
         return api_response
         
     except asyncio.CancelledError:
-        logger.info(f"Chat message cancelled for session {session_id}")
+        logger.debug(f"Chat message cancelled for session {session_id}")
         # Clean up session on cancellation
         await session_manager.cancel_session(session_id)
         # Return partial response or error as appropriate
@@ -370,8 +370,8 @@ async def stream_chat_message_with_cancellation(
     Raises:
         HTTPException: For various error conditions
     """
-    # Generate session ID for this request
-    session_id = str(uuid.uuid4())
+    # Use client-provided session ID or generate new one
+    session_id = request.session_id or str(uuid.uuid4())
     
     # Register session with a simple cancellation flag instead of task cancellation
     # This prevents the ASGI connection from being cancelled
@@ -397,7 +397,7 @@ async def stream_chat_message_with_cancellation(
     # Create and register simple cancellation token
     simple_token = SimpleCancellationToken(session_id=session_id)
     session_manager.active_sessions[session_id] = simple_token
-    logger.info(f"✅ Registered streaming session {session_id} with simple cancellation token")
+    logger.debug(f"✅ Registered streaming session {session_id} with simple cancellation token")
     
     # Get provider settings from request
     provider_settings = get_provider_settings_from_request(request)
@@ -607,11 +607,11 @@ async def cancel_chat_session(
     Returns:
         Cancellation result
     """
-    logger.info(f"🛑 Cancel request received for session {session_id}")
+    logger.debug(f"🛑 Cancel request received for session {session_id}")
     
     # Debug: Check what sessions are active
     active_sessions = list(session_manager.active_sessions.keys())
-    logger.info(f"🔍 Active sessions in manager: {active_sessions}")
+    logger.debug(f"🔍 Active sessions in manager: {active_sessions}")
     
     # Debug: Check specific session
     token = session_manager.get_session(session_id)
@@ -623,7 +623,7 @@ async def cancel_chat_session(
     
     cancelled = await session_manager.cancel_session(session_id)
     
-    logger.info(f"🛑 Cancel result for {session_id}: {cancelled}")
+    logger.debug(f"🛑 Cancel result for {session_id}: {cancelled}")
     
     return {
         "cancelled": cancelled,

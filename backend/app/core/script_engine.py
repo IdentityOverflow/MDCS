@@ -163,7 +163,7 @@ class ScriptEngine:
             # Extract output variables from locals
             outputs = self._extract_outputs(execution_locals)
             
-            logger.info(f"Script executed successfully in {execution_time:.3f}s, {len(outputs)} outputs")
+            logger.debug(f"Script executed successfully in {execution_time:.3f}s, {len(outputs)} outputs")
             
             return ScriptExecutionResult(
                 success=True,

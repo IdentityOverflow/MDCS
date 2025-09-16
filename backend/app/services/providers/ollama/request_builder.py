@@ -94,7 +94,7 @@ class OllamaRequestBuilder:
                 "role": "system",
                 "content": system_message
             })
-            logger.info(f"Added system message with {len(system_message)} characters")
+            logger.debug(f"Added system message with {len(system_message)} characters")
         else:
             logger.warning("No system message found in request")
         

@@ -171,6 +171,11 @@ export function useChat() {
       await sessionManagement.cancelCurrentSession()
     }
 
+    // Generate session ID immediately for cancellation support
+    const sessionId = crypto.randomUUID()
+    console.log('🚀 DEBUG: Generated session ID for non-streaming request:', sessionId)
+    sessionManagement.startSession(sessionId)
+
     error.value = null
     streamingChat.isStreaming.value = true
     streamingChat.processingStage.value = 'thinking'
@@ -199,7 +204,8 @@ export function useChat() {
         chat_controls: buildChatControls(freshControls),
         provider_settings: enhancedProviderSettings,
         persona_id: selectedPersonaId || undefined,
-        conversation_id: conversationPersistence.currentConversation.value?.id || undefined
+        conversation_id: conversationPersistence.currentConversation.value?.id || undefined,
+        session_id: sessionId
       }
 
       // Use streaming endpoint for cancellation support but accumulate results
@@ -214,10 +220,12 @@ export function useChat() {
         throw new Error(errorData.detail?.message || errorData.message || 'Chat request failed')
       }
 
-      // Extract and track session ID for cancellation support
-      const sessionId = sessionManagement.extractSessionId(response)
-      if (sessionId) {
-        sessionManagement.startSession(sessionId)
+      // Verify session ID in response matches what we sent
+      const responseSessionId = sessionManagement.extractSessionId(response)
+      console.log('🔧 DEBUG: Non-streaming response session ID:', responseSessionId)
+      console.log('🔧 DEBUG: Sent session ID:', sessionId)
+      if (responseSessionId && responseSessionId !== sessionId) {
+        console.warn('⚠️ WARNING: Response session ID differs from sent session ID')
       }
 
       // Process stream but accumulate to single result

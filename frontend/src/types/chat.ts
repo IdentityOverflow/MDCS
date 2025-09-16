@@ -42,6 +42,7 @@ export interface ChatRequest {
   provider_settings?: Record<string, any>
   persona_id?: string
   conversation_id?: string
+  session_id?: string
 }
 
 export interface ChatControls {

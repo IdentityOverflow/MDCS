@@ -46,6 +46,11 @@ export function useStreamingChat(
       await cancelCurrentSession()
     }
 
+    // Generate session ID immediately for cancellation support
+    const sessionId = crypto.randomUUID()
+    console.log('🚀 DEBUG: Generated session ID for request:', sessionId)
+    startSession(sessionId)
+
     error.value = null
     isStreaming.value = true
     currentStreamingMessage.value = ''
@@ -78,7 +83,8 @@ export function useStreamingChat(
         chat_controls: buildChatControls(freshControls),
         provider_settings: enhancedProviderSettings,
         persona_id: selectedPersonaId || undefined,
-        conversation_id: currentConversation.value?.id || undefined
+        conversation_id: currentConversation.value?.id || undefined,
+        session_id: sessionId
       }
 
       // Use the enhanced cancellation-aware endpoint
@@ -92,10 +98,12 @@ export function useStreamingChat(
         throw new Error(errorData.detail?.message || errorData.message || 'Chat request failed')
       }
 
-      // Extract and track session ID
-      const sessionId = extractSessionId(response)
-      if (sessionId) {
-        startSession(sessionId)
+      // Verify session ID in response matches what we sent
+      const responseSessionId = extractSessionId(response)
+      console.log('🔧 DEBUG: Response session ID:', responseSessionId)
+      console.log('🔧 DEBUG: Sent session ID:', sessionId)
+      if (responseSessionId && responseSessionId !== sessionId) {
+        console.warn('⚠️ WARNING: Response session ID differs from sent session ID')
       }
 
       const reader = response.body?.getReader()

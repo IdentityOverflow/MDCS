@@ -121,7 +121,7 @@ class BaseProviderService(AIProvider):
         
         return parsed_response
     
-    async def send_message_stream(self, request: ChatRequest) -> AsyncIterator[StreamingChatResponse]:
+    async def send_message_stream(self, request: ChatRequest, session_id: Optional[str] = None) -> AsyncIterator[StreamingChatResponse]:
         """
         Shared streaming implementation using stream processor composition.
         
@@ -159,6 +159,11 @@ class BaseProviderService(AIProvider):
         
         # Process stream using shared processor with provider-specific parsing
         async for response_chunk in self._stream_processor.process_stream(chunk_stream):
+            # Check for cancellation before processing each chunk
+            if session_id and self._is_session_cancelled(session_id):
+                logger.info(f"Stream cancelled for session {session_id}")
+                break
+            
             # Add debug metadata to the final chunk (matches old provider behavior)
             if response_chunk.done:
                 response_chunk.metadata["debug_api_request"] = payload
@@ -172,6 +177,17 @@ class BaseProviderService(AIProvider):
         """Set session ID for session management integration."""
         # This will be used in Phase 2 when integrating session management
         pass
+    
+    def _is_session_cancelled(self, session_id: str) -> bool:
+        """Check if a session is cancelled."""
+        try:
+            from ...chat_session_manager import get_chat_session_manager
+            session_manager = get_chat_session_manager()
+            token = session_manager.get_session(session_id)
+            return token is not None and token.is_cancelled()
+        except Exception as e:
+            logger.warning(f"Failed to check session cancellation for {session_id}: {e}")
+            return False
     
     async def send_message_with_session(self, 
                                       request: ChatRequest, 

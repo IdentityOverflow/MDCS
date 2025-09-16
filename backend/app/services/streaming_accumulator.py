@@ -55,7 +55,8 @@ class StreamingAccumulator:
         stream_generator: AsyncIterator[StreamingChatResponse],
         session_id: Optional[str] = None,
         conversation_id: Optional[str] = None,
-        progress_callback: Optional[Callable[[str, int, Optional[int]], None]] = None
+        progress_callback: Optional[Callable[[str, int, Optional[int]], None]] = None,
+        manage_session: bool = True
     ) -> AccumulatedResponse:
         """
         Accumulate a streaming response into a single response with cancellation support.
@@ -65,6 +66,7 @@ class StreamingAccumulator:
             session_id: Optional session ID for cancellation tracking
             conversation_id: Optional conversation ID for context
             progress_callback: Optional callback for progress updates
+            manage_session: Whether to manage session cleanup (default True)
             
         Returns:
             AccumulatedResponse with accumulated content and metadata
@@ -83,9 +85,9 @@ class StreamingAccumulator:
         chunks_processed = 0
         error_message = None
         
-        # Register current task for cancellation
+        # Register current task for cancellation if we're managing the session
         current_task = asyncio.current_task()
-        if current_task:
+        if session_id and manage_session and current_task:
             try:
                 self.session_manager.register_session(
                     session_id=session_id,
@@ -101,7 +103,9 @@ class StreamingAccumulator:
             except Exception as e:
                 # Log other registration errors
                 logger.warning(f"Failed to register session {session_id} for cancellation: {e}")
-        else:
+        elif session_id and not manage_session:
+            logger.debug(f"Session {session_id} managed externally - relying on existing registration for cancellation")
+        elif session_id:
             logger.warning(f"No current asyncio task found for session {session_id} - cancellation may not work")
         
         try:
@@ -173,7 +177,7 @@ class StreamingAccumulator:
             )
         finally:
             # Clean up
-            self._cleanup_accumulation(session_id)
+            self._cleanup_accumulation(session_id, manage_session=manage_session)
     
     def _is_cancelled(self, session_id: str) -> bool:
         """
@@ -188,19 +192,21 @@ class StreamingAccumulator:
         token = self.session_manager.get_session(session_id)
         return token is not None and token.is_cancelled()
     
-    def _cleanup_accumulation(self, session_id: str) -> None:
+    def _cleanup_accumulation(self, session_id: str, manage_session: bool = True) -> None:
         """
         Clean up accumulation resources.
         
         Args:
             session_id: Session ID to clean up
+            manage_session: Whether to clean up the session in session manager
         """
         # Remove from active accumulations
         if session_id in self._active_accumulations:
             del self._active_accumulations[session_id]
         
-        # Remove from session manager
-        self.session_manager.remove_session(session_id)
+        # Remove from session manager only if we're managing the session
+        if manage_session:
+            self.session_manager.remove_session(session_id)
     
     async def cancel_accumulation(self, session_id: str) -> bool:
         """

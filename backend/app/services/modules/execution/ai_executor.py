@@ -56,7 +56,7 @@ class AIExecutor(ScriptExecutor):
         if not module.requires_ai_inference:
             logger.warning(f"Module '{module.name}' doesn't require AI inference, consider using ScriptExecutor instead")
         
-        logger.debug(f"Executing AI-powered module: {module.name}")
+        logger.info(f"Executing AI-powered module: {module.name}")
         
         # Get script content
         script_content = module.script or ""
@@ -76,16 +76,16 @@ class AIExecutor(ScriptExecutor):
             
             if execution_result.success:
                 # Script executed successfully - now resolve the module's template using script variables
-                logger.debug(f"AI module '{module.name}' script executed successfully")
+                logger.info(f"AI module '{module.name}' script executed successfully")
                 
                 # Capture script outputs as variables for template resolution
                 if execution_result.outputs:
-                    logger.info(f"AI module script outputs: {execution_result.outputs}")
+                    logger.debug(f"AI module script outputs: {execution_result.outputs}")
                     for var_name, var_value in execution_result.outputs.items():
-                        logger.info(f"Setting variable '{var_name}' = '{var_value}' (type: {type(var_value)})")
+                        logger.debug(f"Setting variable '{var_name}' = '{var_value}' (type: {type(var_value)})")
                         script_context.set_variable(var_name, var_value)
                 else:
-                    logger.warning(f"No script outputs captured for AI module '{module.name}'")
+                    logger.debug(f"No script outputs captured for AI module '{module.name}'")
                 
                 # Get the module's template (content field)
                 template_content = module.content or ""
@@ -96,25 +96,25 @@ class AIExecutor(ScriptExecutor):
                     
                     # Get variables set by the script (including captured outputs)
                     script_variables = script_context.get_all_variables()
-                    logger.info(f"Variables available for AI template substitution: {script_variables}")
-                    logger.info(f"AI template content: '{template_content}'")
+                    logger.debug(f"Variables available for AI template substitution: {script_variables}")
+                    logger.debug(f"AI template content: '{template_content}'")
                     
                     # Substitute variables in template
                     resolved_template = TemplateParser.substitute_variables(template_content, script_variables)
-                    logger.info(f"Resolved AI template: '{resolved_template}'")
+                    logger.debug(f"Resolved AI template: '{resolved_template}'")
                     
-                    logger.debug(f"AI module '{module.name}' template resolved, {len(resolved_template)} characters")
+                    logger.info(f"AI module '{module.name}' template resolved, {len(resolved_template)} characters")
                     return resolved_template
                 
                 elif execution_result.outputs:
                     # No template, but script had output - return the output
                     result = "\n".join(str(output) for output in execution_result.outputs.values())
-                    logger.debug(f"AI module '{module.name}' returned script output, {len(result)} characters")
+                    logger.info(f"AI module '{module.name}' returned script output, {len(result)} characters")
                     return result
                 
                 else:
                     # No template and no script output
-                    logger.debug(f"AI module '{module.name}' executed but produced no output or template")
+                    logger.info(f"AI module '{module.name}' executed but produced no output or template")
                     return ""
             
             else:
@@ -158,7 +158,7 @@ class AIExecutor(ScriptExecutor):
         script_context.set_variable('requires_ai_inference', module.requires_ai_inference)
         
         # Log AI context setup
-        logger.debug(f"AI context enabled for module '{module.name}' with provider: {provider}")
+        logger.info(f"AI context enabled for module '{module.name}' with provider: {provider}")
         
         return script_context
     
