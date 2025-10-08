@@ -22,6 +22,7 @@ interface Emits {
   (e: 'sendMessage'): void
   (e: 'stopChat'): void
   (e: 'clearChat'): void
+  (e: 'clearMemories'): void
   (e: 'toggleMarkdown'): void
 }
 
@@ -86,6 +87,10 @@ function handleClearChat() {
   emit('clearChat')
 }
 
+function handleClearMemories() {
+  emit('clearMemories')
+}
+
 function handleToggleMarkdown() {
   emit('toggleMarkdown')
 }
@@ -126,6 +131,12 @@ function handleInput(event: Event) {
               <button class="option-action clear-action" @click="handleClearChat(); emit('update:showPanel', false)">
                 <i class="fa-solid fa-trash"></i>
                 <span>Clear Chat</span>
+              </button>
+            </div>
+            <div class="option-item">
+              <button class="option-action clear-action" @click="handleClearMemories(); emit('update:showPanel', false)">
+                <i class="fa-solid fa-brain"></i>
+                <span>Clear Memories</span>
               </button>
             </div>
           </div>

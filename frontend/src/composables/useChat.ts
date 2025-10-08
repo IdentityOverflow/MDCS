@@ -355,6 +355,28 @@ export function useChat() {
     }
   }
 
+  // Clear memories for current conversation
+  const clearMemories = async () => {
+    if (!conversationPersistence.currentConversation.value) {
+      console.warn('No active conversation to clear memories from')
+      return
+    }
+    
+    try {
+      const response = await apiRequest(`/api/conversations/${conversationPersistence.currentConversation.value.id}/memories`, {
+        method: 'DELETE'
+      })
+      
+      if (response.ok) {
+        console.log('Memories cleared successfully')
+      } else {
+        console.error('Failed to clear memories:', response.statusText)
+      }
+    } catch (error) {
+      console.error('Error clearing memories:', error)
+    }
+  }
+
   // Remove a specific message
   const removeMessage = async (messageId: string, removeFromDb: boolean = true) => {
     const index = messages.value.findIndex(m => m.id === messageId)
@@ -425,6 +447,7 @@ export function useChat() {
     // Chat methods
     sendChatMessage,
     clearChat,
+    clearMemories,
     removeMessage,
     updateMessage,
     addUserMessage,

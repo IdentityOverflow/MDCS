@@ -43,6 +43,7 @@ const {
   hasMessages, 
   sendChatMessage, 
   clearChat,
+  clearMemories,
   processingStage,
   stageMessage,
   isProcessingAfter,
@@ -161,6 +162,13 @@ function handleClearChat() {
   }
 }
 
+// Clear memories
+function handleClearMemories() {
+  if (confirm('Are you sure you want to clear all memories for this conversation? This will permanently delete all compressed memories and cannot be undone.')) {
+    clearMemories()
+  }
+}
+
 // Message editing functions are now provided by useMessageActions composable
 
 // Enhanced functions that add UI behavior
@@ -274,6 +282,7 @@ async function handleStopChat() {
       @sendMessage="handleSendMessage"
       @stopChat="handleStopChat"
       @clearChat="handleClearChat"
+      @clearMemories="handleClearMemories"
       @toggleMarkdown="toggleMarkdown"
     />
   </div>

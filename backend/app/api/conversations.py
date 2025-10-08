@@ -242,3 +242,36 @@ def delete_conversation(
     db.commit()
     
     return None
+
+
+@router.delete("/{conversation_id}/memories", status_code=status.HTTP_204_NO_CONTENT)
+def clear_conversation_memories(
+    conversation_id: str,
+    db: Session = Depends(get_db)
+):
+    """Clear all memories for a conversation."""
+    
+    try:
+        conv_uuid = uuid.UUID(conversation_id)
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid conversation ID format"
+        )
+    
+    # Verify conversation exists
+    conversation = db.query(Conversation).filter(Conversation.id == conv_uuid).first()
+    
+    if not conversation:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Conversation not found"
+        )
+    
+    # Clear memories using the model method
+    from app.models.conversation_memory import ConversationMemory
+    deleted_count = ConversationMemory.clear_all_memories(db, conversation_id)
+    
+    db.commit()
+    
+    return None

@@ -173,7 +173,10 @@ def _sync_ollama_call(chat_request: ChatRequest) -> str:
     # Extract settings
     settings = chat_request.provider_settings
     host = settings.get("host", "http://localhost:11434")
-    model = settings.get("model", "tinydolphin")
+    model = settings.get("model")
+    
+    if not model:
+        raise ValueError("No model specified in provider settings - cannot make AI call")
     
     # Build request
     messages = []
@@ -196,8 +199,40 @@ def _sync_ollama_call(chat_request: ChatRequest) -> str:
     response = requests.post(url, json=payload, timeout=30)
     response.raise_for_status()
     
-    result = response.json()
-    return result.get("message", {}).get("content", "")
+    # Parse JSON response - handle both single JSON and streaming format
+    try:
+        result = response.json()
+        return result.get("message", {}).get("content", "")
+    except json.JSONDecodeError as e:
+        # Response might be in streaming format (multiple JSON objects)
+        response_text = response.text.strip()
+        
+        # Try to extract content from streaming JSON response
+        try:
+            import re
+            # Look for the last "content" field in streaming response
+            content_matches = re.findall(r'"content"\s*:\s*"([^"]*)"', response_text)
+            if content_matches:
+                # Join all content parts (streaming responses split content)
+                return "".join(content_matches)
+        except:
+            pass
+        
+        # Try to parse the last complete JSON object
+        try:
+            lines = response_text.split('\n')
+            for line in reversed(lines):
+                if line.strip() and line.strip().startswith('{'):
+                    last_json = json.loads(line.strip())
+                    content = last_json.get("message", {}).get("content", "")
+                    if content:
+                        return content
+        except:
+            pass
+        
+        logger.error(f"Ollama JSON parsing failed: {e}")
+        logger.error(f"Response content (first 200 chars): {response_text[:200]}")
+        return f"Response parsing error: {str(e)}"
 
 
 def _sync_openai_call(chat_request: ChatRequest) -> str:

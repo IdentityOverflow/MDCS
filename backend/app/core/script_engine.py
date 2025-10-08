@@ -33,6 +33,15 @@ SAFE_BUILTINS = {
     'zip': zip, 'sorted': sorted, 'reversed': reversed,
     'any': any, 'all': all,
     
+    # Object inspection (needed for plugin functions)
+    'hasattr': hasattr, 'getattr': getattr, 'setattr': setattr,
+    'isinstance': isinstance, 'issubclass': issubclass,
+    'type': type,
+    
+    # Exception handling
+    'Exception': Exception, 'ValueError': ValueError, 'TypeError': TypeError,
+    'AttributeError': AttributeError, 'KeyError': KeyError, 'IndexError': IndexError,
+    
     # String operations
     'chr': chr, 'ord': ord,
 }
@@ -132,6 +141,9 @@ class ScriptEngine:
             execution_globals['_getiter_'] = self._safe_getiter
             execution_globals['_write_'] = self._write_guard
             execution_globals['__import__'] = self._restricted_import
+            
+            # Add sequence unpacking support (needed for tuple unpacking)
+            execution_globals['_iter_unpack_sequence_'] = self._iter_unpack_sequence
             
             # Also add to builtins for proper import support
             execution_globals['__builtins__']['__import__'] = self._restricted_import
@@ -265,6 +277,40 @@ class ScriptEngine:
     def _write_guard(self, obj):
         """Write guard for RestrictedPython - prevents certain write operations."""
         return obj
+    
+    def _iter_unpack_sequence(self, seq, expected_count, *args):
+        """
+        Sequence unpacking support for RestrictedPython.
+
+        RestrictedPython may pass additional arguments depending on context,
+        and sometimes passes a dictionary instead of an integer for expected_count.
+
+        Args:
+            seq: Sequence to unpack
+            expected_count: Expected number of items (int) or metadata dict
+            *args: Additional arguments (ignored)
+
+        Returns:
+            List of unpacked items
+
+        Raises:
+            ValueError: If sequence length doesn't match expected count
+        """
+        items = list(seq)
+
+        # Handle cases where RestrictedPython passes a dictionary instead of int
+        if isinstance(expected_count, dict):
+            # Extract the actual count from the dictionary structure
+            # RestrictedPython may pass {'childs': (), 'min_len': N} format
+            actual_count = expected_count.get('min_len', len(items))
+            logger.debug(f"RestrictedPython passed dict for expected_count: {expected_count}, using min_len: {actual_count}")
+        else:
+            # Normal case - expected_count is an integer
+            actual_count = expected_count
+
+        if len(items) != actual_count:
+            raise ValueError(f"not enough values to unpack (expected {actual_count}, got {len(items)})")
+        return items
     
     def _restricted_import(self, name, globals=None, locals=None, fromlist=(), level=0):
         """

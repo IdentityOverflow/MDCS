@@ -7,6 +7,7 @@ from .conversation import Conversation, Message, MessageRole
 from .persona import Persona
 from .module import Module, ModuleType, ExecutionContext
 from .conversation_state import ConversationState, ExecutionStage
+from .conversation_memory import ConversationMemory
 
 __all__ = [
     "Base",
@@ -18,5 +19,6 @@ __all__ = [
     "ModuleType",
     "ExecutionContext",
     "ConversationState",
-    "ExecutionStage"
+    "ExecutionStage",
+    "ConversationMemory"
 ]
