@@ -1,4 +1,5 @@
 // Shared utility functions
+import personaDefaultImage from '@/assets/persona.png'
 
 /**
  * Truncates a description to a specified length
@@ -17,17 +18,23 @@ export function getPersonaImage(imagePath: string | null | undefined): string {
   if (imagePath && imagePath.startsWith('/static/')) {
     return `http://localhost:8000${imagePath}`
   }
-  return imagePath || '/src/assets/persona.png'
+  return imagePath || personaDefaultImage
 }
 
 /**
  * Handles image loading errors with fallback
+ * Prevents infinite loop by marking the image as having failed once
  */
 export function handleImageError(event: Event): void {
   const img = event.target as HTMLImageElement
-  if (img.src !== '/src/assets/persona.png') {
-    img.src = '/src/assets/persona.png'
+
+  // Prevent infinite loop - only try fallback once
+  if (img.dataset.fallbackAttempted === 'true') {
+    return
   }
+
+  img.dataset.fallbackAttempted = 'true'
+  img.src = personaDefaultImage
 }
 
 /**

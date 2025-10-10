@@ -119,7 +119,7 @@ class TestReflectPlugin:
             
             assert chat_controls["temperature"] == 0.3  # Moderate for balanced reflection
             assert chat_controls["max_tokens"] == 200   # Reasonable default for reflections
-            assert chat_controls["stream"] is False     # Always non-streaming
+            assert chat_controls["stream"] is True      # Uses streaming for cancellation support
 
     def test_reflect_keyword_arguments_override_defaults(self):
         """Test that keyword arguments can override default chat controls."""

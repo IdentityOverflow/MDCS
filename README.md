@@ -92,7 +92,7 @@ project2501/
 │   │   └── database/    # Connection, migrations
 │   └── requirements.txt
 ├── scripts/             # Installation/run scripts
-└── tests/              # Test suite (600+ tests)
+└── tests/              # Test suite (400+ tests)
 ```
 
 ## 📋 Prerequisites
@@ -218,7 +218,7 @@ conda activate project2501
 cd backend
 pytest -v
 
-# Should show: 627 tests passed
+# Should show: 389 tests passed
 ```
 
 ### 4. Frontend Setup
@@ -431,7 +431,7 @@ pytest --cov=app --cov-report=html
 **Test Coverage:**
 - Unit tests: Core functionality, models, services
 - Integration tests: API endpoints, database operations
-- Total: 627 tests
+- Total: 398 tests
 
 ### Frontend Tests
 
