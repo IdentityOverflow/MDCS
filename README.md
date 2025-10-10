@@ -1,6 +1,6 @@
 # Project 2501
 
-*** Disclaimer: I am a solo developer and this is still very early in development.
+*** Disclaimer: I am a solo developer and this is still very early in development.**
 
 **Dynamic System Prompt Architecture for AI Conversations**
 
