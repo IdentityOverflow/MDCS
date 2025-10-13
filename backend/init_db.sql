@@ -26,49 +26,54 @@ CREATE TYPE execution_context_enum AS ENUM ('IMMEDIATE', 'POST_RESPONSE', 'ON_DE
 -- Personas table
 CREATE TABLE personas (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    name VARCHAR(255) NOT NULL UNIQUE,
+    name VARCHAR(255) NOT NULL,
     description TEXT,
     template TEXT NOT NULL,
-    mode VARCHAR(20) NOT NULL DEFAULT 'reactive' CHECK (mode IN ('reactive', 'autonomous')),
-    loop_frequency VARCHAR(10) CHECK (
-        loop_frequency IS NULL OR
-        (mode = 'autonomous' AND loop_frequency ~ '^[0-9]*\.?[0-9]+$' AND CAST(loop_frequency AS FLOAT) > 0)
-    ),
+    mode VARCHAR(20) NOT NULL DEFAULT 'reactive',
+    loop_frequency VARCHAR(10),
     first_message TEXT,
     image_path VARCHAR(500),
     extra_data JSONB,
     is_active BOOLEAN NOT NULL DEFAULT TRUE,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    CONSTRAINT unique_persona_name UNIQUE (name),
+    CONSTRAINT valid_persona_mode CHECK (mode IN ('reactive', 'autonomous')),
+    CONSTRAINT valid_loop_frequency CHECK (
+        loop_frequency IS NULL OR
+        (mode = 'autonomous' AND loop_frequency ~ '^[0-9]*\.?[0-9]+$' AND CAST(loop_frequency AS FLOAT) > 0)
+    )
 );
 
 COMMENT ON TABLE personas IS 'AI persona configurations with system prompt templates';
 COMMENT ON CONSTRAINT unique_persona_name ON personas IS 'Prevents duplicate persona names for better user experience';
-COMMENT ON CONSTRAINT personas_mode_check ON personas IS 'Ensures only valid persona operating modes: reactive or autonomous';
-COMMENT ON CONSTRAINT personas_loop_frequency_check ON personas IS 'Validates loop frequency is a positive float when persona is in autonomous mode';
+COMMENT ON CONSTRAINT valid_persona_mode ON personas IS 'Ensures only valid persona operating modes: reactive or autonomous';
+COMMENT ON CONSTRAINT valid_loop_frequency ON personas IS 'Validates loop frequency is a positive float when persona is in autonomous mode';
 \echo '✓ Table created: personas'
 
 -- Modules table
 CREATE TABLE modules (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    name VARCHAR(255) NOT NULL UNIQUE CHECK (
-        name ~ '^[a-z][a-z0-9_]{0,49}$' AND
-        LENGTH(name) <= 50
-    ),
+    name VARCHAR(255) NOT NULL,
     description TEXT,
     content TEXT,
     type VARCHAR(20) NOT NULL DEFAULT 'simple',
     trigger_pattern VARCHAR(500),
     script TEXT,
-    execution_context execution_context_enum NOT NULL DEFAULT 'ON_DEMAND' CHECK (execution_context IN ('IMMEDIATE', 'POST_RESPONSE', 'ON_DEMAND')),
+    execution_context execution_context_enum NOT NULL DEFAULT 'ON_DEMAND',
     requires_ai_inference BOOLEAN NOT NULL DEFAULT FALSE,
     script_analysis_metadata JSONB DEFAULT '{}',
     is_active BOOLEAN NOT NULL DEFAULT TRUE,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    CONSTRAINT unique_module_name UNIQUE (name),
+    CONSTRAINT valid_module_name_format CHECK (
+        name ~ '^[a-z][a-z0-9_]{0,49}$' AND
+        LENGTH(name) <= 50
+    )
 );
 
 COMMENT ON TABLE modules IS 'Cognitive system modules (simple text or advanced Python scripts)';
 COMMENT ON CONSTRAINT unique_module_name ON modules IS 'Ensures module names are unique for @module_name template resolution';
-COMMENT ON CONSTRAINT modules_name_check ON modules IS 'Enforces cognitive engine naming policy: start with letter, lowercase/numbers/underscores only, max 50 chars';
+COMMENT ON CONSTRAINT valid_module_name_format ON modules IS 'Enforces cognitive engine naming policy: start with letter, lowercase/numbers/underscores only, max 50 chars';
 COMMENT ON COLUMN modules.content IS 'Module content - can be empty for modules that will be populated dynamically';
 COMMENT ON COLUMN modules.execution_context IS 'When module executes: immediate (during template resolution), post_response (after AI response), on_demand (triggered)';
 COMMENT ON COLUMN modules.requires_ai_inference IS 'Whether module script uses AI generation/reflection functions (auto-detected)';
