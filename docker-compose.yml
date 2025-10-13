@@ -1,0 +1,71 @@
+services:
+  # PostgreSQL Database
+  db:
+    image: postgres:14-alpine
+    container_name: project2501-db
+    environment:
+      POSTGRES_USER: ${DB_USER:-project2501}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-yourStrongPasswordHere}
+      POSTGRES_DB: ${DB_NAME:-project2501}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./backend/init_db.sql:/docker-entrypoint-initdb.d/init_db.sql:ro
+    networks:
+      - project2501_network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-project2501} -d ${DB_NAME:-project2501}"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+
+  # FastAPI Backend
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: project2501-backend
+    environment:
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_NAME: ${DB_NAME:-project2501}
+      DB_USER: ${DB_USER:-project2501}
+      DB_PASSWORD: ${DB_PASSWORD:-yourStrongPasswordHere}
+      DATABASE_URL: postgresql://${DB_USER:-project2501}:${DB_PASSWORD:-yourStrongPasswordHere}@db:5432/${DB_NAME:-project2501}
+    volumes:
+      - ./backend/static:/app/static
+    ports:
+      - "8000:8000"
+    networks:
+      - project2501_network
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # Vue Frontend with Nginx
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        - VITE_API_BASE_URL=http://localhost:8000
+    container_name: project2501-frontend
+    ports:
+      - "5173:80"
+    networks:
+      - project2501_network
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+networks:
+  project2501_network:
+    driver: bridge
+    name: project2501_network
+
+volumes:
+  postgres_data:
+    name: project2501_postgres_data

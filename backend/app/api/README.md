@@ -7,7 +7,7 @@ The API layer provides RESTful endpoints for all Project 2501 functionality. Bui
 ### Core Endpoints
 
 #### [chat.py](chat.py)
-**FastAPI chat endpoints with cancellation support**
+**FastAPI chat endpoints**
 
 Provides the main chat interface with streaming and non-streaming responses:
 - `POST /api/chat/send` - Complete chat response with cancellation
@@ -17,12 +17,12 @@ Provides the main chat interface with streaming and non-streaming responses:
 - `GET /api/chat/sessions/active` - List active sessions
 
 **Key Features:**
-- Session-based cancellation support
+- Provider integration (Ollama/OpenAI)
 - System prompt resolution with module execution (Stages 1 & 2)
 - POST_RESPONSE module execution (Stages 4 & 5)
 - Streaming to non-streaming conversion for cancellation
-- Provider integration (Ollama/OpenAI)
 - ConversationState management
+- Session-based cancellation support
 
 **Flow:**
 1. Generate session ID (client-provided or auto-generated)

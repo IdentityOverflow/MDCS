@@ -97,8 +97,13 @@ project2501/
 
 ## 📋 Prerequisites
 
-### Required Software
+### Docker Deployment (Recommended)
+- Docker Engine 20.10+ ([Install Docker](https://docs.docker.com/engine/install/))
+- Docker Compose V2
+- 2GB free disk space
+- *Optional*: Ollama installed on host for local AI models
 
+### Manual Installation
 **Backend Requirements:**
 - Python 3.10 or higher
 - Conda (Miniconda or Anaconda)
@@ -113,6 +118,94 @@ project2501/
 - OpenAI API key (or compatible API like LM Studio)
 
 ## 🚀 Installation
+
+### Quick Start with Docker (Recommended)
+
+The easiest way to run Project 2501 is using Docker Compose, which handles all dependencies and setup automatically.
+
+#### Prerequisites
+- Docker Engine 20.10+ ([Install Docker](https://docs.docker.com/engine/install/))
+- Docker Compose V2 ([Included with Docker Desktop](https://docs.docker.com/compose/install/))
+- 2GB free disk space
+
+#### Deploy with Docker Compose
+
+```bash
+# 1. Clone repository
+git clone https://github.com/IdentityOverflow/project2501.git
+cd project2501
+
+# 2. Configure environment
+cp .env.docker .env
+nano .env  # Change DB_PASSWORD to a strong password
+
+# 3. Start all services
+docker compose up -d
+
+# 4. Verify deployment
+docker compose ps
+docker compose logs -f  # View startup logs
+```
+
+**Access the application:**
+- **Frontend**: http://localhost:5173
+- **Backend API**: http://localhost:8000
+- **API Documentation**: http://localhost:8000/docs
+
+**Using with Ollama on host:**
+- Backend can connect to host Ollama via `http://host.docker.internal:11434`
+- Frontend users configure `http://localhost:11434` in settings (browser connection)
+
+#### Docker Management Commands
+
+```bash
+# View logs
+docker compose logs -f             # All services
+docker compose logs -f backend     # Backend only
+docker compose logs -f frontend    # Frontend only
+
+# Stop services (keeps data)
+docker compose stop
+
+# Start stopped services
+docker compose start
+
+# Restart services
+docker compose restart
+
+# Stop and remove containers (keeps volumes)
+docker compose down
+
+# Stop and remove everything including data volumes
+docker compose down -v
+
+# Rebuild after code changes
+docker compose up -d --build
+
+# Check service health
+docker compose ps
+```
+
+#### Docker Architecture
+
+**Services:**
+- **db**: PostgreSQL 14 with automatic schema initialization
+- **backend**: FastAPI application on port 8000
+- **frontend**: Vue 3 app served by Nginx on port 5173
+
+**Volumes:**
+- `postgres_data`: Database persistence
+- `./backend/static`: Persona images and uploads
+
+**Network:**
+- Custom bridge network `project2501_network` for service communication
+- Backend has host network access for Ollama connectivity
+
+---
+
+### Manual Installation (Development)
+
+For local development without Docker:
 
 ### 1. Clone Repository
 
@@ -153,18 +246,9 @@ CREATE USER project2501 WITH PASSWORD 'yourStrongPasswordHere';
 CREATE DATABASE project2501 OWNER project2501;
 GRANT ALL PRIVILEGES ON DATABASE project2501 TO project2501;
 \q
-```
 
-#### Run Migrations
-
-```bash
-cd backend/app/database/migrations
-
-# Run all migrations in order
-for file in *.sql; do
-    echo "Running migration: $file"
-    psql -U project2501 -d project2501 -f "$file"
-done
+# Initialize database schema
+psql -U project2501 -d project2501 -f backend/init_db.sql
 ```
 
 ### 3. Backend Setup
@@ -531,6 +615,69 @@ def my_function(param: str, db_session=None, _script_context=None):
 
 ## 🐛 Troubleshooting
 
+### Docker Issues
+
+**Issue**: Containers won't start
+```bash
+# Check Docker service is running
+docker ps
+
+# View container logs
+docker compose logs -f
+
+# Check for port conflicts
+sudo netstat -tulpn | grep -E '5173|8000|5432'
+```
+
+**Issue**: Database initialization fails
+```bash
+# Check database logs
+docker compose logs db
+
+# Manually run initialization
+docker compose exec db psql -U project2501 -d project2501 -f /docker-entrypoint-initdb.d/init_db.sql
+
+# Recreate database volume if corrupted
+docker compose down -v
+docker compose up -d
+```
+
+**Issue**: Backend can't connect to host Ollama
+```bash
+# Verify Ollama is running on host
+curl http://localhost:11434/api/tags
+
+# Check Docker host gateway
+docker compose exec backend ping host.docker.internal
+
+# On Linux, you may need to use host IP instead:
+# Find host IP: ip addr show docker0
+# Update backend connection to: http://<host-ip>:11434
+```
+
+**Issue**: Permission denied on static volume
+```bash
+# Fix volume permissions
+sudo chown -R $USER:$USER backend/static
+docker compose restart backend
+```
+
+**Issue**: Frontend shows API connection errors
+```bash
+# Check backend is accessible
+curl http://localhost:8000/health
+
+# Verify nginx proxy configuration
+docker compose exec frontend cat /etc/nginx/conf.d/default.conf
+
+# Check backend logs for errors
+docker compose logs backend
+```
+
+---
+
+### Manual Installation Issues
+
 ### Backend Won't Start
 
 **Issue**: `conda: command not found`
@@ -557,6 +704,9 @@ psql -U project2501 -d project2501 -h localhost
 
 # Verify .env file has correct credentials
 cat backend/.env
+
+# Initialize database if not done
+psql -U project2501 -d project2501 -f backend/init_db.sql
 ```
 
 ### Frontend Issues
@@ -572,16 +722,6 @@ npm install
 ```bash
 # Regenerate TypeScript cache
 npm run type-check
-```
-
-### Migration Issues
-
-**Issue**: Migration fails with constraint error
-```bash
-# Check existing data conflicts
-psql -U project2501 -d project2501
-
-# May need to clean up data before migration
 ```
 
 ## 🗺️ Roadmap
