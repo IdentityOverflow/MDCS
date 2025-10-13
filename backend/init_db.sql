@@ -35,7 +35,8 @@ CREATE TABLE personas (
     image_path VARCHAR(500),
     extra_data JSONB,
     is_active BOOLEAN NOT NULL DEFAULT TRUE,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
     CONSTRAINT unique_persona_name UNIQUE (name),
     CONSTRAINT valid_persona_mode CHECK (mode IN ('reactive', 'autonomous')),
     CONSTRAINT valid_loop_frequency CHECK (
@@ -63,7 +64,8 @@ CREATE TABLE modules (
     requires_ai_inference BOOLEAN NOT NULL DEFAULT FALSE,
     script_analysis_metadata JSONB DEFAULT '{}',
     is_active BOOLEAN NOT NULL DEFAULT TRUE,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
     CONSTRAINT unique_module_name UNIQUE (name),
     CONSTRAINT valid_module_name_format CHECK (
         name ~ '^[a-z][a-z0-9_]{0,49}$' AND
@@ -87,7 +89,8 @@ CREATE TABLE conversations (
     persona_id UUID REFERENCES personas(id) ON DELETE SET NULL,
     provider_type VARCHAR(50),
     provider_config JSONB,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+    created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
 );
 
 COMMENT ON TABLE conversations IS 'Chat conversation sessions linked to personas';
@@ -103,7 +106,8 @@ CREATE TABLE messages (
     extra_data JSONB,
     input_tokens INTEGER,
     output_tokens INTEGER,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+    created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
 );
 
 COMMENT ON TABLE messages IS 'Individual messages within conversations with optional thinking content';
@@ -189,6 +193,36 @@ CREATE INDEX idx_conversation_memories_sequence ON conversation_memories(convers
 CREATE INDEX idx_conversation_memories_created_at ON conversation_memories(created_at);
 
 \echo '✓ All indexes created'
+
+-- ============================================
+-- Create Triggers for updated_at
+-- ============================================
+
+\echo '=== Creating triggers for automatic updated_at ==='
+
+-- Create function to update the updated_at timestamp
+CREATE OR REPLACE FUNCTION update_updated_at_column()
+RETURNS TRIGGER AS $$
+BEGIN
+    NEW.updated_at = NOW();
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Add triggers to tables with updated_at column
+CREATE TRIGGER update_personas_updated_at BEFORE UPDATE ON personas
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+CREATE TRIGGER update_modules_updated_at BEFORE UPDATE ON modules
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+CREATE TRIGGER update_conversations_updated_at BEFORE UPDATE ON conversations
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+CREATE TRIGGER update_messages_updated_at BEFORE UPDATE ON messages
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+\echo '✓ Triggers created for automatic updated_at'
 
 -- ============================================
 -- Completion
