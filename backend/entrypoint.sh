@@ -13,6 +13,10 @@ DB_HOST="${DB_HOST:-db}"
 DB_PORT="${DB_PORT:-5432}"
 DB_NAME="${DB_NAME:-project2501}"
 DB_USER="${DB_USER:-project2501}"
+DB_PASSWORD="${DB_PASSWORD:-yourStrongPasswordHere}"
+
+# Set PGPASSWORD environment variable for non-interactive psql
+export PGPASSWORD="$DB_PASSWORD"
 
 echo "Waiting for PostgreSQL at $DB_HOST:$DB_PORT..."
 
@@ -34,12 +38,12 @@ echo "✓ PostgreSQL is ready!"
 
 # Check if database is initialized (check for personas table)
 echo "Checking if database is initialized..."
-TABLE_EXISTS=$(psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d "$DB_NAME" -tAc \
+TABLE_EXISTS=$(PGPASSWORD="$DB_PASSWORD" psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d "$DB_NAME" -tAc \
     "SELECT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name='personas');")
 
 if [ "$TABLE_EXISTS" = "f" ]; then
     echo "Database not initialized. Running initialization script..."
-    psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d "$DB_NAME" -f /app/init_db.sql
+    PGPASSWORD="$DB_PASSWORD" psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d "$DB_NAME" -f /app/init_db.sql
     echo "✓ Database initialized successfully"
 else
     echo "✓ Database already initialized"
