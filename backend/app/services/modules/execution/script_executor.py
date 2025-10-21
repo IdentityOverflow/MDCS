@@ -28,17 +28,151 @@ class ScriptExecutor:
         """Initialize the script executor with ScriptEngine."""
         self.script_engine = ScriptEngine()
     
-    def execute(self, module: Module, context: Dict[str, Any]) -> str:
+    async def execute_async(self, module: Module, context: Dict[str, Any]) -> str:
         """
-        Execute an advanced Python script module.
-        
+        Execute an advanced Python script module asynchronously with cancellation support.
+
+        RestrictedPython execution is CPU-bound and synchronous, so we run it in a thread pool.
+        This allows proper async/await flow and immediate cancellation detection.
+
         Args:
             module: Module to execute (must be ModuleType.ADVANCED)
             context: Execution context containing conversation info, etc.
-            
+
         Returns:
             Module execution result as string
-            
+
+        Raises:
+            ValueError: If module is not an advanced module
+            asyncio.CancelledError: If cancellation is detected
+        """
+        if module.type != ModuleType.ADVANCED:
+            raise ValueError(f"ScriptExecutor can only execute ADVANCED modules, got {module.type}")
+
+        # Check cancellation before starting
+        cancellation_token = context.get('cancellation_token')
+        if cancellation_token:
+            cancellation_token.check_cancelled()
+
+        logger.debug(f"Executing script module asynchronously: {module.name}")
+
+        # Get script content
+        script_content = module.script or ""
+        if not script_content.strip():
+            logger.warning(f"Advanced module '{module.name}' has empty script")
+            return ""
+
+        # Build execution context
+        script_context = self._build_script_context(module, context)
+
+        # Run RestrictedPython execution in thread pool (CPU-bound work)
+        import asyncio
+        loop = asyncio.get_event_loop()
+        execution_result = await loop.run_in_executor(
+            None,  # Use default ThreadPoolExecutor
+            self._execute_script_sync,
+            script_content,
+            script_context
+        )
+
+        # Check cancellation after script execution
+        if cancellation_token:
+            cancellation_token.check_cancelled()
+
+        # Process result (same logic as sync version)
+        return self._process_execution_result(execution_result, module, script_context)
+
+    def _execute_script_sync(self, script_content: str, script_context) -> any:
+        """
+        Synchronous script execution helper (runs in thread pool).
+
+        Args:
+            script_content: Python script to execute
+            script_context: Script execution context
+
+        Returns:
+            Execution result from ScriptEngine
+        """
+        return self.script_engine.execute_script(
+            script=script_content,
+            context={'ctx': script_context}
+        )
+
+    def _process_execution_result(self, execution_result, module: Module, script_context) -> str:
+        """
+        Process execution result and resolve template.
+
+        Args:
+            execution_result: Result from ScriptEngine.execute_script()
+            module: Module being executed
+            script_context: Script execution context
+
+        Returns:
+            Resolved template string or script output
+        """
+        if execution_result.success:
+            # Script executed successfully - now resolve the module's template using script variables
+            logger.debug(f"Advanced module '{module.name}' script executed successfully")
+
+            # Capture script outputs as variables for template resolution
+            if execution_result.outputs:
+                logger.debug(f"Script outputs: {execution_result.outputs}")
+                for var_name, var_value in execution_result.outputs.items():
+                    logger.debug(f"Setting variable '{var_name}' = '{var_value}' (type: {type(var_value)})")
+                    script_context.set_variable(var_name, var_value)
+            else:
+                logger.warning(f"No script outputs captured for module '{module.name}'")
+
+            # Get the module's template (content field)
+            template_content = module.content or ""
+
+            if template_content.strip():
+                # Resolve template variables using script context variables
+                from ..template_parser import TemplateParser
+
+                # Get variables set by the script (including captured outputs)
+                script_variables = script_context.get_all_variables()
+                logger.debug(f"Variables available for template substitution: {script_variables}")
+                logger.debug(f"Template content: '{template_content}'")
+
+                # Substitute variables in template
+                resolved_template = TemplateParser.substitute_variables(template_content, script_variables)
+                logger.debug(f"Resolved template: '{resolved_template}'")
+
+                logger.debug(f"Advanced module '{module.name}' template resolved, {len(resolved_template)} characters")
+                return resolved_template
+
+            elif execution_result.outputs:
+                # No template, but script had output - return the output
+                result = "\n".join(str(output) for output in execution_result.outputs)
+                logger.debug(f"Advanced module '{module.name}' returned script output, {len(result)} characters")
+                return result
+
+            else:
+                # No template and no script output
+                logger.debug(f"Advanced module '{module.name}' executed but produced no output or template")
+                return ""
+
+        else:
+            # Script execution failed
+            error_msg = execution_result.error or "Unknown error"
+            logger.error(f"Script execution failed for module '{module.name}': {error_msg}")
+            return f"[Script execution error: {error_msg}]"
+
+    def execute(self, module: Module, context: Dict[str, Any]) -> str:
+        """
+        Execute an advanced Python script module (synchronous version).
+
+        DEPRECATED: Use execute_async() for better cancellation support.
+        This method is kept for backwards compatibility.
+
+        Args:
+            module: Module to execute (must be ModuleType.ADVANCED)
+            context: Execution context containing conversation info, etc.
+
+        Returns:
+            Module execution result as string
+
         Raises:
             ValueError: If module is not an advanced module
         """
@@ -46,72 +180,23 @@ class ScriptExecutor:
             raise ValueError(f"ScriptExecutor can only execute ADVANCED modules, got {module.type}")
         
         logger.debug(f"Executing script module: {module.name}")
-        
-        # Get script content from the script field (not content field)
+
+        # Get script content
         script_content = module.script or ""
         if not script_content.strip():
             logger.warning(f"Advanced module '{module.name}' has empty script")
             return ""
-        
+
         # Build execution context
         script_context = self._build_script_context(module, context)
-        
+
         try:
-            # Execute script using ScriptEngine
-            execution_result = self.script_engine.execute_script(
-                script=script_content,
-                context={'ctx': script_context}
-            )
-            
-            if execution_result.success:
-                # Script executed successfully - now resolve the module's template using script variables
-                logger.debug(f"Advanced module '{module.name}' script executed successfully")
-                
-                # Capture script outputs as variables for template resolution
-                if execution_result.outputs:
-                    logger.debug(f"Script outputs: {execution_result.outputs}")
-                    for var_name, var_value in execution_result.outputs.items():
-                        logger.debug(f"Setting variable '{var_name}' = '{var_value}' (type: {type(var_value)})")
-                        script_context.set_variable(var_name, var_value)
-                else:
-                    logger.warning(f"No script outputs captured for module '{module.name}'")
-                
-                # Get the module's template (content field)
-                template_content = module.content or ""
-                
-                if template_content.strip():
-                    # Resolve template variables using script context variables
-                    from ..template_parser import TemplateParser
-                    
-                    # Get variables set by the script (including captured outputs)
-                    script_variables = script_context.get_all_variables()
-                    logger.debug(f"Variables available for template substitution: {script_variables}")
-                    logger.debug(f"Template content: '{template_content}'")
-                    
-                    # Substitute variables in template
-                    resolved_template = TemplateParser.substitute_variables(template_content, script_variables)
-                    logger.debug(f"Resolved template: '{resolved_template}'")
-                    
-                    logger.debug(f"Advanced module '{module.name}' template resolved, {len(resolved_template)} characters")
-                    return resolved_template
-                
-                elif execution_result.outputs:
-                    # No template, but script had output - return the output
-                    result = "\n".join(str(output) for output in execution_result.outputs)
-                    logger.debug(f"Advanced module '{module.name}' returned script output, {len(result)} characters")
-                    return result
-                
-                else:
-                    # No template and no script output
-                    logger.debug(f"Advanced module '{module.name}' executed but produced no output or template")
-                    return ""
-            
-            else:
-                # Script execution failed
-                error_msg = execution_result.error_message or "Unknown execution error"
-                logger.error(f"Advanced module '{module.name}' execution failed: {error_msg}")
-                return f"[Error in module {module.name}: {error_msg}]"
-                
+            # Execute script synchronously
+            execution_result = self._execute_script_sync(script_content, script_context)
+
+            # Process result using shared helper method
+            return self._process_execution_result(execution_result, module, script_context)
+
         except Exception as e:
             logger.error(f"Error executing advanced module '{module.name}': {e}")
             return f"[Error in module {module.name}: {str(e)}]"
@@ -135,15 +220,16 @@ class ScriptExecutor:
         current_provider = context.get('current_provider')
         current_provider_settings = context.get('current_provider_settings', {})
         current_chat_controls = context.get('current_chat_controls', {})
-        
+        cancellation_token = context.get('cancellation_token')
+
         # Additional stage-specific context
         stage = context.get('stage')
         stage_name = context.get('stage_name')
         ai_response = context.get('ai_response')
         response_metadata = context.get('response_metadata', {})
         session_id = context.get('session_id')
-        
-        # Create script execution context
+
+        # Create script execution context with cancellation support
         script_context = ScriptExecutionContext(
             conversation_id=conversation_id,
             persona_id=persona_id,
@@ -151,7 +237,8 @@ class ScriptExecutor:
             trigger_data=trigger_context,
             current_provider=current_provider,
             current_provider_settings=current_provider_settings,
-            current_chat_controls=current_chat_controls
+            current_chat_controls=current_chat_controls,
+            cancellation_token=cancellation_token
         )
         
         # Add module-specific information

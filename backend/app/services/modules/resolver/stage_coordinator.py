@@ -170,15 +170,18 @@ class StageCoordinator:
         current_chat_controls: Optional[Dict[str, Any]] = None
     ) -> AsyncIterator[Any]:
         """
-        Execute Stage 3 with streaming response.
-        
+        Execute Stage 3 with streaming response and cancellation support.
+
         Args:
             template_result: Result from stages 1 and 2
             user_message: User's message to respond to
-            
+
         Yields:
             Streaming response chunks
         """
+        # Get cancellation token from session manager if available
+        cancellation_token = self.session_manager.cancellation_token if self.session_manager else None
+
         async for chunk in self.stage3.execute_stage_streaming(
             resolved_template=template_result.resolved_template,
             user_message=user_message,
@@ -190,7 +193,8 @@ class StageCoordinator:
             trigger_context=trigger_context,
             current_provider=current_provider,
             current_provider_settings=current_provider_settings,
-            current_chat_controls=current_chat_controls
+            current_chat_controls=current_chat_controls,
+            cancellation_token=cancellation_token
         ):
             yield chunk
     

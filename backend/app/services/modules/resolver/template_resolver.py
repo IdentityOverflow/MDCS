@@ -203,7 +203,10 @@ class TemplateResolver:
         session_id: Optional[str]
     ) -> tuple[str, Optional[float]]:
         """Execute Stage 2 with error handling and timing."""
-        
+
+        # Get cancellation token from session manager
+        cancellation_token = self.session_manager.cancellation_token if self.session_manager else None
+
         with self.timer.time_stage(2) as stage_timer:
             try:
                 result_template = self.stage2.execute_stage(
@@ -217,7 +220,8 @@ class TemplateResolver:
                     current_provider=current_provider,
                     current_provider_settings=current_provider_settings,
                     current_chat_controls=current_chat_controls,
-                    session_id=session_id
+                    session_id=session_id,
+                    cancellation_token=cancellation_token
                 )
                 elapsed_time = stage_timer.elapsed or 0.0
                 logger.debug(f"Stage 2 completed in {elapsed_time:.3f}s")

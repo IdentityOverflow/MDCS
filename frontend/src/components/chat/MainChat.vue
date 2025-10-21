@@ -35,13 +35,13 @@ const {
 } = useMessageActions()
 
 // Chat functionality
-const { 
-  messages, 
-  isStreaming, 
+const {
+  messages,
+  isStreaming,
   currentStreamingMessage,
-  currentStreamingThinking, 
-  hasMessages, 
-  sendChatMessage, 
+  currentStreamingThinking,
+  hasMessages,
+  sendChatMessage,
   clearChat,
   clearMemories,
   processingStage,
@@ -51,7 +51,12 @@ const {
   // Session management
   currentSessionId,
   cancelCurrentSession,
-  isSessionCancelling
+  isSessionCancelling,
+  // WebSocket management
+  isWebSocketConnected,
+  isWebSocketConnecting,
+  connectWebSocket,
+  disconnectWebSocket
 } = useChat()
 
 // Scroll functionality - initialized after chat composables
@@ -100,14 +105,36 @@ function handleClickOutside(event: MouseEvent) {
 }
 
 // Load chat controls on component mount
-onMounted(() => {
+onMounted(async () => {
   loadChatControls()
   document.addEventListener('click', handleClickOutside)
   setupAutoScroll(chatMessagesRef)
+
+  // Connect to WebSocket if feature flag is enabled
+  try {
+    const useWebSocket = localStorage.getItem('use-websocket-chat') === 'true'
+    if (useWebSocket) {
+      console.log('🔌 Connecting to WebSocket...')
+      await connectWebSocket()
+      console.log('✅ WebSocket connected')
+    }
+  } catch (err) {
+    console.error('Failed to connect WebSocket:', err)
+  }
 })
 
 onUnmounted(() => {
   document.removeEventListener('click', handleClickOutside)
+
+  // Disconnect WebSocket on unmount
+  try {
+    const useWebSocket = localStorage.getItem('use-websocket-chat') === 'true'
+    if (useWebSocket) {
+      disconnectWebSocket()
+    }
+  } catch (err) {
+    console.error('Failed to disconnect WebSocket:', err)
+  }
 })
 
 // Auto-scroll is now handled by useScrollToBottom composable

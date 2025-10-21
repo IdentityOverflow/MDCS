@@ -10,6 +10,7 @@ import { useDebug } from './useDebug'
 import { useConversationPersistence } from './useConversationPersistence'
 import { useSessionManagement } from './useSessionManagement'
 import { useStreamingChat } from './useStreamingChat'
+import { useWebSocketChat } from './useWebSocketChat'
 
 // Re-export types from centralized location
 export type { 
@@ -156,6 +157,18 @@ export function useChat() {
     sessionManagement.cancelCurrentSession,
     sessionManagement.extractSessionId,
     sessionManagement.startSession,
+    getFreshChatControls,
+    getProviderSettings,
+    buildChatControls
+  )
+
+  // Initialize WebSocket chat composable
+  const webSocketChat = useWebSocketChat(
+    messages,
+    error,
+    conversationPersistence.currentConversation,
+    addUserMessage,
+    addAssistantMessage,
     getFreshChatControls,
     getProviderSettings,
     buildChatControls
@@ -332,12 +345,25 @@ export function useChat() {
   }
 
   // Main send function that chooses streaming or non-streaming
+  // Check if WebSocket should be used (feature flag from localStorage)
+  const useWebSocket = () => {
+    try {
+      const flag = localStorage.getItem('use-websocket-chat')
+      return flag === 'true'
+    } catch {
+      return false
+    }
+  }
+
   const sendChatMessage = async (
     userMessage: string,
     chatControls: ChatControls,
     _personaTemplate?: string
   ): Promise<void> => {
-    if (chatControls.stream) {
+    // Use WebSocket if enabled, otherwise fall back to SSE
+    if (useWebSocket()) {
+      await webSocketChat.sendMessageWebSocket(userMessage, chatControls)
+    } else if (chatControls.stream) {
       await streamingChat.sendMessageStreaming(userMessage, chatControls)
     } else {
       await sendMessage(userMessage, chatControls)
@@ -418,32 +444,73 @@ export function useChat() {
   // Computed values
   const chatHistory = computed(() => messages.value)
   const hasMessages = computed(() => messages.value.length > 0)
-  const isLoading = computed(() => streamingChat.isStreaming.value)
+
+  // Merge streaming state from both SSE and WebSocket
+  const isLoading = computed(() =>
+    useWebSocket() ? webSocketChat.isStreaming.value : streamingChat.isStreaming.value
+  )
+
+  const currentMessage = computed(() =>
+    useWebSocket() ? webSocketChat.currentStreamingMessage.value : streamingChat.currentStreamingMessage.value
+  )
+
+  const currentThinking = computed(() =>
+    useWebSocket() ? webSocketChat.currentStreamingThinking.value : streamingChat.currentStreamingThinking.value
+  )
+
+  const currentStage = computed(() =>
+    useWebSocket() ? webSocketChat.processingStage.value : streamingChat.processingStage.value
+  )
+
+  const currentStageMessage = computed(() =>
+    useWebSocket() ? webSocketChat.stageMessage.value : streamingChat.stageMessage.value
+  )
+
+  // Unified cancel function that works for both SSE and WebSocket
+  const cancelSession = async (): Promise<boolean> => {
+    if (useWebSocket()) {
+      return await webSocketChat.cancelCurrentSession()
+    } else {
+      return await sessionManagement.cancelCurrentSession()
+    }
+  }
 
   return {
     // State
     messages: chatHistory,
     isStreaming: isLoading,
-    currentStreamingMessage: computed(() => streamingChat.currentStreamingMessage.value),
-    currentStreamingThinking: computed(() => streamingChat.currentStreamingThinking.value),
+    currentStreamingMessage: currentMessage,
+    currentStreamingThinking: currentThinking,
     error: computed(() => error.value),
     hasMessages,
-    processingStage: computed(() => streamingChat.processingStage.value),
-    stageMessage: computed(() => streamingChat.stageMessage.value),
-    isProcessingAfter: computed(() => streamingChat.isProcessingAfter.value),
-    messageCompleted: computed(() => streamingChat.messageCompleted.value),
+    processingStage: currentStage,
+    stageMessage: currentStageMessage,
+    isProcessingAfter: computed(() =>
+      useWebSocket() ? webSocketChat.isProcessingAfter.value : streamingChat.isProcessingAfter.value
+    ),
+    messageCompleted: computed(() =>
+      useWebSocket() ? webSocketChat.messageCompleted.value : streamingChat.messageCompleted.value
+    ),
     hideStreamingUI: computed(() => streamingChat.hideStreamingUI.value),
-    
-    // Session management
-    currentSessionId: sessionManagement.currentSessionId,
-    cancelCurrentSession: sessionManagement.cancelCurrentSession,
+
+    // Session management (unified for both SSE and WebSocket)
+    currentSessionId: computed(() =>
+      useWebSocket() ? webSocketChat.currentSessionId.value : sessionManagement.currentSessionId.value
+    ),
+    cancelCurrentSession: cancelSession,
     isSessionCancelling: sessionManagement.isSessionCancelling,
-    
+
+    // WebSocket-specific
+    isWebSocketConnected: webSocketChat.isConnected,
+    isWebSocketConnecting: webSocketChat.isConnecting,
+    connectWebSocket: webSocketChat.connect,
+    disconnectWebSocket: webSocketChat.disconnect,
+
     // Conversation persistence
     currentConversation: conversationPersistence.currentConversation,
     isLoadingConversation: conversationPersistence.isLoadingConversation,
     loadConversationForPersona: conversationPersistence.loadConversationForPersona,
-    
+
     // Chat methods
     sendChatMessage,
     clearChat,

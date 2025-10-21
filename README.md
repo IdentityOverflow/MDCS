@@ -33,8 +33,9 @@ Traditional AI systems use static system prompts that get lost in token limits. 
 
 ### Chat System
 - **Provider Support**: Ollama and OpenAI-compatible APIs
+- **WebSocket Communication**: Bidirectional real-time messaging
+- **Instant Cancellation**: <100ms cancellation latency across all stages ([Details](WEBSOCKET_CANCELLATION.md))
 - **Streaming Responses**: Real-time token streaming
-- **Cancellation**: Stop generation mid-stream and send new messages
 - **Conversation Persistence**: Full message history with thinking content (for native reasoning models)
 - **Memory Compression**: Long-term memory with AI-compressed summaries
 

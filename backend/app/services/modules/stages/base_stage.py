@@ -88,7 +88,8 @@ class BaseStageExecutor(ABC):
         current_provider: Optional[str] = None,
         current_provider_settings: Optional[Dict[str, Any]] = None,
         current_chat_controls: Optional[Dict[str, Any]] = None,
-        session_id: Optional[str] = None
+        session_id: Optional[str] = None,
+        cancellation_token: Optional[Any] = None
     ) -> str:
         """
         Resolve specific modules in a template.
@@ -111,7 +112,7 @@ class BaseStageExecutor(ABC):
         """
         if not modules:
             return template
-        
+
         # Create lookup by module name
         modules_by_name = {module.name: module for module in modules}
         
@@ -159,7 +160,8 @@ class BaseStageExecutor(ABC):
                     current_provider=current_provider,
                     current_provider_settings=current_provider_settings,
                     current_chat_controls=current_chat_controls,
-                    session_id=session_id
+                    session_id=session_id,
+                    cancellation_token=cancellation_token
                 )
                 
                 # Replace module reference with resolved content
@@ -208,7 +210,8 @@ class BaseStageExecutor(ABC):
         current_provider: Optional[str] = None,
         current_provider_settings: Optional[Dict[str, Any]] = None,
         current_chat_controls: Optional[Dict[str, Any]] = None,
-        session_id: Optional[str] = None
+        session_id: Optional[str] = None,
+        cancellation_token: Optional[Any] = None
     ) -> str:
         """
         Process a single module and return its resolved content.
@@ -242,6 +245,8 @@ class BaseStageExecutor(ABC):
                 # Advanced script module
                 executor = ScriptExecutor()
                 context = {
+                    'module_name': module.name,
+                    'stage': self.STAGE_NUMBER,
                     'conversation_id': conversation_id,
                     'persona_id': persona_id,
                     'db_session': db_session,
@@ -249,8 +254,10 @@ class BaseStageExecutor(ABC):
                     'current_provider': current_provider,
                     'current_provider_settings': current_provider_settings or {},
                     'current_chat_controls': current_chat_controls or {},
-                    'session_id': session_id
+                    'session_id': session_id,
+                    'cancellation_token': cancellation_token
                 }
+                logger.warning(f"🔍 BASE_STAGE._process_single_module: stage={self.STAGE_NUMBER}, module={module.name}, token={cancellation_token}")
                 return executor.execute(module, context)
             
             else:

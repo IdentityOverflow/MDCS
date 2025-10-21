@@ -180,12 +180,12 @@ function handleInput(event: Event) {
         
         <div class="right-controls">
           <!-- Stop button when streaming/processing -->
-          <button 
-            v-if="isStreaming && currentSessionId"
-            class="icon-btn stop-btn" 
-            @click="handleStopChat" 
-            :disabled="isSessionCancelling" 
-            :title="isSessionCancelling ? 'Stopping...' : 'Stop Generation'"
+          <button
+            v-if="isStreaming"
+            class="icon-btn stop-btn"
+            @click="handleStopChat"
+            :disabled="isSessionCancelling || !currentSessionId"
+            :title="isSessionCancelling ? 'Stopping...' : !currentSessionId ? 'Preparing...' : 'Stop Generation'"
           >
             <i :class="isSessionCancelling ? 'fa-solid fa-spinner fa-spin' : 'fa-solid fa-stop'"></i>
           </button>

@@ -30,26 +30,19 @@ class OpenAIService(BaseProviderService):
     Works with any OpenAI-API compatible service (OpenAI, OpenRouter, Groq, etc.).
     """
     
-    def __init__(self, session_manager=None):
+    def __init__(self):
         """
         Initialize OpenAI-API compatible service with composition-based architecture.
-        
-        Args:
-            session_manager: Optional ChatSessionManager for session support
         """
         super().__init__("OpenAI-Compatible", ProviderType.OPENAI, timeout=300)
-        
+
         # Compose functionality using focused components
         self.request_builder = OpenAIRequestBuilder()
         self.response_parser = OpenAIResponseParser()
         self.stream_parser = OpenAIStreamParser()
-        
+
         # Initialize stream processor with OpenAI-specific parser
         self._init_stream_processor(self._parse_stream_chunk)
-        
-        # Optional session management for cancellation support
-        self.session_manager = session_manager
-        self._current_session_id = None
     
     def validate_settings(self, settings: Dict[str, Any]) -> bool:
         """
@@ -183,99 +176,21 @@ class OpenAIService(BaseProviderService):
             logger.warning(f"OpenAI-API connection test failed: {e}")
             return False
     
-    # Session management integration (maintains backward compatibility)
-    def set_session_id(self, session_id: Optional[str]) -> None:
-        """Set session ID for session management integration."""
-        self._current_session_id = session_id
-    
-    async def send_message_with_session(self, 
-                                      request: ChatRequest, 
-                                      session_id: str, 
-                                      conversation_id: str) -> ChatResponse:
-        """
-        Send message with session management support.
-        
-        This method integrates with the session management system for cancellation support.
-        If no session manager is configured, falls back to standard behavior.
-        
-        Args:
-            request: ChatRequest to send
-            session_id: Session ID for tracking
-            conversation_id: Conversation ID for context
-            
-        Returns:
-            ChatResponse from OpenAI-API service
-        """
-        if self.session_manager:
-            # Register with session manager for cancellation support
-            try:
-                return await self.session_manager.execute_with_session(
-                    session_id,
-                    conversation_id,
-                    lambda: self.send_message(request)
-                )
-            except AttributeError:
-                # Fallback if session manager doesn't have execute_with_session method
-                self.set_session_id(session_id)
-                return await self.send_message(request)
-        else:
-            # No session manager, use standard behavior
-            return await self.send_message(request)
-    
-    async def send_message_stream_with_session(self, 
-                                             request: ChatRequest, 
-                                             session_id: str, 
-                                             conversation_id: str) -> AsyncIterator[StreamingChatResponse]:
-        """
-        Send streaming message with session management support.
-        
-        Args:
-            request: ChatRequest to send
-            session_id: Session ID for tracking  
-            conversation_id: Conversation ID for context
-            
-        Yields:
-            StreamingChatResponse chunks from OpenAI-API service
-        """
-        if self.session_manager:
-            # Note: This would need to be implemented when session manager supports streaming
-            # For now, fall back to standard streaming
-            pass
-            
-        self.set_session_id(session_id)
-        async for chunk in self.send_message_stream(request):
-            yield chunk
 
 
 class OpenAIServiceFactory:
     """
     Factory for creating OpenAI-API compatible service instances.
-    
+
     Maintains backward compatibility with existing factory pattern.
     """
-    
+
     @classmethod
-    def create_service(cls, session_manager=None) -> OpenAIService:
+    def create_service(cls) -> OpenAIService:
         """
         Create an OpenAI-API compatible service instance.
-        
-        Args:
-            session_manager: Optional session manager for cancellation support
-            
+
         Returns:
             Configured OpenAIService instance
         """
-        return OpenAIService(session_manager=session_manager)
-    
-    @classmethod
-    def create_service_with_cancellation(cls, session_manager) -> OpenAIService:
-        """
-        Create an OpenAI-API service with cancellation support.
-        
-        Args:
-            session_manager: ChatSessionManager for cancellation
-            
-        Returns:
-            OpenAIService configured with session management
-        """
-        return OpenAIService(session_manager=session_manager)
+        return OpenAIService()

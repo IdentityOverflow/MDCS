@@ -35,6 +35,7 @@ from ..services.exceptions import (
 from ..services.modules import StagedModuleResolver
 from ..services.streaming_accumulator import StreamingAccumulator, StreamingToNonStreamingConverter
 from ..services.chat_session_manager import get_chat_session_manager, ChatSessionManager, SessionStatus
+from ..services.cancellation_token import CancellationToken
 from ..database.connection import get_db
 from ..models import Persona
 
@@ -54,21 +55,21 @@ def get_provider_settings_from_request(request: ChatSendRequest) -> Optional[Dic
 
 
 async def resolve_system_prompt_with_session(
-    request: ChatSendRequest, 
+    request: ChatSendRequest,
     db: Session,
-    session_id: Optional[str] = None
+    cancellation_token: Optional['CancellationToken'] = None
 ) -> str:
     """
-    Resolve system prompt from persona template with module resolution and session management.
-    
+    Resolve system prompt from persona template with module resolution and cancellation support.
+
     Args:
         request: Chat request containing optional persona_id
         db: Database session
-        session_id: Optional session ID for cancellation support
-        
+        cancellation_token: Optional cancellation token for early termination
+
     Returns:
         Resolved system prompt (empty string if no persona)
-        
+
     Raises:
         HTTPException: If persona is not found or inactive
         asyncio.CancelledError: If cancelled during resolution
@@ -105,17 +106,18 @@ async def resolve_system_prompt_with_session(
         current_provider_settings = request.provider_settings
         current_chat_controls = request.chat_controls
         
-        # Use enhanced resolver with cancellation support
+        # Use resolver with cancellation support
         resolver = StagedModuleResolver(db_session=db)
         resolver.enable_state_tracking()  # Enable SystemPromptState tracking
-        
-        if session_id:
-            resolver.set_session_id(session_id)
-        
+
+        # Set cancellation token on resolver's session manager
+        if cancellation_token:
+            resolver.session_manager.set_cancellation_token(cancellation_token)
+
         # Resolve template using async method with cancellation support
         result = await resolver.resolve_template_stages_1_and_2(
             template=persona.template,
-            session_id=session_id,
+            session_id=cancellation_token.session_id if cancellation_token else None,
             conversation_id=conversation_id,
             persona_id=request.persona_id,
             db_session=db,
@@ -183,33 +185,25 @@ async def send_chat_message_with_cancellation(
     
     # Use client-provided session ID or generate new one
     session_id = request.session_id or str(uuid.uuid4())
-    
+
     # Add session ID to response headers
     response.headers["X-Session-ID"] = session_id
-    
-    # Pre-register session for early cancellation support
-    current_task = asyncio.current_task()
-    if current_task:
-        try:
-            session_manager.register_session(
-                session_id=session_id,
-                conversation_id=request.conversation_id,
-                asyncio_task=current_task,
-                current_stage=3  # Main AI response generation
-            )
-            logger.debug(f"✅ Pre-registered session {session_id} at API level with task {id(current_task)}")
-            
-            # Verify registration worked
-            token = session_manager.get_session(session_id)
-            if token:
-                logger.debug(f"✅ Session {session_id} verified in session manager")
-            else:
-                logger.error(f"❌ Session {session_id} NOT FOUND after registration!")
-                
-        except Exception as e:
-            logger.error(f"❌ Failed to pre-register session {session_id}: {e}")
-    else:
-        logger.error(f"❌ No current task found for pre-registering session {session_id}")
+
+    # Register session with unified CancellationToken
+    try:
+        cancellation_token = await session_manager.register_session(
+            session_id=session_id,
+            conversation_id=request.conversation_id
+        )
+        logger.debug(f"✅ Registered non-streaming session {session_id}")
+    except ValueError as e:
+        # Session already exists
+        logger.warning(f"Session {session_id} already registered: {e}")
+        error = ChatError(
+            error_type="session_error",
+            message=f"Session {session_id} is already active"
+        )
+        raise HTTPException(status_code=409, detail=error.model_dump())
     
     # Get provider settings from request
     provider_settings = get_provider_settings_from_request(request)
@@ -221,41 +215,31 @@ async def send_chat_message_with_cancellation(
         raise HTTPException(status_code=400, detail=error.model_dump())
     
     try:
-        # Resolve system prompt from persona with session support
+        # Resolve system prompt from persona with cancellation support
         resolved_system_prompt = await resolve_system_prompt_with_session(
-            request, db, session_id
+            request, db, cancellation_token
         )
-        
-        # Create enhanced provider instance with cancellation support
+
+        # Create provider instance with cancellation support
         provider_type = ProviderType.OLLAMA if request.provider == ChatProvider.OLLAMA else ProviderType.OPENAI
         provider = ProviderFactory.create_provider(provider_type)
-        
-        # Set session ID for provider
-        if hasattr(provider, 'set_session_id'):
-            provider.set_session_id(session_id)
-        
+
         # Convert to provider request with resolved system prompt
         provider_request = request.to_provider_request(system_prompt=resolved_system_prompt)
-        
+
         # Use streaming with accumulation for cancellation support
         converter = StreamingToNonStreamingConverter()
-        
-        # Get streaming response from provider
-        if hasattr(provider, 'send_message_stream_with_session'):
-            stream_generator = provider.send_message_stream_with_session(
-                provider_request,
-                session_id=session_id,
-                conversation_id=request.conversation_id
-            )
-        else:
-            # Fallback to standard streaming
-            stream_generator = provider.send_message_stream(provider_request)
-        
+
+        # Get streaming response from provider with cancellation token
+        stream_generator = provider.send_message_stream(
+            provider_request,
+            cancellation_token=cancellation_token
+        )
+
         # Convert streaming to single response with cancellation
         provider_response = await converter.convert_streaming_to_response(
             stream_generator=stream_generator,
-            session_id=session_id,
-            conversation_id=request.conversation_id
+            cancellation_token=cancellation_token
         )
         
         # Calculate response time
@@ -283,14 +267,15 @@ async def send_chat_message_with_cancellation(
             try:
                 resolver = StagedModuleResolver()
                 resolver.enable_state_tracking()  # Enable SystemPromptState tracking for AI plugins
-                
-                # The resolver will handle state management internally through enable_state_tracking()
-                
+
+                # Set cancellation token on resolver's session manager
+                resolver.session_manager.set_cancellation_token(cancellation_token)
+
                 trigger_context = {}
                 current_provider = request.provider.value if request.provider else None
                 current_provider_settings = request.provider_settings
                 current_chat_controls = request.chat_controls
-                
+
                 # Execute POST_RESPONSE modules with cancellation support
                 results = await resolver.execute_post_response_stages(
                     template=resolved_system_prompt,
@@ -344,7 +329,7 @@ async def send_chat_message_with_cancellation(
     finally:
         # Always clean up session when request completes
         try:
-            session_manager.remove_session(session_id)
+            await session_manager.remove_session(session_id)
             logger.debug(f"Cleaned up session {session_id}")
         except Exception as cleanup_error:
             logger.warning(f"Failed to cleanup session {session_id}: {cleanup_error}")
@@ -372,32 +357,22 @@ async def stream_chat_message_with_cancellation(
     """
     # Use client-provided session ID or generate new one
     session_id = request.session_id or str(uuid.uuid4())
-    
-    # Register session with a simple cancellation flag instead of task cancellation
-    # This prevents the ASGI connection from being cancelled
-    from dataclasses import dataclass
-    
-    @dataclass
-    class SimpleCancellationToken:
-        session_id: str
-        cancelled: bool = False
-        
-        def cancel(self):
-            self.cancelled = True
-            
-        def is_cancelled(self):
-            return self.cancelled
-            
-        def is_active(self):
-            return not self.cancelled
-            
-        def is_completed(self):
-            return False  # Streaming never reports as "completed"
-    
-    # Create and register simple cancellation token
-    simple_token = SimpleCancellationToken(session_id=session_id)
-    session_manager.active_sessions[session_id] = simple_token
-    logger.debug(f"✅ Registered streaming session {session_id} with simple cancellation token")
+
+    # Register session with unified CancellationToken
+    try:
+        cancellation_token = await session_manager.register_session(
+            session_id=session_id,
+            conversation_id=request.conversation_id
+        )
+        logger.debug(f"✅ Registered streaming session {session_id}")
+    except ValueError as e:
+        # Session already exists
+        logger.warning(f"Session {session_id} already registered: {e}")
+        error = ChatError(
+            error_type="session_error",
+            message=f"Session {session_id} is already active"
+        )
+        raise HTTPException(status_code=409, detail=error.model_dump())
     
     # Get provider settings from request
     provider_settings = get_provider_settings_from_request(request)
@@ -412,37 +387,41 @@ async def stream_chat_message_with_cancellation(
         """Generate streaming response with cancellation support."""
         request_start_time = time.time()  # Define start time in generator scope
         try:
-            # Stage 1: Thinking before
+            # IMMEDIATELY yield session info to establish SSE connection
+            # This is critical so frontend can send cancel requests immediately
+            yield f"data: {StreamingChatResponse.create_event('session_start', {'session_id': session_id}).model_dump_json()}\n\n"
+
+            # Force multiple yields with padding to exceed HTTP buffer threshold
+            # Many web servers/proxies buffer until 1KB-4KB before flushing
+            padding = ": " + ("keepalive " * 100) + "\n\n"  # ~1KB of padding
+            yield padding
+
+            # Yield another event to ensure connection is fully established
             yield f"data: {StreamingChatResponse.create_stage_update(ProcessingStage.THINKING_BEFORE, 'Resolving system prompt...').model_dump_json()}\n\n"
-            
-            # Resolve system prompt with session support
+
+            # Small delay to allow network flush
+            await asyncio.sleep(0.01)
+
+            # Resolve system prompt with cancellation support
             resolved_system_prompt = await resolve_system_prompt_with_session(
-                request, db, session_id
+                request, db, cancellation_token
             )
             
-            # Create enhanced provider with cancellation
+            # Create provider with cancellation support
             provider_type = ProviderType.OLLAMA if request.provider == ChatProvider.OLLAMA else ProviderType.OPENAI
             provider = ProviderFactory.create_provider(provider_type)
-            
-            # Set session ID for provider
-            if hasattr(provider, 'set_session_id'):
-                provider.set_session_id(session_id)
-            
+
             # Convert to provider request
             provider_request = request.to_provider_request(system_prompt=resolved_system_prompt)
-            
+
             # Stage 2: Generating
             yield f"data: {StreamingChatResponse.create_stage_update(ProcessingStage.GENERATING, 'Generating AI response...').model_dump_json()}\n\n"
-            
-            # Stream response with session management
-            if hasattr(provider, 'send_message_stream_with_session'):
-                stream_generator = provider.send_message_stream_with_session(
-                    provider_request,
-                    session_id=session_id,
-                    conversation_id=request.conversation_id
-                )
-            else:
-                stream_generator = provider.send_message_stream(provider_request)
+
+            # Stream response with cancellation token
+            stream_generator = provider.send_message_stream(
+                provider_request,
+                cancellation_token=cancellation_token
+            )
             
             # Convert provider chunks to API chunks and stream them
             accumulated_response = ""  # Track accumulated response for POST_RESPONSE modules
@@ -501,9 +480,10 @@ async def stream_chat_message_with_cancellation(
                 try:
                     resolver = StagedModuleResolver()
                     resolver.enable_state_tracking()  # Enable SystemPromptState tracking for AI plugins
-                    
-                    # The resolver will handle state management internally through enable_state_tracking()
-                    
+
+                    # Set cancellation token on resolver's session manager
+                    resolver.session_manager.set_cancellation_token(cancellation_token)
+
                     trigger_context = {}
                     current_provider = request.provider.value if request.provider else None
                     current_provider_settings = request.provider_settings
@@ -579,7 +559,7 @@ async def stream_chat_message_with_cancellation(
         finally:
             # Always clean up session when streaming completes
             try:
-                session_manager.remove_session(session_id)
+                await session_manager.remove_session(session_id)
                 logger.debug(f"Cleaned up streaming session {session_id}")
             except Exception as cleanup_error:
                 logger.warning(f"Failed to cleanup streaming session {session_id}: {cleanup_error}")
@@ -607,11 +587,15 @@ async def cancel_chat_session(
     Returns:
         Cancellation result
     """
-    logger.debug(f"🛑 Cancel request received for session {session_id}")
-    
+    import datetime
+    timestamp = datetime.datetime.now().strftime("%H:%M:%S.%f")[:-3]
+    print(f"🛑🛑🛑 [{timestamp}] CANCEL REQUEST for session {session_id}")
+    logger.warning(f"🛑 [{timestamp}] Cancel request received for session {session_id}")
+
     # Debug: Check what sessions are active
     active_sessions = list(session_manager.active_sessions.keys())
-    logger.debug(f"🔍 Active sessions in manager: {active_sessions}")
+    print(f"🔍 Active sessions in manager: {active_sessions}")
+    logger.warning(f"🔍 Active sessions in manager: {active_sessions}")
     
     # Debug: Check specific session
     token = session_manager.get_session(session_id)

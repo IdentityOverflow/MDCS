@@ -34,7 +34,252 @@ class Stage5Executor(BaseStageExecutor):
     
     STAGE_NUMBER = 5
     STAGE_NAME = "POST_RESPONSE AI-powered modules"
-    
+
+    async def execute_stage_async(
+        self,
+        template: str,
+        warnings: List[ModuleResolutionWarning],
+        resolved_modules: List[str],
+        conversation_id: Optional[str] = None,
+        persona_id: Optional[str] = None,
+        db_session: Optional[Session] = None,
+        trigger_context: Optional[Dict[str, Any]] = None,
+        current_provider: Optional[str] = None,
+        current_provider_settings: Optional[Dict[str, Any]] = None,
+        current_chat_controls: Optional[Dict[str, Any]] = None,
+        ai_response: Optional[str] = None,
+        response_metadata: Optional[Dict[str, Any]] = None,
+        session_id: Optional[str] = None,
+        cancellation_token: Optional[Any] = None
+    ) -> str:
+        """
+        Execute Stage 5 AI-powered post-response module resolution asynchronously.
+
+        This async version enables immediate cancellation detection during
+        module execution, especially for modules using ctx.generate() or ctx.reflect().
+
+        Args:
+            template: Template string with module references
+            warnings: List to collect resolution warnings
+            resolved_modules: List to track successfully resolved modules
+            conversation_id: Optional conversation context
+            persona_id: Optional persona context
+            db_session: Optional database session
+            trigger_context: Optional trigger context for advanced modules
+            current_provider: Current chat provider for AI inference
+            current_provider_settings: Provider settings for AI calls
+            current_chat_controls: Chat controls for AI parameters
+            ai_response: The AI response from Stage 3 for analysis
+            response_metadata: Metadata about the AI response
+            session_id: Optional session ID
+            cancellation_token: Cancellation token for immediate cancellation
+
+        Returns:
+            Template with Stage 5 modules resolved
+        """
+        logger.debug("Executing Stage 5 asynchronously: POST_RESPONSE AI-powered modules")
+
+        # Check cancellation at start
+        if cancellation_token:
+            cancellation_token.check_cancelled()
+
+        # Get database session
+        db = db_session or next(get_db()) if self.db_session is None else self.db_session
+
+        # Get modules for Stage 5
+        stage5_modules = self._get_modules_for_stage(db, persona_id)
+
+        if not stage5_modules:
+            logger.debug("No Stage 5 modules found")
+            return template
+
+        logger.debug(f"Found {len(stage5_modules)} modules for Stage 5")
+
+        # Add response context for post-response AI modules
+        enhanced_trigger_context = (trigger_context or {}).copy()
+        enhanced_trigger_context.update({
+            'ai_response': ai_response,
+            'response_metadata': response_metadata or {},
+            'stage': self.STAGE_NUMBER,
+            'stage_name': self.STAGE_NAME
+        })
+
+        # Check cancellation before module resolution
+        if cancellation_token:
+            cancellation_token.check_cancelled()
+
+        # Resolve modules asynchronously
+        return await self._resolve_modules_async(
+            template=template,
+            modules=stage5_modules,
+            warnings=warnings,
+            resolved_modules=resolved_modules,
+            conversation_id=conversation_id,
+            persona_id=persona_id,
+            db_session=db,
+            trigger_context=enhanced_trigger_context,
+            current_provider=current_provider,
+            current_provider_settings=current_provider_settings,
+            current_chat_controls=current_chat_controls,
+            session_id=session_id,
+            cancellation_token=cancellation_token
+        )
+
+    async def _resolve_modules_async(
+        self,
+        template: str,
+        modules: List[Module],
+        warnings: List[ModuleResolutionWarning],
+        resolved_modules: List[str],
+        conversation_id: Optional[str],
+        persona_id: Optional[str],
+        db_session: Session,
+        trigger_context: Optional[Dict[str, Any]],
+        current_provider: Optional[str],
+        current_provider_settings: Optional[Dict[str, Any]],
+        current_chat_controls: Optional[Dict[str, Any]],
+        session_id: Optional[str],
+        cancellation_token: Optional[Any]
+    ) -> str:
+        """
+        Resolve modules asynchronously with frequent cancellation checks.
+
+        Args:
+            template: Template to resolve
+            modules: List of modules to process
+            (other args same as execute_stage_async)
+
+        Returns:
+            Resolved template string
+        """
+        resolved_template = template
+
+        for module in modules:
+            # Check cancellation before each module
+            if cancellation_token:
+                cancellation_token.check_cancelled()
+
+            # POST_RESPONSE modules execute based on ExecutionContext timing, not template references
+            # They may or may not be referenced in the template with @module_name
+            # If referenced, we replace it; if not, we just execute them for side effects
+            module_ref = f"@{module.name}"
+            module_in_template = module_ref in resolved_template
+
+            logger.debug(f"Resolving Stage 5 module: {module.name} (in_template={module_in_template})")
+
+            try:
+                # Process module asynchronously
+                module_content = await self._process_module_async(
+                    module=module,
+                    conversation_id=conversation_id,
+                    persona_id=persona_id,
+                    db_session=db_session,
+                    trigger_context=trigger_context,
+                    warnings=warnings,
+                    current_provider=current_provider,
+                    current_provider_settings=current_provider_settings,
+                    current_chat_controls=current_chat_controls,
+                    session_id=session_id,
+                    cancellation_token=cancellation_token
+                )
+
+                # Replace module reference if it was in the template
+                # Otherwise the module just executed for side effects (e.g., logging, state changes)
+                if module_in_template:
+                    resolved_template = resolved_template.replace(module_ref, module_content)
+                    logger.debug(f"Replaced {module_ref} in template")
+                else:
+                    logger.debug(f"Module {module.name} executed for side effects (not in template)")
+
+                # Track resolved module
+                if module.name not in resolved_modules:
+                    resolved_modules.append(module.name)
+
+            except Exception as e:
+                logger.error(f"Error processing Stage 5 module '{module.name}': {e}")
+                warnings.append(ModuleResolutionWarning(
+                    module_name=module.name,
+                    warning_type="execution_error",
+                    message=f"Stage 5 module execution failed: {str(e)}",
+                    stage=self.STAGE_NUMBER
+                ))
+
+        return resolved_template
+
+    async def _process_module_async(
+        self,
+        module: Module,
+        conversation_id: Optional[str] = None,
+        persona_id: Optional[str] = None,
+        db_session: Optional[Session] = None,
+        trigger_context: Optional[Dict[str, Any]] = None,
+        warnings: Optional[List[ModuleResolutionWarning]] = None,
+        current_provider: Optional[str] = None,
+        current_provider_settings: Optional[Dict[str, Any]] = None,
+        current_chat_controls: Optional[Dict[str, Any]] = None,
+        session_id: Optional[str] = None,
+        cancellation_token: Optional[Any] = None
+    ) -> str:
+        """
+        Process a Stage 5 module asynchronously with AI inference support.
+
+        Args:
+            module: Module to process
+            (other args for context)
+
+        Returns:
+            Resolved module content as string
+        """
+        from ....models import ModuleType
+        from ..execution import SimpleExecutor, ScriptExecutor
+
+        # Check cancellation before processing
+        if cancellation_token:
+            cancellation_token.check_cancelled()
+
+        try:
+            if module.type == ModuleType.SIMPLE:
+                # Simple text module (shouldn't be in Stage 5, but handle gracefully)
+                executor = SimpleExecutor()
+                return executor.execute(module, {})
+
+            elif module.type == ModuleType.ADVANCED:
+                # Advanced script module - use async executor
+                executor = ScriptExecutor()
+
+                context = {
+                    'module_name': module.name,
+                    'conversation_id': conversation_id,
+                    'persona_id': persona_id,
+                    'db_session': db_session,
+                    'trigger_context': trigger_context or {},
+                    'current_provider': current_provider,
+                    'current_provider_settings': current_provider_settings or {},
+                    'current_chat_controls': current_chat_controls or {},
+                    'stage': self.STAGE_NUMBER,
+                    'stage_name': self.STAGE_NAME,
+                    'session_id': session_id,
+                    'cancellation_token': cancellation_token
+                }
+
+                # Execute asynchronously
+                return await executor.execute_async(module, context)
+
+            else:
+                logger.warning(f"Unknown module type: {module.type}")
+                return f"[Unknown module type: {module.type}]"
+
+        except Exception as e:
+            logger.error(f"Error executing Stage 5 module '{module.name}': {e}")
+            if warnings is not None:
+                warnings.append(ModuleResolutionWarning(
+                    module_name=module.name,
+                    warning_type="execution_error",
+                    message=f"Stage 5 module execution failed: {str(e)}",
+                    stage=self.STAGE_NUMBER
+                ))
+            return f"[Error in Stage 5 module {module.name}: {str(e)}]"
+
     def execute_stage(
         self,
         template: str,
@@ -48,7 +293,8 @@ class Stage5Executor(BaseStageExecutor):
         current_provider_settings: Optional[Dict[str, Any]] = None,
         current_chat_controls: Optional[Dict[str, Any]] = None,
         ai_response: Optional[str] = None,
-        response_metadata: Optional[Dict[str, Any]] = None
+        response_metadata: Optional[Dict[str, Any]] = None,
+        cancellation_token: Optional[Any] = None
     ) -> str:
         """
         Execute Stage 5 AI-powered post-response module resolution.
@@ -105,7 +351,8 @@ class Stage5Executor(BaseStageExecutor):
             trigger_context=enhanced_trigger_context,
             current_provider=current_provider,
             current_provider_settings=current_provider_settings,
-            current_chat_controls=current_chat_controls
+            current_chat_controls=current_chat_controls,
+            cancellation_token=cancellation_token
         )
     
     def _get_modules_for_stage(self, db_session: Session, persona_id: Optional[str]) -> List[Module]:
@@ -211,7 +458,8 @@ class Stage5Executor(BaseStageExecutor):
                     'stage': self.STAGE_NUMBER,
                     'stage_name': self.STAGE_NAME,
                     'ai_response': trigger_context.get('ai_response') if trigger_context else None,
-                    'response_metadata': trigger_context.get('response_metadata', {}) if trigger_context else {}
+                    'response_metadata': trigger_context.get('response_metadata', {}) if trigger_context else {},
+                    'cancellation_token': cancellation_token
                 }
                 return executor.execute(module, context)
             

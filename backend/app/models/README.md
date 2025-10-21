@@ -33,7 +33,7 @@ Stores persona configurations including system prompt templates, mode, and setti
 - `template` (TEXT): System prompt template with module placeholders
 - `mode` (VARCHAR 20): "reactive" or "autonomous"
 - `loop_frequency` (VARCHAR 10): For autonomous mode (e.g., "5.0" seconds)
-- `first_message` (TEXT): Optional first message to user
+- `first_message` (TEXT): Optional first message to user (not used yet)
 - `image_path` (VARCHAR 500): Path to persona avatar
 - `extra_data` (JSONB): Additional metadata
 - `is_active` (BOOLEAN): Active status

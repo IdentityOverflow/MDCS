@@ -33,7 +33,235 @@ class Stage4Executor(BaseStageExecutor):
     
     STAGE_NUMBER = 4
     STAGE_NAME = "POST_RESPONSE Non-AI modules"
-    
+
+    async def execute_stage_async(
+        self,
+        template: str,
+        warnings: List[ModuleResolutionWarning],
+        resolved_modules: List[str],
+        conversation_id: Optional[str] = None,
+        persona_id: Optional[str] = None,
+        db_session: Optional[Session] = None,
+        trigger_context: Optional[Dict[str, Any]] = None,
+        current_provider: Optional[str] = None,
+        current_provider_settings: Optional[Dict[str, Any]] = None,
+        current_chat_controls: Optional[Dict[str, Any]] = None,
+        ai_response: Optional[str] = None,
+        response_metadata: Optional[Dict[str, Any]] = None,
+        session_id: Optional[str] = None,
+        cancellation_token: Optional[Any] = None
+    ) -> str:
+        """
+        Execute Stage 4 non-AI post-response module resolution asynchronously.
+
+        Args:
+            template: Template string with module references
+            warnings: List to collect resolution warnings
+            resolved_modules: List to track successfully resolved modules
+            conversation_id: Optional conversation context
+            persona_id: Optional persona context
+            db_session: Optional database session
+            trigger_context: Optional trigger context for advanced modules
+            current_provider: Current chat provider for context
+            current_provider_settings: Provider settings for context
+            current_chat_controls: Chat controls for context
+            ai_response: The AI response from Stage 3 for processing
+            response_metadata: Metadata about the AI response
+            session_id: Optional session ID
+            cancellation_token: Optional cancellation token for immediate cancellation
+
+        Returns:
+            Template with Stage 4 modules resolved
+        """
+        logger.debug("Executing Stage 4 asynchronously: POST_RESPONSE Non-AI modules")
+
+        # Check cancellation at start
+        if cancellation_token:
+            cancellation_token.check_cancelled()
+
+        # Get database session
+        db = db_session or next(get_db()) if self.db_session is None else self.db_session
+
+        # Get modules for Stage 4
+        stage4_modules = self._get_modules_for_stage(db, persona_id)
+
+        if not stage4_modules:
+            logger.debug("No Stage 4 modules found")
+            return template
+
+        logger.debug(f"Found {len(stage4_modules)} modules for Stage 4")
+
+        # Add response context for post-response modules
+        enhanced_trigger_context = (trigger_context or {}).copy()
+        enhanced_trigger_context.update({
+            'ai_response': ai_response,
+            'response_metadata': response_metadata or {},
+            'stage': self.STAGE_NUMBER,
+            'stage_name': self.STAGE_NAME
+        })
+
+        # Check cancellation before module resolution
+        if cancellation_token:
+            cancellation_token.check_cancelled()
+
+        # Resolve modules asynchronously
+        return await self._resolve_modules_async(
+            template=template,
+            modules=stage4_modules,
+            warnings=warnings,
+            resolved_modules=resolved_modules,
+            conversation_id=conversation_id,
+            persona_id=persona_id,
+            db_session=db,
+            trigger_context=enhanced_trigger_context,
+            current_provider=current_provider,
+            current_provider_settings=current_provider_settings,
+            current_chat_controls=current_chat_controls,
+            session_id=session_id,
+            cancellation_token=cancellation_token
+        )
+
+    async def _resolve_modules_async(
+        self,
+        template: str,
+        modules: List[Module],
+        warnings: List[ModuleResolutionWarning],
+        resolved_modules: List[str],
+        conversation_id: Optional[str],
+        persona_id: Optional[str],
+        db_session: Session,
+        trigger_context: Optional[Dict[str, Any]],
+        current_provider: Optional[str],
+        current_provider_settings: Optional[Dict[str, Any]],
+        current_chat_controls: Optional[Dict[str, Any]],
+        session_id: Optional[str],
+        cancellation_token: Optional[Any]
+    ) -> str:
+        """
+        Resolve Stage 4 modules asynchronously with cancellation checks.
+
+        Returns:
+            Resolved template string
+        """
+        resolved_template = template
+
+        for module in modules:
+            # Check cancellation before each module
+            if cancellation_token:
+                cancellation_token.check_cancelled()
+
+            # Find module reference in template
+            module_ref = f"@{module.name}"
+            if module_ref not in resolved_template:
+                continue
+
+            logger.debug(f"Resolving Stage 4 module: {module.name}")
+
+            try:
+                # Process module
+                module_content = await self._process_module_async(
+                    module=module,
+                    conversation_id=conversation_id,
+                    persona_id=persona_id,
+                    db_session=db_session,
+                    trigger_context=trigger_context,
+                    warnings=warnings,
+                    current_provider=current_provider,
+                    current_provider_settings=current_provider_settings,
+                    current_chat_controls=current_chat_controls,
+                    session_id=session_id,
+                    cancellation_token=cancellation_token
+                )
+
+                # Replace module reference
+                resolved_template = resolved_template.replace(module_ref, module_content)
+
+                # Track resolved module
+                if module.name not in resolved_modules:
+                    resolved_modules.append(module.name)
+
+            except Exception as e:
+                logger.error(f"Error processing Stage 4 module '{module.name}': {e}")
+                warnings.append(ModuleResolutionWarning(
+                    module_name=module.name,
+                    warning_type="execution_error",
+                    message=f"Stage 4 module execution failed: {str(e)}",
+                    stage=self.STAGE_NUMBER
+                ))
+
+        return resolved_template
+
+    async def _process_module_async(
+        self,
+        module: Module,
+        conversation_id: Optional[str] = None,
+        persona_id: Optional[str] = None,
+        db_session: Optional[Session] = None,
+        trigger_context: Optional[Dict[str, Any]] = None,
+        warnings: Optional[List[ModuleResolutionWarning]] = None,
+        current_provider: Optional[str] = None,
+        current_provider_settings: Optional[Dict[str, Any]] = None,
+        current_chat_controls: Optional[Dict[str, Any]] = None,
+        session_id: Optional[str] = None,
+        cancellation_token: Optional[Any] = None
+    ) -> str:
+        """
+        Process a Stage 4 module asynchronously.
+
+        Stage 4 modules are POST_RESPONSE without AI inference.
+
+        Returns:
+            Resolved module content as string
+        """
+        from ....models import ModuleType
+        from ..execution import SimpleExecutor, ScriptExecutor
+
+        # Check cancellation before processing
+        if cancellation_token:
+            cancellation_token.check_cancelled()
+
+        try:
+            if module.type == ModuleType.SIMPLE:
+                # Simple text module
+                executor = SimpleExecutor()
+                return executor.execute(module, {})
+
+            elif module.type == ModuleType.ADVANCED:
+                # Advanced script module - use async executor
+                executor = ScriptExecutor()
+
+                context = {
+                    'conversation_id': conversation_id,
+                    'persona_id': persona_id,
+                    'db_session': db_session,
+                    'trigger_context': trigger_context or {},
+                    'current_provider': current_provider,
+                    'current_provider_settings': current_provider_settings or {},
+                    'current_chat_controls': current_chat_controls or {},
+                    'stage': self.STAGE_NUMBER,
+                    'stage_name': self.STAGE_NAME,
+                    'session_id': session_id,
+                    'cancellation_token': cancellation_token
+                }
+
+                # Execute asynchronously
+                return await executor.execute_async(module, context)
+
+            else:
+                logger.warning(f"Unknown module type: {module.type}")
+                return f"[Unknown module type: {module.type}]"
+
+        except Exception as e:
+            logger.error(f"Error executing Stage 4 module '{module.name}': {e}")
+            if warnings is not None:
+                warnings.append(ModuleResolutionWarning(
+                    module_name=module.name,
+                    warning_type="execution_error",
+                    message=f"Stage 4 module execution failed: {str(e)}",
+                    stage=self.STAGE_NUMBER
+                ))
+            return f"[Error in Stage 4 module {module.name}: {str(e)}]"
+
     def execute_stage(
         self,
         template: str,

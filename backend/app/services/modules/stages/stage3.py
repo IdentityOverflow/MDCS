@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 
 from ....models import Module
 from ....services.ai_providers import ChatRequest, ChatResponse, StreamingChatResponse, ProviderType, ProviderFactory
+from ....services.cancellation_token import CancellationToken
 from .base_stage import BaseStageExecutor, ModuleResolutionWarning
 
 logger = logging.getLogger(__name__)
@@ -137,11 +138,12 @@ class Stage3Executor(BaseStageExecutor):
         trigger_context: Optional[Dict[str, Any]] = None,
         current_provider: Optional[str] = None,
         current_provider_settings: Optional[Dict[str, Any]] = None,
-        current_chat_controls: Optional[Dict[str, Any]] = None
+        current_chat_controls: Optional[Dict[str, Any]] = None,
+        cancellation_token: Optional[CancellationToken] = None
     ) -> AsyncIterator[StreamingChatResponse]:
         """
-        Execute Stage 3 with streaming AI response generation.
-        
+        Execute Stage 3 with streaming AI response generation and cancellation support.
+
         Args:
             resolved_template: System prompt template resolved from Stages 1+2
             user_message: User's message to respond to
@@ -154,12 +156,17 @@ class Stage3Executor(BaseStageExecutor):
             current_provider: AI provider to use ("ollama" or "openai")
             current_provider_settings: Provider connection settings
             current_chat_controls: Chat control parameters
-            
+            cancellation_token: Optional token for cancellation support
+
         Yields:
             StreamingChatResponse chunks from AI provider
         """
         logger.debug("Executing Stage 3: Streaming AI Response Generation")
-        
+
+        # Update token stage if provided
+        if cancellation_token:
+            cancellation_token.set_stage(3)
+
         if not current_provider or not current_provider_settings:
             error_msg = "Stage 3 requires AI provider and settings"
             logger.error(error_msg)
@@ -170,12 +177,12 @@ class Stage3Executor(BaseStageExecutor):
                 stage=self.STAGE_NUMBER
             ))
             return
-        
+
         try:
             # Create provider instance
             provider_type = ProviderType.OLLAMA if current_provider == "ollama" else ProviderType.OPENAI
             provider = ProviderFactory.create_provider(provider_type)
-            
+
             # Build chat request
             chat_request = ChatRequest(
                 message=user_message,
@@ -184,13 +191,13 @@ class Stage3Executor(BaseStageExecutor):
                 chat_controls=current_chat_controls or {},
                 system_prompt=resolved_template
             )
-            
-            # Stream AI response
+
+            # Stream AI response with cancellation support
             chunk_count = 0
-            async for chunk in provider.send_message_stream(chat_request):
+            async for chunk in provider.send_message_stream(chat_request, cancellation_token=cancellation_token):
                 chunk_count += 1
                 yield chunk
-            
+
             logger.debug(f"Stage 3 streaming completed: {chunk_count} chunks generated")
             
         except Exception as e:

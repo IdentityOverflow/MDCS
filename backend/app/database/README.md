@@ -389,4 +389,4 @@ psql -U project2501 -d project2501 -c "ROLLBACK;"
 - Migrations are forward-only (no automatic rollback)
 - UUID primary keys used for all tables (security + distributed systems)
 - PostgreSQL 12+ required for all features
-- pgvector extension required for conversation memory
+- pgvector extension required for advanced conversation memory (not used yet)

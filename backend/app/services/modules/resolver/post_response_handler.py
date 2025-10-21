@@ -221,12 +221,18 @@ class PostResponseHandler:
         session_id: Optional[str]
     ) -> List[PostResponseExecutionResult]:
         """Execute Stage 5 with error handling and timing."""
-        
+
         results = []
-        
+
+        # Get cancellation token for Stage 5 execution
+        cancellation_token = None
+        if self.session_manager:
+            cancellation_token = self.session_manager.cancellation_token
+
         with self.timer.time_stage(5) as stage_timer:
             try:
-                self.stage5.execute_stage(
+                # Use async version for proper cancellation support with AI modules
+                await self.stage5.execute_stage_async(
                     template=template,
                     warnings=warnings,
                     resolved_modules=resolved_modules,
@@ -238,7 +244,9 @@ class PostResponseHandler:
                     current_provider_settings=current_provider_settings,
                     current_chat_controls=current_chat_controls,
                     ai_response=ai_response,
-                    response_metadata=response_metadata
+                    response_metadata=response_metadata,
+                    session_id=session_id,
+                    cancellation_token=cancellation_token
                 )
                 elapsed_time = stage_timer.elapsed or 0.0
                 logger.debug(f"Stage 5 completed in {elapsed_time:.3f}s")
