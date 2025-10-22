@@ -47,7 +47,6 @@ const {
   processingStage,
   stageMessage,
   isProcessingAfter,
-  hideStreamingUI,
   // Session management
   currentSessionId,
   cancelCurrentSession,
@@ -110,14 +109,11 @@ onMounted(async () => {
   document.addEventListener('click', handleClickOutside)
   setupAutoScroll(chatMessagesRef)
 
-  // Connect to WebSocket if feature flag is enabled
+  // Connect to WebSocket
   try {
-    const useWebSocket = localStorage.getItem('use-websocket-chat') === 'true'
-    if (useWebSocket) {
-      console.log('🔌 Connecting to WebSocket...')
-      await connectWebSocket()
-      console.log('✅ WebSocket connected')
-    }
+    console.log('🔌 Connecting to WebSocket...')
+    await connectWebSocket()
+    console.log('✅ WebSocket connected')
   } catch (err) {
     console.error('Failed to connect WebSocket:', err)
   }
@@ -128,10 +124,7 @@ onUnmounted(() => {
 
   // Disconnect WebSocket on unmount
   try {
-    const useWebSocket = localStorage.getItem('use-websocket-chat') === 'true'
-    if (useWebSocket) {
-      disconnectWebSocket()
-    }
+    disconnectWebSocket()
   } catch (err) {
     console.error('Failed to disconnect WebSocket:', err)
   }
@@ -167,8 +160,7 @@ async function handleSendMessage() {
   try {
     await sendChatMessage(
       userMessage,
-      chatControls.value as ChatControlsType,
-      currentSystemPrompt.value
+      chatControls.value as ChatControlsType
     )
     // Scroll to bottom after sending message
     scrollToBottom(chatMessagesRef.value)
@@ -265,7 +257,6 @@ async function handleStopChat() {
           :processingStage="processingStage"
           :stageMessage="stageMessage"
           :isProcessingAfter="isProcessingAfter"
-          :hideStreamingUI="hideStreamingUI"
           :enableMarkdown="enableMarkdown"
           :selectedPersona="selectedPersona"
           :provider="chatControls.provider"

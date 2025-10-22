@@ -16,7 +16,6 @@ from app.models import Base
 from app.api.database import router as database_router
 from app.api.modules import router as modules_router
 from app.api.personas import router as personas_router
-from app.api.chat import router as chat_router
 from app.api.websocket_chat import router as websocket_router
 from app.api.connections import router as connections_router
 from app.api.conversations import router as conversations_router
@@ -108,8 +107,7 @@ def create_app() -> FastAPI:
     app.include_router(personas_router, prefix="/api", tags=["personas"])
     app.include_router(conversations_router, tags=["conversations"])
     app.include_router(messages_router, tags=["messages"])
-    app.include_router(chat_router, tags=["chat"])
-    app.include_router(websocket_router, tags=["websocket"])  # WebSocket chat endpoint
+    app.include_router(websocket_router, tags=["chat"])  # WebSocket chat endpoint
     app.include_router(connections_router, tags=["connections"])
     app.include_router(templates_router, tags=["templates"])
     

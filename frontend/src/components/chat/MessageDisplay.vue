@@ -14,7 +14,6 @@ interface Props {
   processingStage: string | null
   stageMessage: string | null
   isProcessingAfter: boolean
-  hideStreamingUI: boolean
   enableMarkdown: boolean
   selectedPersona?: { name: string } | null
   provider: string
@@ -217,7 +216,7 @@ function handleDeleteMessage(messageId: string) {
       </div>
 
       <!-- Active streaming indicator -->
-      <div v-if="!hideStreamingUI && isStreaming && (currentStreamingMessage || currentStreamingThinking)" class="message message-assistant streaming">
+      <div v-if="isStreaming && (currentStreamingMessage || currentStreamingThinking)" class="message message-assistant streaming">
         <div class="message-content">
           <!-- Streaming thinking content -->
           <div v-if="currentStreamingThinking" class="message-thinking streaming-thinking">

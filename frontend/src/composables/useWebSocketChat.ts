@@ -6,7 +6,7 @@
  */
 
 import { ref, onUnmounted, type Ref } from 'vue'
-import type { ChatMessage, ChatRequest, ChatControls } from '@/types/chat'
+import type { ChatMessage, ChatControls } from '@/types/chat'
 
 // Shared WebSocket state
 const ws = ref<WebSocket | null>(null)
