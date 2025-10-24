@@ -6,7 +6,7 @@ from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from app.database.connection import get_db
-from app.models.conversation import Conversation, Message
+from app.models.conversation import Conversation, Message, MessageRole
 from app.models.persona import Persona
 from pydantic import BaseModel, Field
 import uuid
@@ -93,8 +93,9 @@ def create_conversation(
     db: Session = Depends(get_db)
 ) -> ConversationResponse:
     """Create a new conversation."""
-    
+
     # Validate persona exists if provided
+    persona = None
     if conversation_data.persona_id:
         try:
             persona_uuid = uuid.UUID(conversation_data.persona_id)
@@ -103,14 +104,14 @@ def create_conversation(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Invalid persona ID format"
             )
-        
+
         persona = db.query(Persona).filter(Persona.id == persona_uuid).first()
         if not persona:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Persona not found"
             )
-    
+
     # Create conversation
     conversation = Conversation(
         title=conversation_data.title,
@@ -118,11 +119,22 @@ def create_conversation(
         provider_type=conversation_data.provider_type,
         provider_config=conversation_data.provider_config
     )
-    
+
     db.add(conversation)
     db.commit()
     db.refresh(conversation)
-    
+
+    # Add first message if persona has one configured
+    if persona and persona.first_message and persona.first_message.strip():
+        first_message = Message(
+            conversation_id=conversation.id,
+            role=MessageRole.ASSISTANT,
+            content=persona.first_message.strip()
+        )
+        db.add(first_message)
+        db.commit()
+        db.refresh(conversation)
+
     return ConversationResponse.from_conversation(conversation)
 
 

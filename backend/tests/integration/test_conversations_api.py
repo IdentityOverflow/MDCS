@@ -128,8 +128,48 @@ class TestConversationsCreateEndpoint:
     def test_create_conversation_missing_title(self, client: TestClient):
         """Test conversation creation without title."""
         response = client.post("/api/conversations", json={})
-        
+
         assert response.status_code == 422
+
+    def test_create_conversation_with_first_message(self, client: TestClient, db_session: Session):
+        """Test conversation creation with persona that has a first message."""
+        # Create persona with first message
+        persona = Persona(
+            name="Greeter Persona",
+            description="A persona that greets users",
+            template="You are a friendly assistant.",
+            mode="reactive",
+            first_message="Hello! Welcome to our chat. How can I help you today?"
+        )
+        db_session.add(persona)
+        db_session.commit()
+        db_session.refresh(persona)
+
+        # Create conversation
+        conversation_data = {
+            "title": "Test with First Message",
+            "persona_id": str(persona.id)
+        }
+
+        response = client.post("/api/conversations", json=conversation_data)
+
+        assert response.status_code == 201
+        data = response.json()
+
+        # Verify first message was added
+        assert len(data["messages"]) == 1
+        assert data["messages"][0]["role"] == "assistant"
+        assert data["messages"][0]["content"] == "Hello! Welcome to our chat. How can I help you today?"
+
+    def test_create_conversation_without_first_message(self, client: TestClient, test_conversation_data):
+        """Test conversation creation with persona without first message."""
+        response = client.post("/api/conversations", json=test_conversation_data)
+
+        assert response.status_code == 201
+        data = response.json()
+
+        # Verify no first message was added (persona has no first_message field)
+        assert data["messages"] == []
 
 
 class TestConversationsGetEndpoint:
