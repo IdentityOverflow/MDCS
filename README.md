@@ -33,11 +33,11 @@ Traditional AI systems use static system prompts that get lost in token limits. 
 
 ### Chat System
 - **Provider Support**: Ollama and OpenAI-compatible APIs
-- **WebSocket Communication**: Bidirectional real-time messaging
-- **Instant Cancellation**: <100ms cancellation latency across all stages ([Details](WEBSOCKET_CANCELLATION.md))
-- **Streaming Responses**: Real-time token streaming
-- **Conversation Persistence**: Full message history with thinking content (for native reasoning models)
-- **Memory Compression**: Long-term memory with AI-compressed summaries
+- **WebSocket Communication**: Real-time bidirectional messaging (SSE removed)
+- **Cancellation**: <100ms latency for stopping AI generation ([Details](WEBSOCKET_CANCELLATION.md))
+- **Streaming Responses**: Token-by-token streaming
+- **Conversation Persistence**: Full message history with thinking content
+- **Memory Compression**: Long-term memory with AI summaries (experimental)
 
 ### AI Capabilities
 - **Reflection**: AI self-assessment using current system prompt (using `ctx.reflect()`)
@@ -99,34 +99,35 @@ project2501/
 ## 📋 Prerequisites
 
 ### Docker Deployment (Recommended)
-- Docker Engine 20.10+ ([Install Docker](https://docs.docker.com/engine/install/))
+- Docker Engine 20.10+
 - Docker Compose V2
 - 2GB free disk space
-- *Optional*: Ollama installed on host for local AI models
+- *Optional*: Ollama on host for local AI
 
 ### Manual Installation
-**Backend Requirements:**
-- Python 3.10 or higher
-- Conda (Miniconda or Anaconda)
-- PostgreSQL 12 or higher
+**Backend:**
+- Python 3.10+
+- Conda or Miniconda
+- PostgreSQL 12+
 
-**Frontend Requirements:**
+**Frontend:**
 - Node.js 20.19.0+ or 22.12.0+
-- npm 9+ or yarn
+- npm 9+
 
-**AI Provider (choose one or both):**
-- Ollama (for local AI models)
-- OpenAI API key (or compatible API like LM Studio)
+**AI Provider (at least one):**
+- Ollama (local models)
+- OpenAI API key
+- Any OpenAI-compatible API (LM Studio, etc.)
 
 ## 🚀 Installation
 
 ### Quick Start with Docker (Recommended)
 
-The easiest way to run Project 2501 is using Docker Compose, which handles all dependencies and setup automatically.
+Docker Compose handles all dependencies and setup.
 
 #### Prerequisites
-- Docker Engine 20.10+ ([Install Docker](https://docs.docker.com/engine/install/))
-- Docker Compose V2 ([Included with Docker Desktop](https://docs.docker.com/compose/install/))
+- Docker Engine 20.10+
+- Docker Compose V2
 - 2GB free disk space
 
 #### Deploy with Docker Compose
@@ -148,14 +149,14 @@ docker compose ps
 docker compose logs -f  # View startup logs
 ```
 
-**Access the application:**
-- **Frontend**: http://localhost:5173
-- **Backend API**: http://localhost:8000
-- **API Documentation**: http://localhost:8000/docs
+**Access:**
+- Frontend: http://localhost:5173
+- Backend API: http://localhost:8000
+- API Docs: http://localhost:8000/docs
 
-**Using with Ollama on host:**
-- Backend can connect to host Ollama via `http://host.docker.internal:11434`
-- Frontend users configure `http://localhost:11434` in settings (browser connection)
+**Ollama on host:**
+- Backend: `http://host.docker.internal:11434`
+- Frontend: `http://localhost:11434` (configured in UI)
 
 #### Docker Management Commands
 
@@ -296,14 +297,14 @@ DATABASE_URL=postgresql://project2501:yourStrongPasswordHere@localhost:5432/proj
 
 ```bash
 # Activate environment
-source ~/miniforge3/etc/profile.d/conda.sh  # or ~/miniconda3/...
+source ~/miniforge3/etc/profile.d/conda.sh
 conda activate project2501
 
 # Run tests
 cd backend
 pytest -v
 
-# Should show: 389 tests passed
+# Should show: 400+ tests passing
 ```
 
 ### 4. Frontend Setup
@@ -515,8 +516,8 @@ pytest --cov=app --cov-report=html
 
 **Test Coverage:**
 - Unit tests: Core functionality, models, services
-- Integration tests: API endpoints, database operations
-- Total: 398 tests
+- Integration tests: API endpoints, database
+- Total: 400+ tests
 
 ### Frontend Tests
 
@@ -598,21 +599,20 @@ def my_function(param: str, db_session=None, _script_context=None):
 
 ### Script Execution Safety
 - **RestrictedPython Sandbox**: No file system or network access
-- **Whitelisted Imports**: Only safe modules allowed (datetime, math, json, etc.)
-- **Reflection Depth Limiting**: Maximum 3 levels of AI nesting
+- **Whitelisted Imports**: Safe modules only (datetime, math, json)
+- **Reflection Depth Limiting**: Max 3 levels to prevent infinite nesting
 - **Circular Reference Detection**: Prevents infinite module loops
 
 ### Database Security
-- **UUID Primary Keys**: Not enumerable, secure IDs
+- **UUID Primary Keys**: Non-enumerable IDs
 - **Prepared Statements**: SQLAlchemy prevents SQL injection
-- **Connection Pooling**: Secure connection management
-- **Environment Variables**: Credentials stored in .env files
+- **Environment Variables**: Credentials in .env files
 
 ### API Security
-- **CORS Configuration**: Configurable allowed origins
-- **Request Validation**: Pydantic models validate all inputs
-- **Error Sanitization**: No sensitive data in error messages
-- **Rate Limiting**: (Future enhancement)
+- **CORS Configuration**: Configurable origins
+- **Request Validation**: Pydantic models
+- **Error Sanitization**: No sensitive data in responses
+- **Rate Limiting**: Not yet implemented
 
 ## 🐛 Troubleshooting
 
@@ -727,62 +727,53 @@ npm run type-check
 
 ## 🗺️ Roadmap
 
-### Completed Features
+### Completed
 - ✅ Dynamic system prompt architecture
-- ✅ 5-stage execution pipeline
-- ✅ Advanced modules with Python scripts
-- ✅ AI reflection and generation
-- ✅ Conversation memory compression
-- ✅ Ollama and OpenAI compatible API provider support
+- ✅ 5-stage execution pipeline with AI dependency detection
+- ✅ Advanced modules with sandboxed Python scripts
+- ✅ AI self-reflection and on-demand generation
+- ✅ WebSocket-based chat with <100ms cancellation
+- ✅ Conversation memory with AI compression (experimental)
+- ✅ Ollama and OpenAI provider support
 
-### In Progress
-- 🔄 Chat cancellation system (working only for main response generation, not for reflection modules)
-
-### Planned Features
+### Planned
 - ⏳ Tool integration framework
 - ⏳ Multi-modal support (images, audio)
-- ⏳ Import/export system for personas and modules
-- ⏳ Module marketplace for sharing
-- ⏳ Autonomous mode for long term tasks
-- ⏳ Advanced memory retrieval with vector search
-- ⏳ Rate limiting and usage quotas
-- ⏳ User authentication and multi-tenancy
+- ⏳ Import/export for personas and modules
+- ⏳ Vector-based memory retrieval
+- ⏳ Rate limiting
+- ⏳ User authentication
 
 ## 📚 Documentation
 
-### Project Documentation
-- **Main README**: This file
+### Architecture Documentation
+- [API Layer](backend/app/api/README.md) - REST and WebSocket endpoints
+- [Core Layer](backend/app/core/README.md) - Script engine and plugins
+- [Services Layer](backend/app/services/README.md) - Business logic
+- [Models Layer](backend/app/models/README.md) - Database models
+- [Plugins Layer](backend/app/plugins/README.md) - Module plugin functions
 
-### Component Documentation
-- **API Layer**: [backend/app/api/README.md](backend/app/api/README.md)
-- **Core Layer**: [backend/app/core/README.md](backend/app/core/README.md)
-- **Database Layer**: [backend/app/database/README.md](backend/app/database/README.md)
-- **Models Layer**: [backend/app/models/README.md](backend/app/models/README.md)
-- **Plugins Layer**: [backend/app/plugins/README.md](backend/app/plugins/README.md)
-- **Services Layer**: [backend/app/services/README.md](backend/app/services/README.md)
-
-### API Documentation
-- **Interactive Docs**: http://localhost:8000/docs (when backend is running)
-- **OpenAPI Schema**: http://localhost:8000/openapi.json
+### API Reference
+- Interactive API Docs: http://localhost:8000/docs (backend must be running)
+- OpenAPI Schema: http://localhost:8000/openapi.json
 
 ## 🤝 Contributing
 
-Contributions are welcome! Please:
+Contributions welcome:
 
 1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Run tests to ensure nothing breaks (`pytest` for backend, `npm test` for frontend)
-4. Commit changes (`git commit -m 'Add amazing feature'`)
-5. Push to branch (`git push origin feature/amazing-feature`)
-6. Open a Pull Request
+2. Create a feature branch
+3. Run tests (`pytest` for backend, `npm test` for frontend)
+4. Commit changes
+5. Push and open a Pull Request
 
-### Development Guidelines
+### Guidelines
 - Write tests for new features
 - Follow existing code style
-- Update documentation for API changes
-- Keep commits focused and atomic
+- Update documentation
+- Keep commits atomic
 - Add docstrings to Python functions
-- Use TypeScript types in frontend
+- Use TypeScript types
 
 ## 📄 License
 

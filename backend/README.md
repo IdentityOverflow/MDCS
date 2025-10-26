@@ -10,13 +10,14 @@ The backend follows a clean, modular architecture with complete staged execution
 backend/
 ├── app/
 │   ├── api/                    # API route handlers
-│   │   ├── chat_with_cancellation.py # Chat endpoints with cancellation support
+│   │   ├── websocket_chat.py   # WebSocket chat endpoint with cancellation
 │   │   ├── conversations.py    # Conversation management
 │   │   ├── messages.py         # Message operations
 │   │   ├── personas.py         # AI persona management
 │   │   ├── modules.py          # Cognitive module management
 │   │   ├── templates.py        # Template resolution API
-│   │   ├── connections.py      # Database connections
+│   │   ├── connections.py      # Provider connections
+│   │   ├── chat_models.py      # Chat request/response models
 │   │   └── database.py         # Database utilities
 │   ├── core/                   # Core engine components
 │   │   ├── config.py           # Environment configuration
@@ -25,10 +26,10 @@ backend/
 │   │   ├── script_analyzer.py  # AI dependency analysis
 │   │   └── trigger_matcher.py  # Module trigger patterns
 │   ├── services/               # Business logic services
-│   │   ├── staged_module_resolver.py  # 5-Stage execution pipeline
-│   │   ├── ai_providers.py     # AI provider abstraction
-│   │   ├── ollama_service.py   # Ollama integration
-│   │   └── openai_service.py   # OpenAI integration
+│   │   ├── modules/            # Module execution (5-stage pipeline)
+│   │   ├── providers/          # AI provider services
+│   │   ├── websocket_manager.py    # WebSocket connection management
+│   │   └── chat_session_manager.py # Chat session and cancellation
 │   ├── plugins/                # Plugin system for advanced modules
 │   │   ├── ai_plugins.py       # AI generation & reflection
 │   │   ├── conversation_plugins.py  # Conversation utilities
@@ -44,11 +45,10 @@ backend/
 │   │   ├── connection.py       # SQLAlchemy connection
 │   │   └── migrations/         # Database schema migrations
 │   └── main.py                 # FastAPI application entry point
-├── tests/                      # Comprehensive test suite (501 tests)
-│   ├── unit/                   # Unit tests (24 test files)
-│   ├── integration/            # Integration tests (10 test files)
-│   ├── conftest.py             # Test configuration
-│   └── fixtures/               # Test fixtures
+├── tests/                      # Test suite (400+ tests)
+│   ├── unit/                   # Unit tests
+│   ├── integration/            # Integration tests
+│   └── conftest.py             # Test configuration and fixtures
 └── static/images/personas/     # Persona image storage
 ```
 
@@ -269,18 +269,24 @@ class ConversationState(Base):
 
 ## 🛠️ API Endpoints
 
-### Chat System
-- **POST /api/chat/send** - Complete chat response
-- **POST /api/chat/stream** - Streaming chat response with SSE
+### Chat System (WebSocket)
+- **WS /ws/chat** - Real-time chat with bidirectional cancellation
   ```json
   {
-    "message": "Hello!",
-    "provider": "ollama",
-    "persona_id": "uuid-string",
-    "provider_settings": {"host": "localhost:11434", "model": "llama3.2"},
-    "chat_controls": {"temperature": 0.7, "max_tokens": 1024}
+    "type": "chat",
+    "data": {
+      "message": "Hello!",
+      "provider": "ollama",
+      "persona_id": "uuid-string",
+      "conversation_id": "uuid-string",
+      "provider_settings": {"host": "localhost:11434", "model": "llama3.2"},
+      "chat_controls": {"temperature": 0.7, "max_tokens": 1024}
+    }
   }
   ```
+- **WebSocket Messages**:
+  - Client → Server: `chat`, `cancel`, `ping`
+  - Server → Client: `session_start`, `chunk`, `done`, `cancelled`, `error`, `pong`
 
 ### Conversation Management
 - **GET /api/conversations/by-persona/{persona_id}** - Get conversations for persona
@@ -373,7 +379,7 @@ Settings are passed with each request (no backend storage):
 
 ## 🧪 Testing
 
-### Test Coverage: 525 Tests (100% Passing)
+### Test Coverage: 400+ Tests
 
 ```bash
 # Run all tests
@@ -391,18 +397,17 @@ pytest --cov=app --cov-report=html
 ```
 
 ### Test Structure
-- **Unit Tests** (24 files): Individual component testing
-- **Integration Tests** (10 files): Full workflow testing  
-- **Fixtures**: Database setup, test data, mocking utilities
+- **Unit Tests**: Individual component testing
+- **Integration Tests**: Full workflow testing
+- **Fixtures**: Database setup, test data, mocking
 
 ### Key Test Areas
-- Staged module execution pipeline (30+ tests)
-- SystemPromptState tracking and integration (25 tests)
-- AI provider integration (25+ tests)
-- Chat API functionality (14 tests)
-- Database operations (50+ tests)
-- Plugin system security (15+ tests)
-- Template resolution (12 tests)
+- Staged module execution pipeline
+- AI provider integration
+- WebSocket chat functionality
+- Database operations
+- Plugin system security
+- Template resolution
 
 ## 🔧 Development
 
@@ -420,8 +425,8 @@ pytest --cov=app  # Coverage analysis
 ### Performance Considerations
 - **Connection Pooling**: Efficient database connections
 - **Staged Execution**: Optimized module processing order
-- **Streaming Responses**: Server-Sent Events for real-time chat
-- **Lazy Loading**: On-demand module and persona loading
+- **WebSocket Streaming**: Real-time bidirectional communication
+- **Fast Cancellation**: <100ms cancellation latency
 
 ## 🚢 Deployment
 
@@ -454,36 +459,29 @@ CMD ["gunicorn", "app.main:app", "-w", "4", "-k", "uvicorn.workers.UvicornWorker
 
 ## 📋 Implementation Status
 
-### ✅ Completed Features (Production Ready)
+### ✅ Completed
 
-- [x] **Complete FastAPI application** with 525 passing tests
-- [x] **5-Stage Execution Pipeline** replacing legacy timing system
+- [x] **5-Stage Execution Pipeline** with AI dependency detection
 - [x] **ExecutionContext System** (IMMEDIATE, POST_RESPONSE, ON_DEMAND)
-- [x] **Dual AI Provider Support** (Ollama + OpenAI with streaming)
-- [x] **Advanced Module System** with RestrictedPython sandboxing
+- [x] **WebSocket Chat** with <100ms cancellation latency
+- [x] **Dual AI Provider Support** (Ollama + OpenAI)
+- [x] **Advanced Module System** with RestrictedPython sandbox
 - [x] **Plugin Architecture** with 15+ built-in functions
-- [x] **Self-Reflecting AI** via `ctx.reflect()` capability  
-- [x] **Conversation Management** with full CRUD operations
+- [x] **Self-Reflecting AI** via `ctx.reflect()` and `ctx.generate()`
+- [x] **Conversation Management** with full CRUD
 - [x] **Template Resolution** with @module_name references
-- [x] **Database Models** with UUID primary keys and relationships
-- [x] **ConversationState Management** for persistent module variables
-- [x] **Comprehensive API** with streaming chat support
-- [x] **Script Analysis Engine** with automatic AI dependency detection
-- [x] **SystemPromptState Tracking** with complete execution visibility and performance analysis
-- [x] **State-Aware AI Plugins** for sophisticated self-reflection and adaptive behavior
-- [x] **Frontend Integration** with CORS and localStorage compatibility
+- [x] **ConversationState Management** for persistent module state
+- [x] **Script Analysis Engine** for AI dependency detection
+- [x] **SystemPromptState Tracking** (experimental)
 
-### 🔄 Future Enhancements
+### 🔄 Planned
 
-- [ ] **Authentication System** with JWT tokens
-- [ ] **File Upload Support** for documents and images  
-- [ ] **WebSocket Support** for real-time bidirectional communication
-- [ ] **Module Marketplace** for sharing cognitive modules
-- [ ] **Advanced Analytics** for conversation and module performance
-- [ ] **Multi-tenant Support** with user isolation
-- [ ] **Caching Layer** with Redis for improved performance
-- [ ] **Rate Limiting** for API endpoints
-- [ ] **Audit Logging** for security and compliance
+- [ ] **Authentication System**
+- [ ] **File Upload Support**
+- [ ] **Module Marketplace**
+- [ ] **Multi-tenant Support**
+- [ ] **Rate Limiting**
+- [ ] **Audit Logging**
 
 ## 🔗 Frontend Integration
 
@@ -494,7 +492,7 @@ CMD ["gunicorn", "app.main:app", "-w", "4", "-k", "uvicorn.workers.UvicornWorker
 ### State Management
 - **Stateless Architecture**: All settings passed with requests
 - **LocalStorage Integration**: Frontend manages provider configurations
-- **Real-time Updates**: Server-Sent Events for streaming responses
+- **Real-time Updates**: WebSocket streaming for bidirectional communication
 
 ### API Response Format
 ```json
@@ -554,4 +552,4 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 
 ---
 
-**Project 2501 Backend** - Built with FastAPI, SQLAlchemy, and PostgreSQL for the Cognitive Systems Framework with 5-Stage Execution Pipeline and Advanced AI Integration.
+**Project 2501 Backend** - FastAPI-based cognitive systems framework with WebSocket chat, 5-stage module execution, and AI self-reflection capabilities.

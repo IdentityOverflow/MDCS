@@ -6,44 +6,57 @@ The API layer provides RESTful endpoints for all Project 2501 functionality. Bui
 
 ### Core Endpoints
 
-#### [chat.py](chat.py)
-**FastAPI chat endpoints**
+#### [websocket_chat.py](websocket_chat.py)
+**WebSocket chat endpoint**
 
-Provides the main chat interface with streaming and non-streaming responses:
-- `POST /api/chat/send` - Complete chat response with cancellation
-- `POST /api/chat/stream` - Server-sent events streaming with cancellation
-- `POST /api/chat/cancel/{session_id}` - Cancel active chat session
-- `GET /api/chat/status/{session_id}` - Check session status
-- `GET /api/chat/sessions/active` - List active sessions
+Provides real-time chat with bidirectional communication:
+- `WS /ws/chat` - WebSocket endpoint for chat with cancellation support
+
+**Message Types (Client → Server):**
+- `chat` - Send message with provider settings
+- `cancel` - Cancel active chat session
+- `ping` - Heartbeat
+
+**Message Types (Server → Client):**
+- `session_start` - WebSocket session established
+- `chat_session_start` - Chat message processing started
+- `stage_update` - Module execution stage updates
+- `chunk` - Streaming content chunks
+- `done` - Main response complete
+- `post_response_complete` - POST_RESPONSE modules complete
+- `cancelled` - Session cancelled
+- `error` - Error occurred
+- `pong` - Heartbeat response
 
 **Key Features:**
+- Real-time bidirectional communication
+- <100ms cancellation latency
+- Stage-aware execution tracking
+- Thread pool execution (prevents event loop blocking)
 - Provider integration (Ollama/OpenAI)
-- System prompt resolution with module execution (Stages 1 & 2)
+- System prompt resolution (Stages 1 & 2)
 - POST_RESPONSE module execution (Stages 4 & 5)
-- Streaming to non-streaming conversion for cancellation
-- ConversationState management
-- Session-based cancellation support
 
 **Flow:**
-1. Generate session ID (client-provided or auto-generated)
-2. Register session for cancellation
-3. Resolve system prompt (execute Stage 1 & 2 modules)
-4. Call AI provider (Stage 3)
-5. Execute POST_RESPONSE modules (Stages 4 & 5)
-6. Cleanup session
+1. Client connects to WebSocket
+2. Server sends session_start with WebSocket session ID
+3. Client sends chat message
+4. Server sends chat_session_start with chat session ID
+5. Server executes stages and streams chunks
+6. Server sends done and post_response_complete
+7. Client can cancel anytime with cancel message
 
 ---
 
 #### [chat_models.py](chat_models.py)
-**Pydantic models for chat API**
+**Pydantic models for chat**
 
 Request/response validation models:
 - `ChatSendRequest` - Chat message with provider settings
 - `ChatSendResponse` - Complete response with metadata
-- `StreamingChatResponse` - SSE streaming chunks
-- `ChatError` - Error handling
 - `ProcessingStage` - Stage tracking enum
 - `DebugData` - Debug information
+- Various WebSocket message models
 
 ---
 
@@ -186,51 +199,66 @@ def endpoint(
 
 ---
 
-## 🔄 Chat Cancellation System
-
-The chat endpoints implement a sophisticated cancellation system:
+## 🔄 WebSocket Chat & Cancellation
 
 ### Session Management
-1. **Registration**: Each request gets unique session ID
-2. **Tracking**: Session stored in `ChatSessionManager`
-3. **Cancellation**: Stop button triggers `/cancel/{session_id}`
-4. **Cleanup**: Automatic cleanup on completion/cancellation
+1. **WebSocket Session**: Connection-level session (one per browser tab)
+2. **Chat Session**: Message-level session (unique per user message)
+3. **Cancellation Token**: Shared state for cancellation detection
+
+### Cancellation Flow
+1. Client sends `cancel` message with chat_session_id
+2. Server sets cancellation token
+3. All stages check token periodically
+4. Processing stops within <100ms
+5. Server sends `cancelled` message
 
 ### Cancellation Points
-- System prompt resolution (Stages 1 & 2)
-- AI provider streaming (Stage 3)
-- POST_RESPONSE modules (Stages 4 & 5)
+- Stage 1-2: System prompt resolution
+- Stage 3: AI provider streaming
+- Stage 4-5: POST_RESPONSE modules
 
 ### Consecutive Messages
 - New message auto-cancels current session
 - Immediate responsiveness
-- No queuing or blocking
+- No blocking
 
 ---
 
-## 📊 API Response Patterns
+## 📊 WebSocket Message Examples
 
-### Success Response
+### Chat Request
 ```json
 {
-  "content": "AI response",
-  "metadata": {...},
-  "response_time": 1.23
+  "type": "chat",
+  "data": {
+    "message": "Hello!",
+    "provider": "ollama",
+    "persona_id": "uuid",
+    "conversation_id": "uuid",
+    "provider_settings": {...},
+    "chat_controls": {...}
+  }
 }
 ```
 
-### Streaming Response
-```
-data: {"event_type": "content", "content": "chunk", "done": false}
-data: {"event_type": "content", "content": "", "done": true}
-```
-
-### Error Response
+### Streaming Chunk
 ```json
 {
-  "error_type": "provider_error",
-  "message": "Connection failed",
-  "details": {...}
+  "type": "chunk",
+  "data": {
+    "content": "AI response chunk",
+    "thinking": null,
+    "done": false
+  }
+}
+```
+
+### Cancellation
+```json
+{
+  "type": "cancel",
+  "session_id": "chat-session-id"
 }
 ```
 
