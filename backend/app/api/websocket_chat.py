@@ -90,6 +90,13 @@ async def websocket_chat_endpoint(
                                     session_manager=session_manager
                                 ))
                             )
+                            # Commit successful execution
+                            task_db.commit()
+                        except Exception as e:
+                            # Rollback on any exception to prevent transaction state issues
+                            task_db.rollback()
+                            logger.error(f"Chat task failed for session {session_id}: {e}")
+                            raise
                         finally:
                             task_db.close()
 
@@ -404,8 +411,7 @@ async def handle_chat_message(
 
                 if results:
                     logger.info(f"Executed {len(results)} POST_RESPONSE modules for session {session_id}")
-                    # Commit ConversationState changes
-                    db.commit()
+                    # Note: Commit happens at top-level chat_task, not here
 
                 # Send completion message for POST_RESPONSE (whether or not modules ran)
                 await ws_manager.broadcast_chunk(session_id, "post_response_complete", {
@@ -415,6 +421,8 @@ async def handle_chat_message(
 
             except Exception as post_error:
                 logger.error(f"POST_RESPONSE error for {session_id}: {post_error}")
+                # Rollback database changes on POST_RESPONSE error
+                db.rollback()
                 # Non-fatal - POST_RESPONSE errors don't affect main response
                 # Still send completion message
                 await ws_manager.broadcast_chunk(session_id, "post_response_complete", {
