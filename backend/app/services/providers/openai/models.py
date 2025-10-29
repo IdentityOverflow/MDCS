@@ -78,7 +78,8 @@ class OpenAIDelta(BaseModel):
 class OpenAIStreamChoice(BaseModel):
     """OpenAI streaming response choice."""
     index: int
-    delta: OpenAIDelta
+    delta: Optional[OpenAIDelta] = None
+    message: Optional[OpenAIMessage] = None  # Some APIs send 'message' in final chunk
     finish_reason: Optional[str] = None
 
 

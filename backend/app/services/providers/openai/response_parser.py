@@ -172,14 +172,24 @@ class OpenAIStreamParser:
         # Get the first choice (most common case)
         if not openai_chunk.choices:
             return None
-        
+
         choice = openai_chunk.choices[0]
-        if not choice.delta:
+
+        # Handle both delta (standard streaming) and message (final chunk in some APIs)
+        content = ""
+        thinking = None
+
+        if choice.delta:
+            # Standard streaming chunk with delta
+            content = choice.delta.content or ""
+            thinking = ThinkingExtractor.extract_from_delta(choice.delta)
+        elif choice.message:
+            # Final chunk with message instead of delta (some OpenAI-compatible APIs)
+            content = choice.message.content or ""
+            thinking = choice.message.reasoning if hasattr(choice.message, 'reasoning') else None
+        else:
+            # No delta or message - skip this chunk
             return None
-        
-        # Extract content and thinking from delta
-        content = choice.delta.content or ""
-        thinking = ThinkingExtractor.extract_from_delta(choice.delta)
         
         # Determine if this is the final chunk
         done = choice.finish_reason is not None
