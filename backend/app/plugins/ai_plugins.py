@@ -22,40 +22,79 @@ logger = logging.getLogger(__name__)
 def _get_state_aware_system_prompt(script_context) -> Optional[str]:
     """
     Get state-aware system prompt for AI reflection based on SystemPromptState.
-    
+
+    Falls back to reconstructing the system prompt from persona + modules if
+    SystemPromptState is not available (e.g., in POST_RESPONSE modules).
+
     Args:
         script_context: Script execution context with potential state access
-        
+
     Returns:
         State-aware system prompt or None if state is not available
     """
     try:
-        # Check if context has state-aware methods (loose coupling check)
-        if not hasattr(script_context, 'get_system_prompt_state') or not hasattr(script_context, 'get_current_execution_stage'):
+        # Try to get SystemPromptState first (preferred method)
+        if hasattr(script_context, 'get_system_prompt_state') and hasattr(script_context, 'get_current_execution_stage'):
+            prompt_state = script_context.get_system_prompt_state()
+            current_stage = script_context.get_current_execution_stage()
+
+            if prompt_state and current_stage:
+                stage_prompt = prompt_state.get_prompt_for_stage(current_stage)
+                if isinstance(stage_prompt, str) and stage_prompt.strip():
+                    return stage_prompt
+
+        # Fallback: Reconstruct system prompt from persona and resolve modules
+        # This is used when SystemPromptState isn't available (e.g., POST_RESPONSE modules)
+        logger.debug("SystemPromptState not available, attempting to reconstruct system prompt")
+
+        if not hasattr(script_context, 'persona_id') or not hasattr(script_context, 'db_session'):
+            logger.debug("Cannot reconstruct: missing persona_id or db_session")
             return None
-        
-        # Get SystemPromptState
-        prompt_state = script_context.get_system_prompt_state()
-        if not prompt_state:
+
+        # Import here to avoid circular dependency
+        from app.models import Persona
+        from app.services.modules.resolver import resolve_template_for_response
+
+        # Get persona from database
+        persona = script_context.db_session.query(Persona).filter(
+            Persona.id == script_context.persona_id
+        ).first()
+
+        if not persona:
+            logger.debug(f"Cannot reconstruct: persona {script_context.persona_id} not found")
             return None
-        
-        # Get current execution stage
-        current_stage = script_context.get_current_execution_stage()
-        if not current_stage:
-            return None
-        
-        # Get stage-appropriate system prompt
-        stage_prompt = prompt_state.get_prompt_for_stage(current_stage)
-        
-        # Ensure we return a valid string (not Mock or None)
-        if isinstance(stage_prompt, str) and stage_prompt.strip():
-            return stage_prompt
-        else:
-            return None
-        
+
+        # Get conversation_id for module resolution
+        conversation_id = getattr(script_context, 'conversation_id', None)
+
+        # Resolve the persona template with modules (stages 1-2)
+        # This gives us the same system prompt that was used for the main response
+        try:
+            result = resolve_template_for_response(
+                template=persona.template,
+                conversation_id=conversation_id,
+                persona_id=str(persona.id),
+                db_session=script_context.db_session
+            )
+
+            system_prompt = result.resolved_template
+
+            if not system_prompt or not system_prompt.strip():
+                logger.debug("Cannot reconstruct: resolved template is empty")
+                return None
+
+            logger.debug(f"Successfully reconstructed and resolved system prompt from persona {persona.name}")
+            return system_prompt
+
+        except Exception as e:
+            logger.error(f"Error resolving persona template for reflection: {e}", exc_info=True)
+            # Fallback to raw template if resolution fails
+            logger.debug("Falling back to raw persona template")
+            return persona.template if persona.template and persona.template.strip() else None
+
     except Exception as e:
         # Any exception in state access should fall back gracefully
-        logger.debug(f"Could not get state-aware system prompt: {e}")
+        logger.error(f"Error getting state-aware system prompt: {e}", exc_info=True)
         return None
 
 
