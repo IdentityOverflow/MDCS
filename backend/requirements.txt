@@ -7,4 +7,5 @@ pydantic==2.11.7
 pydantic-settings==2.10.1
 python-multipart==0.0.6
 aiohttp==3.9.1
+requests==2.31.0
 RestrictedPython==7.0
