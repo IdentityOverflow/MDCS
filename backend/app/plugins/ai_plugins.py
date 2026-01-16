@@ -667,37 +667,40 @@ Input:
 
 
 @plugin_registry.register("reflect")
-def reflect(instructions: str, _script_context=None, **kwargs) -> str:
+def reflect(instructions: str, _script_context=None, role: str = "assistant", **kwargs) -> str:
     """
     Self-reflective AI processing using the current state-aware system prompt.
-    
+
     This function enables AI personas to reflect on their own thoughts and actions,
     using the fully resolved system prompt from the current execution stage.
     Includes comprehensive safety mechanisms to prevent infinite loops.
-    
+
     Safety features:
     - Maximum reflection depth limiting (3 levels)
-    - Direct module recursion prevention  
+    - Direct module recursion prevention
     - Execution context restrictions (no nested IMMEDIATE)
     - Audit trail for debugging and self-awareness
-    
+
     Args:
         instructions: Reflection instructions from the script (mandatory)
         _script_context: Script execution context (auto-injected)
+        role: Message role - "assistant" (default, AI continues its own thought),
+              "user" (appears as user question), or "system" (appended to system prompt)
         **kwargs: Chat control overrides (temperature, max_tokens, etc.)
-        
+
     Returns:
         AI-generated reflection response or error message if reflection is blocked
-        
+
     Examples:
-        # Self-assessment using current system prompt
-        quality = ctx.reflect("Rate my last response quality 1-10 and suggest improvements")
-        
-        # Adaptive behavior analysis
-        tone = ctx.reflect("What communication style would work best for this user?")
-        
+        # Self-reflection (assistant role - AI continues its own thought)
+        quality = ctx.reflect("Let me assess my last response quality...")
+
+        # With explicit role
+        tone = ctx.reflect("What communication style would work best?", role="user")
+
         # Creative reflection with custom parameters
-        creative_idea = ctx.reflect("Generate a creative solution approach", temperature=0.8, max_tokens=300)
+        creative_idea = ctx.reflect("I will now generate a creative solution approach...",
+                                   temperature=0.8, max_tokens=300)
     """
     try:
         # Safety check - verify script context is available
@@ -766,13 +769,19 @@ def reflect(instructions: str, _script_context=None, **kwargs) -> str:
                 logger.warning("No state-aware system prompt available for reflection")
                 return "Error: No system prompt state available for reflection"
             
+            # Validate role parameter
+            if role not in ['user', 'assistant', 'system']:
+                logger.warning(f"Invalid role '{role}', defaulting to 'assistant'")
+                role = 'assistant'
+
             # Create chat request with state-aware system prompt
             chat_request = ChatRequest(
-                message=instructions,  # Use instructions directly as the user message
+                message=instructions,
                 provider_type=provider_type,
                 provider_settings=provider_settings,
                 chat_controls=chat_controls,
-                system_prompt=system_prompt
+                system_prompt=system_prompt,
+                message_role=role
             )
             
             # Get cancellation token for cancellation support

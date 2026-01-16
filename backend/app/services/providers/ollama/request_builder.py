@@ -98,9 +98,10 @@ class OllamaRequestBuilder:
         else:
             logger.warning("No system message found in request")
         
-        # Add user message
+        # Add message with specified role (default: "user")
+        message_role = getattr(request, 'message_role', 'user')
         messages.append({
-            "role": "user",
+            "role": message_role,
             "content": request.message
         })
         

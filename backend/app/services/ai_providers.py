@@ -23,17 +23,24 @@ class ChatRequest(BaseModel):
     provider_settings: Dict[str, Any] = Field(..., description="Provider-specific settings")
     chat_controls: Dict[str, Any] = Field(default_factory=dict, description="Chat control parameters")
     system_prompt: str = Field(default="", description="System prompt to use for the conversation")
-    
+    message_role: str = Field(default="user", description="Role for the message: 'user', 'assistant', or 'system'")
+
     @field_validator('message')
     def validate_message(cls, v):
         if not v or not v.strip():
             raise ValueError("Message cannot be empty")
         return v
-    
+
     @field_validator('provider_settings')
     def validate_provider_settings(cls, v):
         if not v:
             raise ValueError("Provider settings are required")
+        return v
+
+    @field_validator('message_role')
+    def validate_message_role(cls, v):
+        if v not in ['user', 'assistant', 'system']:
+            raise ValueError("Message role must be 'user', 'assistant', or 'system'")
         return v
 
 
