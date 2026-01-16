@@ -7,6 +7,7 @@
 
 import { ref, onUnmounted, type Ref } from 'vue'
 import type { ChatMessage, ChatControls } from '@/types/chat'
+import { useDebug } from './useDebug'
 
 // Shared WebSocket state
 const ws = ref<WebSocket | null>(null)
@@ -38,6 +39,8 @@ export function useWebSocketChat(
   getProviderSettings: (provider: string) => any,
   buildChatControls: (controls: ChatControls) => any
 ) {
+  // Initialize debug composable
+  const { addDebugRecord } = useDebug()
 
   /**
    * Get WebSocket URL from current location
@@ -274,6 +277,40 @@ export function useWebSocketChat(
         outputTokens,
         true
       )
+    }
+
+    // Add debug record if debug data is present
+    if (data.debug_data) {
+      try {
+        const debugData = data.debug_data
+        const metadata = data.metadata || {}
+
+        // Get persona info from localStorage
+        const selectedPersonaId = localStorage.getItem('selectedPersonaId')
+        const selectedPersonaName = localStorage.getItem('selectedPersonaName')
+
+        // Calculate response time if we have timestamps
+        const responseTime = metadata.response_time ||
+          (metadata.completion_time ? metadata.completion_time * 1000 : undefined)
+
+        // Create debug data in the format expected by addDebugRecord
+        const formattedDebugData = {
+          provider_request: debugData.provider_request || {},
+          provider_response: debugData.provider_response || {},
+          request_timestamp: Date.now() - (responseTime || 0),
+          response_timestamp: Date.now()
+        }
+
+        addDebugRecord({
+          debugData: formattedDebugData,
+          personaName: selectedPersonaName || undefined,
+          personaId: selectedPersonaId || undefined,
+          resolvedSystemPrompt: debugData.resolved_system_prompt,
+          responseTime: responseTime
+        })
+      } catch (err) {
+        console.error('Error adding debug record:', err)
+      }
     }
 
     // Reset streaming state

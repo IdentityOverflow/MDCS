@@ -379,10 +379,25 @@ async def handle_chat_message(
 
         logger.debug(f"AI response complete: {len(accumulated_response)} chars")
 
+        # Extract debug data from metadata and add resolved system prompt
+        debug_data = {}
+        if response_metadata:
+            if "debug_api_request" in response_metadata:
+                debug_data["provider_request"] = response_metadata["debug_api_request"]
+            if "debug_api_response" in response_metadata:
+                debug_data["provider_response"] = response_metadata["debug_api_response"]
+            if "debug_api_url" in response_metadata:
+                debug_data["provider_url"] = response_metadata["debug_api_url"]
+
+        # Add resolved system prompt to debug data
+        if resolved_system_prompt:
+            debug_data["resolved_system_prompt"] = resolved_system_prompt
+
         # Send done message immediately so frontend can display the message
         # POST_RESPONSE modules will run in background without blocking UI
         await ws_manager.broadcast_chunk(session_id, "done", {
-            "metadata": response_metadata
+            "metadata": response_metadata,
+            "debug_data": debug_data if debug_data else None
         })
 
         # Stage 3: THINKING_AFTER - Execute POST_RESPONSE modules (Stages 4-5)
