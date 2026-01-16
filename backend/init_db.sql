@@ -123,6 +123,8 @@ CREATE TABLE conversation_states (
     variables JSONB NOT NULL DEFAULT '{}',
     execution_metadata JSONB DEFAULT '{}',
     executed_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
     UNIQUE(conversation_id, module_id, execution_stage)
 );
 
@@ -141,7 +143,8 @@ CREATE TABLE conversation_memories (
     original_message_range VARCHAR(20) NOT NULL,
     message_count_at_compression INTEGER NOT NULL CHECK (message_count_at_compression > 0),
     first_message_id VARCHAR(100),
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW() NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
     UNIQUE (conversation_id, memory_sequence)
 );
 
@@ -222,7 +225,44 @@ CREATE TRIGGER update_conversations_updated_at BEFORE UPDATE ON conversations
 CREATE TRIGGER update_messages_updated_at BEFORE UPDATE ON messages
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
+CREATE TRIGGER update_conversation_states_updated_at BEFORE UPDATE ON conversation_states
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+CREATE TRIGGER update_conversation_memories_updated_at BEFORE UPDATE ON conversation_memories
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
 \echo '✓ Triggers created for automatic updated_at'
+
+-- ============================================
+-- Insert Default Data
+-- ============================================
+
+\echo '=== Inserting default data ==='
+
+-- Insert default persona: Ava
+INSERT INTO personas (name, description, template, mode, first_message, is_active)
+VALUES (
+    'Ava',
+    'General purpose digital assistant.',
+    E'You are Ava, a general purpose digital assistant.\n\n---\n\nThese are the most recent messages we exchanged:\n@short_term_memory\n\n---',
+    'reactive',
+    'Hello! I''m Ava, your digital assistant. How can I help you today?',
+    TRUE
+);
+\echo '✓ Default persona created: Ava'
+
+-- Insert default module: short_term_memory
+INSERT INTO modules (name, description, content, script, execution_context, type, is_active)
+VALUES (
+    'short_term_memory',
+    'Provides recent conversation history context',
+    '${history}',
+    'history = ctx.get_recent_messages(30)',
+    'IMMEDIATE',
+    'ADVANCED',
+    TRUE
+);
+\echo '✓ Default module created: short_term_memory'
 
 -- ============================================
 -- Completion
@@ -232,4 +272,5 @@ CREATE TRIGGER update_messages_updated_at BEFORE UPDATE ON messages
 \echo 'Database: project2501'
 \echo 'Schema version: Equivalent to migrations 001-008'
 \echo 'Tables: personas, modules, conversations, messages, conversation_states, conversation_memories'
+\echo 'Default data: 1 persona (Ava), 1 module (short_term_memory)'
 \echo 'Ready for application startup'
