@@ -22,6 +22,41 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
+def _trim_to_last_sentence(text: str) -> str:
+    """
+    Trim text to the last complete sentence.
+
+    Removes any incomplete sentence at the end of the text by finding
+    the last sentence-ending punctuation mark.
+
+    Args:
+        text: The text to trim
+
+    Returns:
+        Text trimmed to last complete sentence, or original text if no sentence endings found
+    """
+    if not text:
+        return text
+
+    # Sentence ending punctuation marks
+    sentence_endings = ['. ', '.\n', '! ', '!\n', '? ', '?\n']
+
+    # Find the last occurrence of any sentence ending
+    last_sentence_end = -1
+    for ending in sentence_endings:
+        pos = text.rfind(ending)
+        if pos > last_sentence_end:
+            last_sentence_end = pos
+
+    # If found, trim to include the punctuation mark
+    if last_sentence_end > 0:
+        # Include the punctuation mark itself (hence +1)
+        return text[:last_sentence_end + 1].rstrip()
+
+    # No sentence ending found - return original
+    return text
+
+
 @router.websocket("/ws/chat")
 async def websocket_chat_endpoint(
     websocket: WebSocket,
@@ -379,6 +414,29 @@ async def handle_chat_message(
 
         logger.debug(f"AI response complete: {len(accumulated_response)} chars")
 
+        # Check for truncation and clean up incomplete sentences
+        was_truncated = False
+        original_response = accumulated_response
+
+        if response_metadata:
+            # Check if response was truncated (eval_count >= num_predict limit)
+            eval_count = response_metadata.get("eval_count")
+            # Get num_predict from chat_controls or provider settings
+            num_predict = None
+            if chat_controls and "max_tokens" in chat_controls:
+                num_predict = chat_controls["max_tokens"]
+
+            # Detect truncation
+            if eval_count and num_predict and eval_count >= num_predict:
+                was_truncated = True
+                logger.info(f"Response truncated: {eval_count} tokens reached limit of {num_predict}")
+
+                # Trim to last complete sentence
+                accumulated_response = _trim_to_last_sentence(accumulated_response)
+
+                if accumulated_response != original_response:
+                    logger.debug(f"Trimmed {len(original_response) - len(accumulated_response)} chars from incomplete sentence")
+
         # Extract debug data from metadata and add resolved system prompt
         debug_data = {}
         if response_metadata:
@@ -397,7 +455,9 @@ async def handle_chat_message(
         # POST_RESPONSE modules will run in background without blocking UI
         await ws_manager.broadcast_chunk(session_id, "done", {
             "metadata": response_metadata,
-            "debug_data": debug_data if debug_data else None
+            "debug_data": debug_data if debug_data else None,
+            "truncated": was_truncated,
+            "trimmed_content": accumulated_response if was_truncated else None
         })
 
         # Stage 3: THINKING_AFTER - Execute POST_RESPONSE modules (Stages 4-5)

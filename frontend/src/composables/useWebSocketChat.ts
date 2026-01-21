@@ -269,8 +269,20 @@ export function useWebSocketChat(
       const inputTokens = metadata.prompt_tokens || metadata.input_tokens
       const outputTokens = metadata.completion_tokens || metadata.output_tokens
 
+      // Use trimmed content if response was truncated
+      let messageContent = currentStreamingMessage.value.trim()
+      if (data.truncated && data.trimmed_content) {
+        messageContent = data.trimmed_content.trim()
+        console.log('Response was truncated - using trimmed content')
+      }
+
+      // Add truncation indicator if response was truncated
+      if (data.truncated) {
+        messageContent += '\n\n*[Response truncated due to token limit]*'
+      }
+
       await addAssistantMessage(
-        currentStreamingMessage.value.trim(),
+        messageContent,
         metadata,
         currentStreamingThinking.value || undefined,
         inputTokens,

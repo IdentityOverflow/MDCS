@@ -87,17 +87,18 @@ class OllamaStreamParser:
     def parse_chunk(self, chunk_line: str) -> Optional[StreamingChatResponse]:
         """
         Parse a single streaming chunk from Ollama.
-        
+
         Args:
             chunk_line: Single line of JSON from the streaming response
-            
+
         Returns:
             StreamingChatResponse or None if chunk should be skipped
         """
         try:
             chunk_data = json.loads(chunk_line.strip())
         except json.JSONDecodeError as e:
-            logger.warning(f"Failed to parse Ollama chunk as JSON: {e}")
+            # Use debug level since buffering will handle incomplete chunks
+            logger.debug(f"Failed to parse Ollama chunk as JSON: {e}")
             return None
         
         try:

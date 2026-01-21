@@ -59,52 +59,106 @@ class BaseStreamProcessor:
             asyncio.CancelledError: If cancellation token is cancelled during streaming
 
         Note:
+            Uses buffering to handle incomplete JSON chunks that arrive across HTTP boundaries.
             Failed chunk parsing is logged as warnings but doesn't stop the stream.
             Empty or invalid chunks are automatically filtered out.
             Cancellation is checked every N chunks (configurable).
         """
         chunk_count = 0
+        buffer = ""  # Buffer to accumulate incomplete JSON
 
         async for chunk in chunk_iterator:
             # Check for cancellation every N chunks
-            if cancellation_token and chunk_count % self.cancellation_check_interval == 0:
-                cancellation_token.check_cancelled()
+            self._check_cancellation(cancellation_token, chunk_count)
 
             if not chunk:
                 continue
 
-            try:
-                # Decode bytes to string and split into lines
-                chunk_text = chunk.decode('utf-8').strip()
-                if not chunk_text:
-                    continue
-
-                # Process each line separately (some providers send multiple JSON objects per chunk)
-                lines = chunk_text.split('\n')
-                for line in lines:
-                    line = line.strip()
-                    if not line:
-                        continue
-
-                    try:
-                        parsed_chunk = self.chunk_parser(line)
-                        if parsed_chunk:
-                            chunk_count += 1
-                            yield parsed_chunk
-                    except Exception as e:
-                        logger.warning(f"Failed to parse streaming chunk line '{line[:100]}...': {e}")
-                        continue
-
-            except UnicodeDecodeError as e:
-                logger.warning(f"Failed to decode chunk as UTF-8: {e}")
+            # Decode chunk and add to buffer
+            chunk_text = self._decode_chunk(chunk)
+            if not chunk_text:
                 continue
-            except Exception as e:
-                logger.warning(f"Unexpected error processing chunk: {e}")
-                continue
+
+            buffer += chunk_text
+
+            # Process complete lines from buffer and yield parsed chunks
+            buffer, parsed_count = self._process_complete_lines(buffer)
+            chunk_count += parsed_count
+
+            # Yield all parsed chunks
+            for parsed_chunk in self._parsed_chunks:
+                yield parsed_chunk
+
+        # Process any remaining data in buffer
+        final_chunk = self._process_final_buffer(buffer)
+        if final_chunk:
+            yield final_chunk
 
         # Final cancellation check after stream completes
-        if cancellation_token:
+        self._check_cancellation(cancellation_token, chunk_count)
+
+    def _check_cancellation(
+        self,
+        cancellation_token: Optional[CancellationToken],
+        chunk_count: int
+    ) -> None:
+        """Check if operation should be cancelled."""
+        if cancellation_token and chunk_count % self.cancellation_check_interval == 0:
             cancellation_token.check_cancelled()
+
+    def _decode_chunk(self, chunk: bytes) -> Optional[str]:
+        """Decode a chunk of bytes to UTF-8 string."""
+        try:
+            return chunk.decode('utf-8')
+        except UnicodeDecodeError as e:
+            logger.warning(f"Failed to decode chunk as UTF-8: {e}")
+            return None
+
+    def _process_complete_lines(self, buffer: str) -> tuple[str, int]:
+        """
+        Extract and parse complete lines from buffer.
+
+        Returns:
+            Tuple of (remaining_buffer, parsed_count)
+        """
+        self._parsed_chunks = []
+        parsed_count = 0
+
+        while '\n' in buffer:
+            line_end = buffer.index('\n')
+            line = buffer[:line_end].strip()
+            buffer = buffer[line_end + 1:]
+
+            if not line:
+                continue
+
+            parsed_chunk = self._try_parse_line(line)
+            if parsed_chunk:
+                self._parsed_chunks.append(parsed_chunk)
+                parsed_count += 1
+
+        return buffer, parsed_count
+
+    def _try_parse_line(self, line: str) -> Optional[StreamingChatResponse]:
+        """Attempt to parse a single line as a streaming chunk."""
+        try:
+            return self.chunk_parser(line)
+        except Exception as e:
+            # Only log if it's not a JSON parsing error (those are logged in chunk_parser)
+            if "JSON" not in str(e):
+                logger.warning(f"Failed to parse streaming chunk line '{line[:100]}...': {e}")
+            return None
+
+    def _process_final_buffer(self, buffer: str) -> Optional[StreamingChatResponse]:
+        """Process any remaining data in buffer at end of stream."""
+        if not buffer.strip():
+            return None
+
+        try:
+            return self.chunk_parser(buffer.strip())
+        except Exception as e:
+            logger.debug(f"Failed to parse final buffer content: {e}")
+            return None
     
     @staticmethod
     def parse_json_line(line: str) -> Optional[Dict[str, Any]]:

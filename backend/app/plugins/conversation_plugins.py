@@ -282,6 +282,110 @@ def get_recent_messages(
         return f"Error retrieving conversation history: {str(e)}"
 
 
+@plugin_registry.register("get_message_range")
+def get_message_range(
+    start: int = 0,
+    end: Optional[int] = None,
+    conversation_id: Optional[str] = None,
+    db_session: Session = None,
+    _script_context: Any = None
+) -> str:
+    """
+    Get a range of messages from a conversation formatted for AI context.
+
+    Returns formatted messages from index `start` to `end` (exclusive).
+    Similar to get_recent_messages() but for specific ranges.
+
+    Args:
+        start: Starting message index (0-based, inclusive)
+        end: Ending message index (0-based, exclusive). If None, gets all messages from start onward.
+        conversation_id: ID of conversation (optional, uses current conversation if not provided)
+        db_session: Database session (auto-injected)
+        _script_context: Script execution context (auto-injected)
+
+    Returns:
+        Formatted string with message range for AI context
+
+    Example:
+        # Get messages 0-49 (first 50 messages)
+        context = ctx.get_message_range(0, 50)
+
+        # Get messages 20-39 (20 messages starting from index 20)
+        context = ctx.get_message_range(20, 40)
+
+        # Get all messages from index 100 onward
+        context = ctx.get_message_range(100)
+    """
+    try:
+        if db_session is None:
+            logger.warning("get_message_range called without database session")
+            return "No conversation history available (no database session)"
+
+        # Use current conversation if none specified
+        if conversation_id is None:
+            if _script_context and hasattr(_script_context, 'conversation_id'):
+                conversation_id = _script_context.conversation_id
+            else:
+                logger.warning("get_message_range called without conversation_id and no script context")
+                return "No conversation history available (no conversation context)"
+
+        if conversation_id is None:
+            logger.debug("get_message_range called with None conversation_id")
+            return "No conversation history available (no active conversation)"
+
+        # Calculate limit and offset
+        offset = start
+        if end is not None:
+            limit = end - start
+            if limit <= 0:
+                return "No messages in range (end must be greater than start)"
+        else:
+            # Get a large number if no end specified
+            limit = 10000
+
+        # Get messages in chronological order
+        messages = db_session.query(Message).filter(
+            Message.conversation_id == conversation_id
+        ).order_by(Message.created_at.asc()).offset(offset).limit(limit).all()
+
+        if not messages:
+            return f"No messages found in range {start} to {end if end else 'end'}"
+
+        # Debug logging
+        logger.info(f"get_message_range({start}, {end}): fetched {len(messages)} messages, first={messages[0].content[:50] if messages else 'none'}, last={messages[-1].content[:50] if messages else 'none'}")
+
+        # Format messages for AI context (same format as get_recent_messages)
+        formatted_lines = []
+
+        for message in messages:
+            # Format timestamp
+            try:
+                timestamp = message.created_at.strftime("%H:%M")
+            except:
+                timestamp = "??:??"
+
+            # Format role
+            role = message.role.capitalize() if message.role else "Unknown"
+
+            # Get content without truncation
+            content = message.content.strip() if message.content else "[empty message]"
+
+            # Replace newlines with spaces for single-line format
+            content = content.replace('\n', ' ').replace('\r', ' ')
+
+            # Format the message line
+            formatted_lines.append(f"[{timestamp}] {role}: {content}")
+
+        result = "\n".join(formatted_lines)
+
+        logger.debug(f"Formatted {len(messages)} messages from range {start}-{end if end else 'end'} for conversation {conversation_id}")
+        return result
+
+    except Exception as e:
+        logger.error(f"Error getting message range: {e}")
+        return f"Error retrieving message range: {str(e)}"
+
+
 @plugin_registry.register("get_conversation_summary")
 def get_conversation_summary(conversation_id: Optional[str] = None, db_session: Session = None, _script_context: Any = None) -> Dict[str, Any]:
     """

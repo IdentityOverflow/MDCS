@@ -244,7 +244,7 @@ INSERT INTO personas (name, description, template, mode, first_message, is_activ
 VALUES (
     'Ava',
     'General purpose digital assistant.',
-    E'You are Ava, a general purpose digital assistant.\n\n---\n\nThese are the most recent messages we exchanged:\n@short_term_memory\n\n---',
+    E'You are Ava, a general purpose digital assistant.\n\n---\n\n@long_term_memory\n\nThese are the most recent messages we exchanged:\n@short_term_memory\n\n---',
     'reactive',
     'Hello! I''m Ava, your digital assistant. How can I help you today?',
     TRUE
@@ -263,6 +263,229 @@ VALUES (
     TRUE
 );
 \echo '✓ Default module created: short_term_memory'
+
+-- Insert default module: long_term_memory
+INSERT INTO modules (name, description, content, script, execution_context, type, is_active)
+VALUES (
+    'long_term_memory',
+    'Maintains living narrative and episodic memories for long conversations',
+    '${memories}',
+    $$# Long-term memory module using living narrative + episodic memories
+#
+# This module maintains:
+# 1. Living narrative (~800 tokens) - bounded self-updating summary
+# 2. Recent episodes (5 × ~300 tokens) - compressed conversation segments
+# 3. Total: ~2,300 tokens optimized for 8K context windows
+#
+# Works alongside @short_term_memory (last 20 verbatim messages)
+
+# Constants
+NARRATIVE_UPDATE_INTERVAL = 20  # Update narrative every N messages
+MAX_EPISODES = 5  # Keep most recent 5 episodes
+EPISODE_SIZE = 20  # Messages per episode
+SHORT_TERM_COUNT = 20  # Messages in short-term (don't compress these)
+
+# Get total message count
+message_count = ctx.get_message_count()
+
+# Handle test mode or conversations with too few messages
+if message_count == 0:
+    memories = """## LONG-TERM MEMORY (Test Mode)
+
+This module requires a real conversation to function.
+
+**What it does:**
+- Living Narrative: ~800 token summary of entire conversation
+- Episodes: 5 recent summaries (~300 tokens each)
+- Updates every 20 new messages
+- Total: ~2,300 tokens of compressed context
+
+To see this in action, use in a conversation with 20+ messages."""
+
+elif message_count <= SHORT_TERM_COUNT:
+    memories = """## LONG-TERM MEMORY
+
+Not enough messages yet for long-term compression.
+This module activates after 20+ messages."""
+
+else:
+    # Initialize output
+    output_parts = []
+
+    # ==========================================================================
+    # PART 1: LIVING NARRATIVE
+    # ==========================================================================
+
+    narrative = ctx.get_variable("living_narrative", None)
+    last_update = ctx.get_variable("last_narrative_update", 0)
+    messages_since_update = message_count - last_update
+
+    # Update narrative if needed
+    should_update = (narrative is None) or (messages_since_update >= NARRATIVE_UPDATE_INTERVAL)
+
+    if should_update:
+        # Get ALL compressible messages for narrative context
+        # (everything except the last SHORT_TERM_COUNT messages)
+        compressible_end = message_count - SHORT_TERM_COUNT
+
+        # Get all compressible messages using the new range function
+        recent_context = ctx.get_message_range(0, compressible_end)
+
+        if narrative:
+            # Update existing narrative
+            instructions = """I am updating my living narrative summary of this ongoing conversation.
+
+CURRENT NARRATIVE:
+{narrative}
+
+RECENT CONVERSATION CONTEXT:
+{recent_context}
+
+I will update the narrative to incorporate new developments while maintaining coherence.
+Keep it concise (~800 tokens max). Focus on:
+- Core themes and topics
+- Key facts and insights
+- Evolving context
+- Important background
+
+Return ONLY the updated narrative, no preamble.""".format(
+                narrative=narrative,
+                recent_context=recent_context
+            )
+        else:
+            # Create initial narrative
+            instructions = """I am creating a living narrative summary of this conversation.
+
+CONVERSATION CONTEXT:
+{recent_context}
+
+I will create a concise narrative (~800 tokens max) that captures:
+- Core themes and topics
+- Key facts and insights
+- Important context
+- Nature of the interaction
+
+Return ONLY the narrative, no preamble.""".format(
+                recent_context=recent_context
+            )
+
+        try:
+            new_narrative = ctx.reflect(instructions, role="assistant")
+            ctx.set_variable("living_narrative", new_narrative)
+            ctx.set_variable("last_narrative_update", message_count)
+            narrative = new_narrative
+        except Exception as e:
+            ctx.log("Failed to update narrative: " + str(e))
+
+    # Add narrative to output
+    if narrative:
+        output_parts.append("## LIVING NARRATIVE\n" + narrative)
+
+    # ==========================================================================
+    # PART 2: EPISODIC MEMORIES
+    # ==========================================================================
+
+    episodes = ctx.get_variable("episodes_cache", [])
+    last_episode_end = ctx.get_variable("last_episode_end", 0)
+
+    # Calculate compression boundary (exclude short-term messages)
+    compressible_end = message_count - SHORT_TERM_COUNT
+    messages_to_compress = compressible_end - last_episode_end
+
+    # Create new episodes if we have enough messages
+    if messages_to_compress >= EPISODE_SIZE:
+        new_episodes_needed = int(messages_to_compress / EPISODE_SIZE)
+
+        for i in range(new_episodes_needed):
+            episode_start = last_episode_end + (i * EPISODE_SIZE)
+            episode_end = episode_start + EPISODE_SIZE
+
+            if episode_end > compressible_end:
+                break
+
+            # Get messages for this episode (specific range)
+            episode_context = ctx.get_message_range(episode_start, episode_end)
+
+            instructions = """I am summarizing this conversation segment into a concise episode (~300 tokens max).
+
+CONVERSATION SEGMENT:
+{episode_context}
+
+I will focus on:
+- Key points discussed
+- Important decisions/conclusions
+- Relevant context for future
+- Notable developments
+
+Return ONLY the summary, no preamble.""".format(
+                episode_context=episode_context
+            )
+
+            try:
+                summary = ctx.reflect(instructions, role="assistant")
+
+                episodes.append({
+                    "summary": summary,
+                    "start_msg": episode_start,
+                    "end_msg": episode_end,
+                    "created_at": episode_end
+                })
+
+                last_episode_end = episode_end
+            except Exception as e:
+                ctx.log("Failed to create episode: " + str(e))
+                break
+
+        # Keep only recent episodes
+        if len(episodes) > MAX_EPISODES:
+            episodes = episodes[-MAX_EPISODES:]
+
+        # Save state
+        ctx.set_variable("episodes_cache", episodes)
+        ctx.set_variable("last_episode_end", last_episode_end)
+
+    # Add episodes to output
+    if episodes:
+        output_parts.append("\n## RECENT EPISODES")
+        episode_num = 1
+        for episode in reversed(episodes):
+            output_parts.append("\n### Episode " + str(episode_num) + " (messages " + str(episode['start_msg']) + "-" + str(episode['end_msg']) + ")")
+            output_parts.append(episode['summary'])
+            episode_num = episode_num + 1
+
+    # ==========================================================================
+    # DEBUG INFO
+    # ==========================================================================
+
+    debug = """
+---
+[Long-term Memory Debug]
+Total messages: {message_count}
+Narrative: {narrative_status}
+Episodes: {episodes_count}
+Last episode: {last_episode_end}
+Since narrative update: {messages_since_update}
+Compressible: {compressible_end}
+Next episode: {next_episode}
+""".format(
+        message_count=message_count,
+        narrative_status='Present' if narrative else 'Not created',
+        episodes_count=len(episodes),
+        last_episode_end=last_episode_end,
+        messages_since_update=messages_since_update,
+        compressible_end=compressible_end,
+        next_episode=last_episode_end + EPISODE_SIZE
+    )
+
+    output_parts.append(debug)
+
+    # Set output variable for template substitution
+    memories = "\n".join(output_parts)$$,
+    'POST_RESPONSE',
+    'ADVANCED',
+    TRUE
+);
+\echo '✓ Default module created: long_term_memory'
 
 -- ============================================
 -- Completion
