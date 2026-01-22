@@ -304,6 +304,8 @@ defineExpose({
 <style scoped>
 @import '@/assets/card.css';
 
+/* Note: markdown.css is imported globally in App.vue to work with v-html */
+
 .chat-messages {
   flex: 1;
   padding: 32px 16px 120px;
@@ -374,102 +376,21 @@ defineExpose({
   white-space: pre-wrap;
 }
 
-/* Markdown content styling - using :deep() to penetrate scoped styles */
-:deep(.message-text h1),
-:deep(.message-text h2),
-:deep(.message-text h3),
-:deep(.message-text h4),
-:deep(.message-text h5),
-:deep(.message-text h6) {
-  margin: 0.4em 0 0.2em 0;
-  color: inherit;
-  font-weight: 600;
-  line-height: 1.2;
-}
-
-:deep(.message-text h1) { font-size: 1.3em; }
-:deep(.message-text h2) { font-size: 1.2em; }
-:deep(.message-text h3) { font-size: 1.1em; }
-:deep(.message-text h4) { font-size: 1.05em; }
-:deep(.message-text h5) { font-size: 1.02em; }
-:deep(.message-text h6) { font-size: 1em; }
-
-:deep(.message-text p) {
-  margin: 0;
-  line-height: 1.5;
-}
-
-:deep(.message-text p + p) {
-  margin-top: 0.4em;
-}
-
-:deep(.message-text strong) {
-  font-weight: 700;
-  color: inherit;
-}
-
-:deep(.message-text em) {
-  font-style: italic;
-  color: inherit;
-}
-
-:deep(.message-text code) {
-  background: rgba(120, 120, 120, 0.15);
-  padding: 2px 4px;
-  border-radius: 2px;
-  font-family: 'Courier New', monospace;
-  font-size: 0.9em;
-  color: var(--accent);
-}
-
-:deep(.message-text pre) {
-  background: rgba(120, 120, 120, 0.1);
-  border: 1px solid rgba(120, 120, 120, 0.2);
-  border-radius: 4px;
-  padding: 12px;
-  margin: 0.3em 0;
-  overflow-x: auto;
-}
-
-:deep(.message-text pre code) {
-  background: none;
-  padding: 0;
-  color: inherit;
-}
-
-:deep(.message-text blockquote) {
-  border-left: 3px solid var(--accent);
-  margin: 0.3em 0;
-  padding: 0 12px;
-  color: inherit;
-  opacity: 0.9;
-  font-style: italic;
-}
-
-:deep(.message-text ul),
-:deep(.message-text ol) {
-  margin: 0.2em 0;
-  padding-left: 20px;
-}
-
-:deep(.message-text li) {
-  margin: 0;
-  line-height: 1.4;
-}
-
-:deep(.message-text a) {
-  color: var(--accent);
-  text-decoration: underline;
-}
-
-:deep(.message-text a:hover) {
-  color: var(--fg);
-}
-
-/* Ensure line breaks are properly rendered */
-:deep(.message-text br) {
-  line-height: 1.5;
-}
+/*
+ * MARKDOWN STYLING
+ *
+ * All markdown content styling is now defined in @/assets/markdown.css
+ * The custom renderer in useMarkdown.ts adds semantic .md-* classes to all elements.
+ *
+ * Key improvements:
+ * - Consistent spacing using CSS variables
+ * - Fixed list alignment (uses margin-left instead of padding-left)
+ * - No more post-processing hacks
+ * - Proper semantic HTML structure
+ * - Task list support (GFM checkboxes)
+ * - Code block language labels
+ * - Better accessibility
+ */
 
 .message-meta {
   display: flex;

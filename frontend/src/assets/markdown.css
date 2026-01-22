@@ -1,0 +1,436 @@
+/**
+ * Unified Markdown Styling System
+ *
+ * This file provides consistent, semantic styling for markdown-rendered content
+ * in chat messages. All spacing is defined using CSS variables for easy maintenance.
+ *
+ * Design Principles:
+ * 1. Consistent vertical rhythm using --md-spacing-* variables
+ * 2. Proper alignment with message bubble padding (16px horizontal)
+ * 3. Semantic class names (.md-*) from custom renderer
+ * 4. Responsive typography that scales well
+ * 5. Accessible color contrast and interactive elements
+ */
+
+/* ===================================
+   Spacing System Variables
+   =================================== */
+:root {
+  /* Base spacing unit - all markdown spacing derives from this */
+  --md-spacing-unit: 0.5em;
+
+  /* Vertical spacing between elements */
+  --md-spacing-xs: calc(var(--md-spacing-unit) * 0.5);   /* 0.25em */
+  --md-spacing-sm: calc(var(--md-spacing-unit) * 0.8);   /* 0.4em */
+  --md-spacing-md: calc(var(--md-spacing-unit) * 1);     /* 0.5em */
+  --md-spacing-lg: calc(var(--md-spacing-unit) * 1.5);   /* 0.75em */
+  --md-spacing-xl: calc(var(--md-spacing-unit) * 2);     /* 1em */
+
+  /* Horizontal indentation for lists and blockquotes */
+  --md-indent-base: 1.5em;
+  --md-indent-nested: 1.25em;
+
+  /* Code block styling */
+  --md-code-bg: rgba(120, 120, 120, 0.15);
+  --md-code-border: rgba(120, 120, 120, 0.2);
+  --md-code-radius: 4px;
+  --md-code-padding: 2px 4px;
+
+  /* Typography scale */
+  --md-font-size-base: 0.95em;
+  --md-line-height-base: 1.5;
+  --md-line-height-tight: 1.3;
+  --md-line-height-relaxed: 1.6;
+}
+
+/* ===================================
+   Base Typography
+   =================================== */
+
+/* Paragraphs */
+.md-paragraph {
+  margin: 0;
+  padding: 0;
+  line-height: var(--md-line-height-base);
+}
+
+.md-paragraph + .md-paragraph {
+  margin-top: var(--md-spacing-md);
+}
+
+/* Remove margin from first paragraph */
+.message-text > .md-paragraph:first-child {
+  margin-top: 0;
+}
+
+/* Remove margin from last paragraph */
+.message-text > .md-paragraph:last-child {
+  margin-bottom: 0;
+}
+
+/* ===================================
+   Headers
+   =================================== */
+
+.md-heading {
+  margin: var(--md-spacing-lg) 0 var(--md-spacing-sm) 0;
+  color: inherit;
+  font-weight: 600;
+  line-height: var(--md-line-height-tight);
+}
+
+/* First heading has no top margin */
+.message-text > .md-heading:first-child {
+  margin-top: 0;
+}
+
+/* Spacing after heading before next element */
+.md-heading + .md-paragraph,
+.md-heading + .md-list,
+.md-heading + .md-code-block {
+  margin-top: var(--md-spacing-sm);
+}
+
+/* Header size scale */
+.md-h1 { font-size: 1.4em; }
+.md-h2 { font-size: 1.3em; }
+.md-h3 { font-size: 1.2em; }
+.md-h4 { font-size: 1.1em; }
+.md-h5 { font-size: 1.05em; }
+.md-h6 { font-size: 1em; font-weight: 700; }
+
+/* ===================================
+   Lists - FIXED ALIGNMENT
+   =================================== */
+
+.md-list {
+  margin: var(--md-spacing-md) 0;
+  padding: 0;
+  /* Use margin instead of padding for better alignment */
+  margin-left: var(--md-indent-base);
+  list-style-position: outside;
+}
+
+/* First list has no top margin */
+.message-text > .md-list:first-child {
+  margin-top: 0;
+}
+
+/* Last list has no bottom margin */
+.message-text > .md-list:last-child {
+  margin-bottom: 0;
+}
+
+/* Ordered lists */
+.md-list {
+  list-style-type: disc;
+}
+
+ol.md-list {
+  list-style-type: decimal;
+}
+
+/* List items */
+.md-list-item {
+  margin: var(--md-spacing-xs) 0;
+  padding: 0;
+  line-height: var(--md-line-height-base);
+}
+
+/* First/last list items - reduce spacing */
+.md-list-item:first-child {
+  margin-top: 0;
+}
+
+.md-list-item:last-child {
+  margin-bottom: 0;
+}
+
+/* Nested lists - slightly less indentation */
+.md-list-item .md-list {
+  margin-top: var(--md-spacing-xs);
+  margin-bottom: var(--md-spacing-xs);
+  margin-left: var(--md-indent-nested);
+}
+
+/* Task list items (GFM checkboxes) */
+.md-task-item {
+  list-style-type: none;
+  margin-left: calc(-1 * var(--md-indent-base));
+  padding-left: var(--md-indent-base);
+}
+
+.md-task-checkbox {
+  margin-right: 0.5em;
+  vertical-align: middle;
+  cursor: not-allowed;
+}
+
+/* ===================================
+   Code Blocks & Inline Code
+   =================================== */
+
+/* Inline code */
+.md-inline-code {
+  background: var(--md-code-bg);
+  padding: var(--md-code-padding);
+  border-radius: var(--md-code-radius);
+  font-family: 'Courier New', 'Consolas', monospace;
+  font-size: 0.9em;
+  color: var(--accent);
+  word-break: break-word;
+}
+
+/* Code blocks wrapper */
+.md-code-block {
+  margin: var(--md-spacing-md) 0;
+  border-radius: var(--md-code-radius);
+  overflow: hidden;
+  position: relative;
+}
+
+/* First/last code block margin */
+.message-text > .md-code-block:first-child {
+  margin-top: 0;
+}
+
+.message-text > .md-code-block:last-child {
+  margin-bottom: 0;
+}
+
+/* Language label */
+.md-code-lang {
+  display: block;
+  padding: 4px 12px;
+  font-size: 0.75em;
+  font-family: 'Courier New', 'Consolas', monospace;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  background: rgba(120, 120, 120, 0.2);
+  color: var(--fg);
+  opacity: 0.7;
+  border-bottom: 1px solid var(--md-code-border);
+}
+
+/* Pre element inside code block */
+.md-code-block pre {
+  margin: 0;
+  padding: 12px;
+  background: rgba(120, 120, 120, 0.1);
+  border: 1px solid var(--md-code-border);
+  overflow-x: auto;
+  line-height: var(--md-line-height-relaxed);
+}
+
+/* Code element inside pre */
+.md-code-block pre code {
+  background: none;
+  padding: 0;
+  color: inherit;
+  font-size: 0.9em;
+  word-break: normal;
+  white-space: pre;
+}
+
+/* Custom scrollbar for code blocks */
+.md-code-block pre::-webkit-scrollbar {
+  height: 8px;
+}
+
+.md-code-block pre::-webkit-scrollbar-track {
+  background: rgba(120, 120, 120, 0.05);
+}
+
+.md-code-block pre::-webkit-scrollbar-thumb {
+  background: rgba(120, 120, 120, 0.3);
+  border-radius: 4px;
+}
+
+.md-code-block pre::-webkit-scrollbar-thumb:hover {
+  background: rgba(120, 120, 120, 0.5);
+}
+
+/* ===================================
+   Blockquotes
+   =================================== */
+
+.md-blockquote {
+  margin: var(--md-spacing-md) 0;
+  padding: var(--md-spacing-sm) var(--md-spacing-lg);
+  border-left: 3px solid var(--accent);
+  background: rgba(0, 212, 255, 0.03);
+  color: inherit;
+  opacity: 0.95;
+  font-style: italic;
+  line-height: var(--md-line-height-relaxed);
+}
+
+.md-blockquote .md-paragraph {
+  margin: var(--md-spacing-xs) 0;
+}
+
+.md-blockquote .md-paragraph:first-child {
+  margin-top: 0;
+}
+
+.md-blockquote .md-paragraph:last-child {
+  margin-bottom: 0;
+}
+
+/* Nested blockquotes */
+.md-blockquote .md-blockquote {
+  margin: var(--md-spacing-sm) 0;
+  border-left-width: 2px;
+  opacity: 0.8;
+}
+
+/* ===================================
+   Links
+   =================================== */
+
+.md-link {
+  color: var(--accent);
+  text-decoration: underline;
+  text-decoration-color: rgba(255, 0, 110, 0.3);
+  text-underline-offset: 2px;
+  transition: all 0.2s ease;
+}
+
+.md-link:hover {
+  color: var(--fg);
+  text-decoration-color: var(--accent);
+  text-shadow: 0 0 8px rgba(255, 0, 110, 0.3);
+}
+
+.md-link:visited {
+  opacity: 0.8;
+}
+
+/* ===================================
+   Text Formatting
+   =================================== */
+
+.md-strong {
+  font-weight: 700;
+  color: inherit;
+}
+
+.md-em {
+  font-style: italic;
+  color: inherit;
+}
+
+/* Combined bold + italic */
+.md-strong .md-em,
+.md-em .md-strong {
+  font-weight: 700;
+  font-style: italic;
+}
+
+/* ===================================
+   Horizontal Rules
+   =================================== */
+
+.md-hr {
+  margin: var(--md-spacing-xl) 0;
+  border: none;
+  border-top: 1px solid var(--border);
+  opacity: 0.5;
+}
+
+/* ===================================
+   Special Cases & Combinations
+   =================================== */
+
+/* Paragraph after list */
+.md-list + .md-paragraph {
+  margin-top: var(--md-spacing-md);
+}
+
+/* List after paragraph */
+.md-paragraph + .md-list {
+  margin-top: var(--md-spacing-md);
+}
+
+/* Code block after paragraph */
+.md-paragraph + .md-code-block {
+  margin-top: var(--md-spacing-md);
+}
+
+/* Blockquote after paragraph */
+.md-paragraph + .md-blockquote {
+  margin-top: var(--md-spacing-md);
+}
+
+/* ===================================
+   User Message Overrides
+   =================================== */
+
+/* User messages have different background - adjust code visibility */
+.message-user .md-inline-code {
+  background: rgba(0, 0, 0, 0.2);
+  color: rgba(255, 255, 255, 0.95);
+}
+
+.message-user .md-code-block pre {
+  background: rgba(0, 0, 0, 0.15);
+  border-color: rgba(0, 0, 0, 0.3);
+}
+
+.message-user .md-code-lang {
+  background: rgba(0, 0, 0, 0.25);
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.message-user .md-blockquote {
+  border-left-color: rgba(255, 255, 255, 0.5);
+  background: rgba(0, 0, 0, 0.1);
+}
+
+.message-user .md-link {
+  color: rgba(255, 255, 255, 0.95);
+  text-decoration-color: rgba(255, 255, 255, 0.4);
+}
+
+.message-user .md-link:hover {
+  color: #ffffff;
+  text-shadow: 0 0 8px rgba(255, 255, 255, 0.5);
+}
+
+/* ===================================
+   Accessibility
+   =================================== */
+
+/* Ensure focus states for interactive elements */
+.md-link:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* Screen reader only text for task checkboxes */
+.md-task-checkbox:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+/* ===================================
+   Print Styles
+   =================================== */
+
+@media print {
+  .md-code-block pre {
+    border: 1px solid #000;
+    page-break-inside: avoid;
+  }
+
+  .md-link {
+    text-decoration: underline;
+    color: #000;
+  }
+
+  .md-link::after {
+    content: " (" attr(href) ")";
+    font-size: 0.8em;
+  }
+}

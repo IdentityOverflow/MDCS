@@ -9,6 +9,9 @@ import { RouterView } from 'vue-router'
 </template>
 
 <style>
+/* Import global markdown styles (must be non-scoped to work with v-html) */
+@import './assets/markdown.css';
+
 :root {
   /* Golden ratio and grid fractions */
   --phi: 1.618;
