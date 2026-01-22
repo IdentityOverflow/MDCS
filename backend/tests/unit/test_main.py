@@ -21,7 +21,7 @@ class TestMainApplication:
     def test_create_app(self):
         """Test application creation."""
         test_app = create_app()
-        assert test_app.title == "Project 2501 Backend API"
+        assert test_app.title == "MDCS Backend API"
         assert test_app.version == "0.1.0"
     
     def test_root_endpoint(self, client):

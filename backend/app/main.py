@@ -80,7 +80,7 @@ def create_app() -> FastAPI:
     settings = get_settings()
     
     app = FastAPI(
-        title="Project 2501 Backend API",
+        title="MDCS Backend API",
         description="Cognitive Systems Framework Backend",
         version="0.1.0",
         debug=settings.debug,
