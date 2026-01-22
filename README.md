@@ -1,152 +1,182 @@
-# Project 2501
+# Modular Dynamic Context System (MDCS)
 
-`Disclaimer: I am a solo developer and this is still very early in development.`
+A full-stack web application for managing AI conversations with dynamic, modular system prompts. The system allows system prompts to be composed from reusable modules that can execute Python scripts, call AI models, and maintain state across conversations.
 
-**Dynamic System Prompt Architecture for AI Conversations**
+## Overview
 
-Project 2501 is a full-stack web application that treats system prompts as living, modular components that stay visible and adapt throughout conversations. It provides a framework for building AI personas with dynamic, state-aware system prompts powered by Python scripts and a staged execution pipeline.
+MDCS addresses the problem of system prompts becoming lost or diluted in long conversations by treating them as executable, stateful components rather than static text. System prompts are built from modules that can:
 
-## 🎯 Core Innovation
+- Execute sandboxed Python scripts with access to conversation data
+- Call AI models for self-reflection or generation tasks
+- Persist state between conversations
+- Execute conditionally based on triggers or keywords
 
-Traditional AI systems use static system prompts that get lost in token limits. Project 2501 attempts to solve this with:
+The system uses a 5-stage execution pipeline to control when modules run relative to the main AI response, enabling pre-processing, post-processing, and background analysis.
 
-- **Dynamic Modules**: System prompts composed of simple text templates and Python scripts
-- **Staged Execution**: 5-stage pipeline ensures predictable, ordered execution
-- **Self-Reflection**: AI can introspect and adapt using `ctx.reflect()` and `ctx.generate()`
-- **Persistent State**: Module outputs persist with long conversations
-- **Real-time Updates**: System prompts evolve during chat without context rot
+## Screenshots
 
-## ✨ Key Features
+### Chat Interface
+![Chat Interface](screenshots/Screenshot%20from%202026-01-22%2012-50-00.png)
+*Main chat interface with markdown rendering, persona selection, and expandable thinking process from reasoning models*
 
-### Module System
-- **Simple Modules**: Static text templates with `@module_name` references
-- **Advanced Modules**: Python scripts with extensible plugin functions
-- **Trigger Patterns**: Execute modules based on keywords, regex, or always
-- **Variable Substitution**: `${variable}` outputs from script execution
+### Module Editor
+![Module Editor](screenshots/Screenshot%20from%202026-01-22%2012-45-39.png)
+*Advanced module editor with Python scripting, trigger patterns, and test functionality*
 
-### Staged Execution Pipeline
-- **Stage 1**: Template preparation (simple modules + previous state)
-- **Stage 2**: Pre-response AI processing (immediate AI modules)
-- **Stage 3**: Main AI response generation
-- **Stage 4**: Post-response processing (non-AI modules)
-- **Stage 5**: Post-response AI analysis (reflection modules)
+### Persona Editor
+![Persona Editor](screenshots/Screenshot%20from%202026-01-22%2012-48-13.png)
+*Persona configuration with template system and module references*
 
-### Chat System
-- **Provider Support**: Ollama and OpenAI-compatible APIs
-- **WebSocket Communication**: Real-time bidirectional messaging (SSE removed)
-- **Cancellation**: <100ms latency for stopping AI generation ([Details](WEBSOCKET_CANCELLATION.md))
-- **Streaming Responses**: Token-by-token streaming
-- **Conversation Persistence**: Full message history with thinking content
-- **Memory Compression**: Long-term memory with AI summaries (experimental)
+### Modules Overview
+![Modules Overview](screenshots/Screenshot%20from%202026-01-22%2012-56-21.png)
+*Module management with execution context indicators and chat controls*
 
-### AI Capabilities
-- **Reflection**: AI self-assessment using current system prompt (using `ctx.reflect()`)
-- **Generation**: On-demand AI calls from within modules (using `ctx.generate()`)
-- **Conversation Access**: Query message history and metadata
-- **Time/Date Functions**: Context-aware temporal information
-- **Memory Management**: Episodic memory with buffer compression
+## Architecture
 
-## 🏗️ Architecture
+### Backend (Python + FastAPI)
+
+- **API Layer**: REST endpoints and WebSocket for real-time chat
+- **Module System**: Simple (text) and Advanced (Python script) modules
+- **Plugin System**: ~60 functions available to module scripts (`ctx.*`)
+- **Execution Pipeline**: 5-stage system for controlled module execution
+- **Script Engine**: RestrictedPython sandbox for safe script execution
+- **Provider Abstraction**: Support for Ollama and OpenAI-compatible APIs
+- **Database**: PostgreSQL with SQLAlchemy ORM
+
+### Frontend (Vue 3 + TypeScript)
+
+- **Chat Interface**: Real-time streaming with WebSocket
+- **Module Editor**: Create and edit modules with Python scripting
+- **Persona Management**: Configure AI personalities with modular templates
+- **Code Editor**: CodeMirror integration for script editing
+- **Markdown Rendering**: Full GFM support with custom styling
 
 ### Technology Stack
 
-**Frontend**
-- Vue 3.5.18 (Composition API)
-- TypeScript
-- Pinia (state management)
-- Vite (build tool)
-- CodeMirror (code editor)
-- Marked (markdown rendering)
-
-**Backend**
+**Backend:**
 - FastAPI 0.104.1
 - Python 3.10+
 - SQLAlchemy 2.0.23
-- RestrictedPython 7.0 (sandboxed execution)
-- PostgreSQL with pgvector
-
-**Database**
 - PostgreSQL 12+
-- UUID primary keys
-- JSONB for flexible metadata
-- pgvector for embeddings (future)
-
-### Project Structure
-
-```
-project2501/
-├── frontend/              # Vue 3 application
-│   ├── src/
-│   │   ├── components/   # UI components
-│   │   ├── views/        # Page views
-│   │   ├── stores/       # Pinia stores
-│   │   ├── types/        # TypeScript types
-│   │   └── router/       # Vue Router config
-│   └── package.json
-├── backend/              # FastAPI application
-│   ├── app/
-│   │   ├── api/         # REST endpoints
-│   │   ├── core/        # Script engine, plugins
-│   │   ├── models/      # Database models
-│   │   ├── services/    # Business logic
-│   │   ├── plugins/     # Plugin functions
-│   │   └── database/    # Connection, migrations
-│   └── requirements.txt
-├── scripts/             # Installation/run scripts
-└── tests/              # Test suite (400+ tests)
-```
-
-## 📋 Prerequisites
-
-### Docker Deployment (Recommended)
-- Docker Engine 20.10+
-- Docker Compose V2
-- 2GB free disk space
-- *Optional*: Ollama on host for local AI
-
-### Manual Installation
-**Backend:**
-- Python 3.10+
-- Conda or Miniconda
-- PostgreSQL 12+
+- RestrictedPython 7.0
+- uvicorn (ASGI server)
 
 **Frontend:**
-- Node.js 20.19.0+ or 22.12.0+
-- npm 9+
+- Vue 3.5.18 (Composition API)
+- TypeScript 5.8
+- Vite 7.0.6 (build tool)
+- Pinia (state management)
+- CodeMirror 6 (code editor)
+- marked 16.2.0 (markdown parser)
 
-**AI Provider (at least one):**
-- Ollama (local models)
-- OpenAI API key
-- Any OpenAI-compatible API (LM Studio, etc.)
+**Deployment:**
+- Docker + Docker Compose
+- Nginx (frontend reverse proxy)
+- PostgreSQL 14
 
-## 🚀 Installation
+## Key Features
 
-### Quick Start with Docker (Recommended)
+### Module System
 
-Docker Compose handles all dependencies and setup.
+**Simple Modules**: Static text that gets inserted into the system prompt.
 
-#### Prerequisites
+**Advanced Modules**: Python scripts with access to:
+- Conversation history and metadata
+- Time/date functions
+- AI generation and reflection capabilities
+- Memory storage and retrieval
+- JSON manipulation utilities
+
+**Execution Contexts:**
+- `IMMEDIATE`: Executes before the main AI response
+- `POST_RESPONSE`: Executes after the main AI response
+- `ON_DEMAND`: Only executes when explicitly referenced
+
+**Trigger Patterns**: Modules can execute based on keywords, regex patterns, or always (`*`).
+
+### 5-Stage Execution Pipeline
+
+1. **Stage 1 - Template Preparation**: Load persona template, resolve module references, execute simple modules and non-AI immediate modules
+2. **Stage 2 - Pre-response AI**: Execute immediate modules that require AI inference
+3. **Stage 3 - Main Response**: AI generates the response using the resolved system prompt
+4. **Stage 4 - Post-response Non-AI**: Fast post-processing modules (logging, analytics)
+5. **Stage 5 - Post-response AI**: Background AI analysis and reflection
+
+Stages 4 and 5 save their outputs to the database, which are then injected into Stage 1 of the next conversation. This enables persistent, evolving context.
+
+### Chat System
+
+- **WebSocket Communication**: Bidirectional real-time messaging
+- **Streaming**: Token-by-token response streaming
+- **Cancellation**: Sub-100ms cancellation latency
+- **Provider Support**: Ollama (local models) and OpenAI-compatible APIs
+- **Reasoning Models**: Support for models with thinking/reasoning output (e.g., gpt-oss)
+- **Message Editing**: Edit and regenerate messages
+- **Markdown Rendering**: Full GitHub Flavored Markdown support
+
+### Plugin Functions
+
+Modules have access to plugin functions via the `ctx` object:
+
+**Time:**
+- `ctx.get_current_time(format)` - Current time with formatting
+- `ctx.get_relative_time(offset)` - Time with offset
+- `ctx.is_business_hours()` - Business hours check
+- `ctx.get_day_of_week()` - Day name
+
+**Conversation:**
+- `ctx.get_message_count()` - Total messages
+- `ctx.get_recent_messages(limit)` - Message history
+- `ctx.get_conversation_summary()` - Metadata
+- `ctx.get_persona_info()` - Persona details
+
+**AI:**
+- `ctx.generate(instructions)` - On-demand AI generation
+- `ctx.reflect(instructions)` - AI self-reflection with current system prompt
+
+**Memory:**
+- `ctx.should_compress_buffer()` - Check if compression needed
+- `ctx.get_buffer_messages(start, end)` - Message window
+- `ctx.store_memory(content)` - Save compressed memory
+- `ctx.get_recent_memories(limit)` - Retrieve memories
+
+**Utilities:**
+- `ctx.to_json()`, `ctx.from_json()` - JSON operations
+- `ctx.join_strings()`, `ctx.count_words()` - String utilities
+
+### Security
+
+- **RestrictedPython Sandbox**: No file system or network access from modules
+- **Whitelisted Imports**: Only safe modules (datetime, math, json, re)
+- **Reflection Depth Limiting**: Maximum 3 levels to prevent infinite nesting
+- **Circular Reference Detection**: Prevents infinite module loops
+- **SQL Injection Prevention**: Parameterized queries via SQLAlchemy
+- **External Link Security**: Automatic `rel="noopener noreferrer"` on links
+
+## Installation
+
+### Docker Deployment (Recommended)
+
+**Prerequisites:**
 - Docker Engine 20.10+
 - Docker Compose V2
 - 2GB free disk space
 
-#### Deploy with Docker Compose
-
+**Steps:**
 ```bash
-# 1. Clone repository
+# Clone repository
 git clone https://github.com/IdentityOverflow/project2501.git
 cd project2501
 
-# 2. Configure environment
+# Configure environment
 cp .env.docker .env
-nano .env  # Change DB_PASSWORD to a strong password
+# Edit .env and set a strong DB_PASSWORD
 
-# 3. Start all services
+# Start services
 docker compose up -d
 
-# 4. Verify deployment
-docker compose ps
-docker compose logs -f  # View startup logs
+# View logs
+docker compose logs -f
 ```
 
 **Access:**
@@ -154,631 +184,251 @@ docker compose logs -f  # View startup logs
 - Backend API: http://localhost:8000
 - API Docs: http://localhost:8000/docs
 
-**Ollama on host:**
-- Backend: `http://host.docker.internal:11434`
-- Frontend: `http://localhost:11434` (configured in UI)
-
-#### Docker Management Commands
-
-```bash
-# View logs
-docker compose logs -f             # All services
-docker compose logs -f backend     # Backend only
-docker compose logs -f frontend    # Frontend only
-
-# Stop services (keeps data)
-docker compose stop
-
-# Start stopped services
-docker compose start
-
-# Restart services
-docker compose restart
-
-# Stop and remove containers (keeps volumes)
-docker compose down
-
-# Stop and remove everything including data volumes
-docker compose down -v
-
-# Rebuild after code changes
-docker compose up -d --build
-
-# Check service health
-docker compose ps
-```
-
-#### Docker Architecture
-
-**Services:**
-- **db**: PostgreSQL 14 with automatic schema initialization
-- **backend**: FastAPI application on port 8000
-- **frontend**: Vue 3 app served by Nginx on port 5173
-
-**Volumes:**
-- `postgres_data`: Database persistence
-- `./backend/static`: Persona images and uploads
-
-**Network:**
-- Custom bridge network `project2501_network` for service communication
-- Backend has host network access for Ollama connectivity
-
----
-
-### Manual Installation (Development)
-
-For local development without Docker:
-
-### 1. Clone Repository
-
-```bash
-git clone https://github.com/IdentityOverflow/project2501.git
-cd project2501
-```
-
-### 2. Database Setup
-
-#### Install PostgreSQL
-
-**Ubuntu/Debian:**
-```bash
-sudo apt update
-sudo apt install postgresql postgresql-contrib
-sudo systemctl start postgresql
-sudo systemctl enable postgresql
-```
-
-**macOS:**
-```bash
-brew install postgresql@14
-brew services start postgresql@14
-```
-
-**Windows:**
-Download and install from [postgresql.org](https://www.postgresql.org/download/windows/)
-
-#### Create Database and User
-
-```bash
-# Access PostgreSQL as postgres user
-sudo -u postgres psql
-
-# In PostgreSQL shell:
-CREATE USER project2501 WITH PASSWORD 'yourStrongPasswordHere';
-CREATE DATABASE project2501 OWNER project2501;
-GRANT ALL PRIVILEGES ON DATABASE project2501 TO project2501;
-\q
-
-# Initialize database schema
-psql -U project2501 -d project2501 -f backend/init_db.sql
-```
-
-### 3. Backend Setup
-
-#### Install Conda Environment
-
-```bash
-# Make installation script executable
-chmod +x scripts/install_BE.sh
-
-# Run installation
-./scripts/install_BE.sh
-```
-
-This will:
-- Create a conda environment named `project2501`
-- Install Python 3.10
-- Install all Python dependencies from `requirements.txt`
-
-#### Configure Environment
-
-```bash
-# Copy environment template
-cp backend/.env.example backend/.env
-
-# Edit configuration
-nano backend/.env
-```
-
-**backend/.env** should contain:
-```bash
-# Database connection
-DB_HOST=localhost
-DB_PORT=5432
-DB_NAME=project2501
-DB_USER=project2501
-DB_PASSWORD=yourStrongPasswordHere
-
-# Database URL (alternative format)
-DATABASE_URL=postgresql://project2501:yourStrongPasswordHere@localhost:5432/project2501
-```
-
-#### Verify Installation
-
-```bash
-# Activate environment
-source ~/miniforge3/etc/profile.d/conda.sh
-conda activate project2501
-
-# Run tests
-cd backend
-pytest -v
-
-# Should show: 400+ tests passing
-```
-
-### 4. Frontend Setup
-
-```bash
-cd frontend
-
-# Install dependencies
-npm install
-
-# Verify installation
-npm run type-check
-```
-
-### 5. AI Provider Setup
-
-#### Option A: Ollama (Local Models)
-
-```bash
-# Install Ollama
-curl -fsSL https://ollama.com/install.sh | sh
-
-# Pull a model (example: Llama 3.2)
-ollama pull llama3.2:3b
-
-# Verify Ollama is running
-curl http://localhost:11434/api/tags
-```
-
-#### Option B: OpenAI API
-
-1. Get API key from [platform.openai.com](https://platform.openai.com)
-2. No installation needed - configure in frontend settings
-
-#### Option C: LM Studio (Local with OpenAI API)
-
-1. Download [LM Studio](https://lmstudio.ai/)
-2. Download a model (e.g., Mistral, Llama)
-3. Start local server on port 1234
-4. Configure frontend to use `http://localhost:1234/v1`
-
-## 🎮 Running the Application
-
-### Start Backend Server
-
-```bash
-# Using the provided script (recommended)
-./scripts/run_BE.sh
-
-# Or manually
-source ~/miniforge3/etc/profile.d/conda.sh
-conda activate project2501
-cd backend
-python -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
-```
-
-Backend will be available at:
-- **API**: http://localhost:8000
-- **API Docs**: http://localhost:8000/docs
-- **Database Test**: http://localhost:8000/api/database/test
-
-### Start Frontend Development Server
-
-```bash
-cd frontend
-npm run dev
-```
-
-Frontend will be available at:
-- **Application**: http://localhost:5173
-
-### Production Build
-
-```bash
-# Frontend production build
-cd frontend
-npm run build
-npm run preview  # Preview production build
-
-# Backend production mode
-cd backend
-python -m uvicorn app.main:app --host 0.0.0.0 --port 8000  # No --reload
-```
-
-## 📖 Usage Guide
-
-### Creating a Persona
-
-1. Navigate to **Personas**
-2. Click **New Persona**
-3. Configure:
-   - **Name**: Display name for the persona
-   - **Description**: Optional description
-   - **Template**: System prompt with module references
-   - **Mode**: Reactive (chat) or Autonomous (experimental)
-   - **Image**: Optional avatar
-
-**Example Template:**
-```
-You are a helpful AI assistant. @greeting_module
-
-Current time: @time_module
-
-Recent conversation context:
-@memory_module
-```
-
-### Creating Modules
-
-#### Simple Module (Static Text)
-
-1. Navigate to **Modules**
-2. Click **New Module**
-3. Select **Type**: Simple
-4. Enter **Content**: Your static text
-5. Set **Execution Context**: When to execute
-
-**Example Simple Module:**
-```
-Name: greeting_module
-Type: Simple
-Content: Hello! I'm here to assist you with any questions you have.
-Execution Context: IMMEDIATE
-```
-
-#### Advanced Module (Python Script)
-
-1. Select **Type**: Advanced
-2. Write Python script using `ctx` context object
-3. Trigger Pattern: When to execute (keyword, regex, or `*` for always)
-4. Execution Context: IMMEDIATE or POST_RESPONSE
-
-**Example Advanced Module:**
-```python
-Name: time_module
-Type: Advanced
-Trigger: leave empty
-Execution Context: IMMEDIATE
-
-Script:
-current_time = ctx.get_current_time("%H:%M")
-day = ctx.get_day_of_week()
-is_business = ctx.is_business_hours()
-
-status = "during business hours" if is_business else "outside business hours"
-ctx.set_variable("time_info", f"{day} at {current_time} ({status})")
-```
-
-Template reference: `${time_info}`
-
-### Available Plugin Functions
-
-#### Time Functions
-- `ctx.get_current_time(format)` - Current time
-- `ctx.get_relative_time(minutes_offset)` - Time +/- offset
-- `ctx.is_business_hours()` - Business hours check
-- `ctx.get_day_of_week()` - Day name
-
-#### Conversation Functions
-- `ctx.get_message_count()` - Total messages
-- `ctx.get_recent_messages(limit)` - Formatted message history
-- `ctx.get_conversation_summary()` - Metadata and statistics
-- `ctx.get_persona_info()` - Current persona details
-
-#### AI Functions
-- `ctx.generate(instructions)` - AI generation
-- `ctx.generate(instructions, input_text)` - Generation with input
-- `ctx.reflect(instructions)` - Self-reflective AI processing
-
-#### Memory Functions
-- `ctx.should_compress_buffer()` - Check compression trigger
-- `ctx.get_buffer_messages(start, end)` - Buffer window messages
-- `ctx.store_memory(compressed_content)` - Save compressed memory
-- `ctx.get_recent_memories(limit)` - Retrieve memories
-
-#### Utility Functions
-- `ctx.to_json(data)` - Convert to JSON
-- `ctx.from_json(json_str)` - Parse JSON
-- `ctx.join_strings(list)` - Join strings
-- `ctx.count_words(text)` - Word count
-
-### Chat Configuration
-
-**Provider Settings** (stored in browser localStorage):
-- **Ollama**: Host URL, model selection
-- **OpenAI**: API key, model, base URL
-
-**Chat Controls**:
-- **Temperature**: 0.0-1.0 (creativity vs consistency)
-- **Max Tokens**: Response length limit
-- **Streaming**: Enable/disable real-time output
-
-## 🧪 Testing
-
-### Backend Tests
-
-```bash
-cd backend
-
-# Run all tests
-pytest -v
-
-# Run specific test file
-pytest tests/unit/test_module_resolver.py -v
-
-# Run with coverage
-pytest --cov=app --cov-report=html
-```
-
-**Test Coverage:**
-- Unit tests: Core functionality, models, services
-- Integration tests: API endpoints, database
-- Total: 400+ tests
-
-### Frontend Tests
-
-```bash
-cd frontend
-
-# Run unit tests
-npm run test:unit
-
-# Run with watch mode
-npm run test:unit -- --watch
-```
-
-## 🔧 Development
-
-### Code Quality
+**Using Ollama on Host:**
+- Backend connection: `http://host.docker.internal:11434`
+- Frontend connection: `http://localhost:11434`
+
+### Manual Installation
 
 **Backend:**
 ```bash
+# Install PostgreSQL
+sudo apt install postgresql postgresql-contrib
+
+# Create database
+sudo -u postgres psql
+CREATE USER mdcs WITH PASSWORD 'password';
+CREATE DATABASE mdcs OWNER mdcs;
+GRANT ALL PRIVILEGES ON DATABASE mdcs TO mdcs;
+\q
+
+# Initialize schema
+psql -U mdcs -d mdcs -f backend/init_db.sql
+
+# Install backend
 cd backend
+python3 -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
 
-# Type checking
-mypy app/
+# Configure
+cp .env.example .env
+# Edit .env with database credentials
 
-# Linting
-flake8 app/
-
-# Formatting
-black app/
+# Run
+uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 ```
 
 **Frontend:**
 ```bash
 cd frontend
-
-# Type checking
-npm run type-check
-
-# Linting
-npm run lint
-
-# Formatting
-npm run format
-```
-
-### Database Migrations
-
-Creating a new migration:
-```bash
-cd backend/app/database/migrations
-
-# Create new migration file
-# Name format: NNN_descriptive_name.sql
-nano 009_your_new_migration.sql
-
-# Test migration
-psql -U project2501 -d project2501 -f 009_your_new_migration.sql
-```
-
-### Adding Plugin Functions
-
-1. Create/edit file in `backend/app/plugins/`
-2. Use decorator to register:
-
-```python
-from app.core.script_plugins import plugin_registry
-
-@plugin_registry.register("my_function")
-def my_function(param: str, db_session=None, _script_context=None):
-    """Function description."""
-    # Implementation
-    return result
-```
-
-3. Function auto-loaded on app startup
-4. Available as `ctx.my_function()` in scripts
-
-## 🔐 Security Considerations
-
-### Script Execution Safety
-- **RestrictedPython Sandbox**: No file system or network access
-- **Whitelisted Imports**: Safe modules only (datetime, math, json)
-- **Reflection Depth Limiting**: Max 3 levels to prevent infinite nesting
-- **Circular Reference Detection**: Prevents infinite module loops
-
-### Database Security
-- **UUID Primary Keys**: Non-enumerable IDs
-- **Prepared Statements**: SQLAlchemy prevents SQL injection
-- **Environment Variables**: Credentials in .env files
-
-### API Security
-- **CORS Configuration**: Configurable origins
-- **Request Validation**: Pydantic models
-- **Error Sanitization**: No sensitive data in responses
-- **Rate Limiting**: Not yet implemented
-
-## 🐛 Troubleshooting
-
-### Docker Issues
-
-**Issue**: Containers won't start
-```bash
-# Check Docker service is running
-docker ps
-
-# View container logs
-docker compose logs -f
-
-# Check for port conflicts
-sudo netstat -tulpn | grep -E '5173|8000|5432'
-```
-
-**Issue**: Database initialization fails
-```bash
-# Check database logs
-docker compose logs db
-
-# Manually run initialization
-docker compose exec db psql -U project2501 -d project2501 -f /docker-entrypoint-initdb.d/init_db.sql
-
-# Recreate database volume if corrupted
-docker compose down -v
-docker compose up -d
-```
-
-**Issue**: Backend can't connect to host Ollama
-```bash
-# Verify Ollama is running on host
-curl http://localhost:11434/api/tags
-
-# Check Docker host gateway
-docker compose exec backend ping host.docker.internal
-
-# On Linux, you may need to use host IP instead:
-# Find host IP: ip addr show docker0
-# Update backend connection to: http://<host-ip>:11434
-```
-
-**Issue**: Permission denied on static volume
-```bash
-# Fix volume permissions
-sudo chown -R $USER:$USER backend/static
-docker compose restart backend
-```
-
-**Issue**: Frontend shows API connection errors
-```bash
-# Check backend is accessible
-curl http://localhost:8000/health
-
-# Verify nginx proxy configuration
-docker compose exec frontend cat /etc/nginx/conf.d/default.conf
-
-# Check backend logs for errors
-docker compose logs backend
-```
-
----
-
-### Manual Installation Issues
-
-### Backend Won't Start
-
-**Issue**: `conda: command not found`
-```bash
-# Source conda initialization
-source ~/miniforge3/etc/profile.d/conda.sh  # or ~/miniconda3/...
-conda activate project2501
-```
-
-**Issue**: `ImportError: No module named 'app'`
-```bash
-# Make sure you're in the backend directory
-cd backend
-python -m uvicorn app.main:app
-```
-
-**Issue**: Database connection failed
-```bash
-# Check PostgreSQL is running
-sudo systemctl status postgresql
-
-# Test connection manually
-psql -U project2501 -d project2501 -h localhost
-
-# Verify .env file has correct credentials
-cat backend/.env
-
-# Initialize database if not done
-psql -U project2501 -d project2501 -f backend/init_db.sql
-```
-
-### Frontend Issues
-
-**Issue**: `Module not found` errors
-```bash
-# Clear node_modules and reinstall
-rm -rf node_modules package-lock.json
 npm install
+npm run dev
 ```
 
-**Issue**: TypeScript errors
+**AI Provider:**
+- Install Ollama: `curl -fsSL https://ollama.com/install.sh | sh`
+- Or use OpenAI API / LM Studio / compatible API
+
+## Usage
+
+### Set connection to AI provider
+
+1. Navigate to **Settings** → **Ollama connection** or **OpenAI connection**
+2. Ensure the connection fields are available and set correctly, primarily **BASE URL** and **API KEY** (this can be random in case of local providers like LM Studio)
+
+### Creating a Persona
+
+1. Navigate to **Personas** → **+ NEW**
+2. Set name and description
+3. Write template with module references:
+   ```
+   You are a helpful assistant. @greeting_module
+
+   Current time: @time_module
+
+   Conversation context:
+   ${conversation_history}
+   ```
+4. Select mode: **REACTIVE** (chat) or **AUTONOMOUS** (experimental)
+5. Optionally upload avatar image
+
+### Creating Modules
+
+**Simple Module:**
+1. Navigate to **Modules** → **+ NEW**
+2. Select Type: **Simple**
+3. Enter static text content
+4. Set execution context: **IMMEDIATE**
+
+**Advanced Module:**
+1. Select Type: **Advanced**
+2. Write Python script:
+   ```python
+   conversation_history = ctx.get_recent_messages(30)
+   ```
+3. Set trigger pattern (optional): keyword, regex, or `*` for always
+4. Set execution context **IMMEDIATE** or **POST_RESPONSE**
+5. Test script with **TEST SCRIPT** button
+
+The script analyzer automatically detects if the module requires AI inference based on calls to `ctx.generate()` or `ctx.reflect()`.
+
+### Template Syntax
+
+- `@module_name` - Insert module output
+- `${variable}` - Insert variable from module script
+
+### Chat Interface
+
+- Select persona from sidebar
+- Choose AI provider and model in chat controls
+- Adjust temperature, top-p, max tokens as needed
+- Enable markdown rendering for formatted output
+- Reasoning models show expandable "Thinking Process" section
+- Edit messages by hovering and clicking edit icon
+- Debug panel shows resolved system prompts and execution stages
+
+## Project Structure
+
+```
+mdcs/
+├── backend/
+│   ├── app/
+│   │   ├── api/           # REST and WebSocket endpoints
+│   │   ├── core/          # Script engine, plugins, analyzers
+│   │   ├── models/        # SQLAlchemy database models
+│   │   ├── services/      # Business logic, providers
+│   │   ├── plugins/       # Plugin function implementations
+│   │   └── database/      # Connection and migrations
+│   ├── tests/             # Backend tests
+│   ├── init_db.sql        # Database schema
+│   └── requirements.txt   # Python dependencies
+├── frontend/
+│   ├── src/
+│   │   ├── components/    # Vue components
+│   │   ├── views/         # Page views
+│   │   ├── composables/   # Vue composables (logic)
+│   │   ├── types/         # TypeScript type definitions
+│   │   └── assets/        # CSS, images
+│   └── package.json       # Node dependencies
+├── docker-compose.yml     # Docker orchestration
+└── screenshots/           # UI screenshots
+```
+
+## Development
+
+**Backend Type Checking:**
 ```bash
-# Regenerate TypeScript cache
+cd backend
+mypy app/
+```
+
+**Frontend Type Checking:**
+```bash
+cd frontend
 npm run type-check
 ```
 
-## 🗺️ Roadmap
+**Run Tests:**
+```bash
+cd backend
+pytest -v
+```
 
-### Completed
-- ✅ Dynamic system prompt architecture
-- ✅ 5-stage execution pipeline with AI dependency detection
-- ✅ Advanced modules with sandboxed Python scripts
-- ✅ AI self-reflection and on-demand generation
-- ✅ WebSocket-based chat with <100ms cancellation
-- ✅ Conversation memory with AI compression (experimental)
-- ✅ Ollama and OpenAI provider support
+**Database Migrations:**
+Migrations are SQL files in `backend/app/database/migrations/`. Apply them manually:
+```bash
+psql -U mdcs -d mdcs -f backend/app/database/migrations/NNN_migration.sql
+```
 
-### Planned
-- ⏳ Tool integration framework
-- ⏳ Multi-modal support (images, audio)
-- ⏳ Import/export for personas and modules
-- ⏳ Vector-based memory retrieval
-- ⏳ Rate limiting
-- ⏳ User authentication
+**Adding Plugin Functions:**
+1. Create file in `backend/app/plugins/`
+2. Use decorator:
+   ```python
+   from app.core.script_plugins import plugin_registry
 
-## 📚 Documentation
+   @plugin_registry.register("my_function")
+   def my_function(param: str, db_session=None, _script_context=None):
+       """Function description."""
+       return result
+   ```
+3. Function auto-loads on startup
+4. Available as `ctx.my_function()` in module scripts
 
-### Architecture Documentation
-- [API Layer](backend/app/api/README.md) - REST and WebSocket endpoints
-- [Core Layer](backend/app/core/README.md) - Script engine and plugins
-- [Services Layer](backend/app/services/README.md) - Business logic
-- [Models Layer](backend/app/models/README.md) - Database models
-- [Plugins Layer](backend/app/plugins/README.md) - Module plugin functions
+## Limitations
 
-### API Reference
-- Interactive API Docs: http://localhost:8000/docs (backend must be running)
-- OpenAPI Schema: http://localhost:8000/openapi.json
+- No user authentication system (single-user)
+- No rate limiting
+- Vector database / semantic search not yet implemented
+- Autonomous mode is experimental and not fully implemented
+- Memory compression is functional but still experimental and higly dependatnt on the model
+- Tool/function calling not implemented
+- No multi-modal support yet
+- Tools/MCP not impemented
 
-## 🤝 Contributing
+## Docker Commands
 
-Contributions welcome:
+```bash
+# View logs
+docker compose logs -f
+docker compose logs -f backend
+docker compose logs -f frontend
 
-1. Fork the repository
-2. Create a feature branch
-3. Run tests (`pytest` for backend, `npm test` for frontend)
-4. Commit changes
-5. Push and open a Pull Request
+# Restart services
+docker compose restart
 
-### Guidelines
-- Write tests for new features
-- Follow existing code style
-- Update documentation
-- Keep commits atomic
-- Add docstrings to Python functions
-- Use TypeScript types
+# Rebuild after code changes
+docker compose up -d --build
 
-## 📄 License
+# Stop and remove (keeps data)
+docker compose down
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+# Stop and remove including data
+docker compose down -v
+
+# Check health
+docker compose ps
+```
+
+## Configuration
+
+**Environment Variables (.env):**
+```bash
+# Database
+DB_HOST=localhost
+DB_PORT=5432
+DB_NAME=mdcs
+DB_USER=mdcs
+DB_PASSWORD=your_password
+DATABASE_URL=postgresql://mdcs:your_password@localhost:5432/mdcs
+
+# Application
+# Add other config as needed
+```
+
+**AI Provider Settings (stored in browser localStorage):**
+- Ollama: host URL, model
+- OpenAI: API key, model, base URL
+
+## License
+
+MIT License - see LICENSE file for details.
 
 Copyright (c) 2025 Paul Panțiru
 
----
+## Contributing
+
+This is a solo development project in early stages. Contributions are welcome but please note:
+- Follow existing code style
+- Write tests for new features
+- Update documentation
+- Keep commits focused
+
+## Acknowledgments
+
+- FastAPI for the backend framework
+- Vue.js team for the frontend framework
+- Marked.js for markdown parsing
+- RestrictedPython for safe script execution
+- Anthropic, Google, Mistral and OpenAI for the AI models / coding agents
+- Ollama and LM Studio for local inference

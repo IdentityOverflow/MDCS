@@ -179,8 +179,8 @@ function goBackToApp() {
             <i class="fa-solid fa-code"></i>
           </div>
           <div class="header-text">
-            <h1>Advanced Module Scripting Documentation</h1>
-            <p>Complete guide to writing Python scripts for dynamic modules</p>
+            <h1>Module Scripting Guide</h1>
+            <p>Python scripting reference for MDCS advanced modules</p>
           </div>
         </div>
       </div>
@@ -210,48 +210,90 @@ function goBackToApp() {
         <!-- Overview Section -->
         <div v-if="sections.find(s => s.id === 'overview')?.active" class="content-section">
           <h2>Overview</h2>
-          <p>Advanced modules allow you to write Python scripts that execute dynamically to generate module content. This enables context-aware, adaptive behaviors in your AI personas.</p>
-          
+          <p>Advanced modules execute Python scripts to generate dynamic content based on conversation context. Scripts run in a sandboxed environment with access to conversation data, time functions, and AI capabilities.</p>
+
           <div class="info-box">
             <div class="info-header">
               <i class="fa-solid fa-lightbulb"></i>
               <span>Key Concepts</span>
             </div>
             <ul>
-              <li><strong>Dynamic Content</strong>: Scripts generate content at runtime based on conversation context</li>
-              <li><strong>Variable System</strong>: Use <code>${variable}</code> syntax to insert script outputs into module content</li>
-              <li><strong>Plugin Functions</strong>: Access to {{ pluginFunctions.length }}+ built-in functions for time, conversation data, and utilities</li>
-              <li><strong>Secure Execution</strong>: Scripts run in a RestrictedPython sandbox for security</li>
+              <li><strong>Context Object</strong>: All functionality accessed through the <code>ctx</code> object</li>
+              <li><strong>Variable System</strong>: Script variables are automatically available in templates</li>
+              <li><strong>Template Substitution</strong>: Use <code>${variable}</code> syntax to insert script variables</li>
+              <li><strong>Plugin Functions</strong>: ~60 built-in functions for time, conversation, AI, and utilities</li>
+              <li><strong>Sandboxed Execution</strong>: RestrictedPython prevents file/network access</li>
             </ul>
           </div>
 
           <h3>Basic Workflow</h3>
           <ol>
-            <li>Write Python script that assigns values to variables</li>
-            <li>Use <code>${variable_name}</code> in your module content template</li>
-            <li>Script executes when module is resolved</li>
-            <li>Variables are substituted into the final content</li>
+            <li>Write Python script that calls plugin functions via <code>ctx</code></li>
+            <li>Assign values to variables using standard Python syntax</li>
+            <li>Reference variables in module content template as <code>${variable_name}</code></li>
+            <li>Script executes during the module resolution pipeline</li>
+            <li>Variables are automatically substituted into the final system prompt</li>
           </ol>
         </div>
 
         <!-- Context Object Section -->
         <div v-if="sections.find(s => s.id === 'context')?.active" class="content-section">
           <h2>Context Object (ctx)</h2>
-          <p>The <code>ctx</code> object provides access to conversation data and plugin functions.</p>
+          <p>The <code>ctx</code> object is the primary interface for all module script functionality. It provides access to conversation data, plugin functions, and variable storage.</p>
 
+          <h3>Available Properties</h3>
           <div class="code-example">
             <div class="code-header">
               <i class="fa-solid fa-code"></i>
-              <span>Context Access</span>
+              <span>Context Properties</span>
             </div>
-            <pre><code># Access context properties
-conversation_id = ctx.conversation_id
-persona_id = ctx.persona_id
+            <pre><code># Conversation identifiers
+conversation_id = ctx.conversation_id  # UUID of current conversation
+persona_id = ctx.persona_id            # UUID of active persona
+module_id = ctx.module_id              # UUID of current module</code></pre>
+          </div>
 
-# Call plugin functions
-current_time = ctx.get_current_time()
-message_count = ctx.get_message_count()
-recent_messages = ctx.get_recent_messages(5)</code></pre>
+          <h3>Calling Plugin Functions</h3>
+          <div class="code-example">
+            <div class="code-header">
+              <i class="fa-solid fa-code"></i>
+              <span>Plugin Function Examples</span>
+            </div>
+            <pre><code># Time functions
+current_time = ctx.get_current_time("%H:%M")
+day = ctx.get_day_of_week()
+is_business = ctx.is_business_hours()
+
+# Conversation functions
+count = ctx.get_message_count()
+history = ctx.get_recent_messages(5)
+summary = ctx.get_conversation_summary()
+
+# AI functions
+response = ctx.generate("Summarize this: " + text)
+reflection = ctx.reflect("Analyze the conversation tone")</code></pre>
+          </div>
+
+          <h3>Creating Output Variables</h3>
+          <div class="code-example">
+            <div class="code-header">
+              <i class="fa-solid fa-code"></i>
+              <span>Variable Assignment</span>
+            </div>
+            <pre><code># Simple variable assignment
+greeting = "Hello"
+count = 42
+temperature = 0.7
+
+# Computed values
+total = count * 2
+message = f"Count is {count}"
+
+# Complex values (automatically converted to strings)
+summary = {
+    "messages": count,
+    "time": current_time
+}</code></pre>
           </div>
 
           <div class="info-box warning">
@@ -259,7 +301,7 @@ recent_messages = ctx.get_recent_messages(5)</code></pre>
               <i class="fa-solid fa-exclamation-triangle"></i>
               <span>Important</span>
             </div>
-            <p>All plugin functions are accessed through the <code>ctx</code> object. Direct function calls will not work.</p>
+            <p>All plugin functions MUST be accessed through the <code>ctx</code> object. Direct function calls (e.g., <code>get_current_time()</code>) will fail. Always use <code>ctx.function_name()</code> syntax.</p>
           </div>
         </div>
 
@@ -323,27 +365,30 @@ recent_messages = ctx.get_recent_messages(5)</code></pre>
         <!-- Variable System Section -->
         <div v-if="sections.find(s => s.id === 'variables')?.active" class="content-section">
           <h2>Variable System</h2>
-          <p>Variables created in your script can be used in the module content template.</p>
+          <p>Variables created in your script are automatically available in the module content template. Simply assign values using normal Python syntax, then reference them using <code>${variable_name}</code>.</p>
 
           <div class="variable-example">
             <div class="example-part">
               <h4>Script:</h4>
               <div class="code-example">
-                <pre><code>name = "AVA"
-mood = "analytical"
+                <pre><code># Get data from plugins
 time_of_day = ctx.get_current_time("%H:%M")
+hour = int(time_of_day.split(':')[0])
 
-if int(time_of_day.split(':')[0]) < 12:
+# Create variables
+if hour < 12:
     greeting = "Good morning"
 else:
-    greeting = "Good afternoon"</code></pre>
+    greeting = "Good afternoon"
+
+persona_name = "AVA"</code></pre>
               </div>
             </div>
 
             <div class="example-part">
               <h4>Content Template:</h4>
               <div class="code-example">
-                <pre><code>${greeting}! I'm ${name}, your ${mood} assistant.
+                <pre><code>${greeting}! I'm ${persona_name}.
 Current time is ${time_of_day}.</code></pre>
               </div>
             </div>
@@ -351,7 +396,7 @@ Current time is ${time_of_day}.</code></pre>
             <div class="example-part">
               <h4>Resolved Output:</h4>
               <div class="resolved-example">
-                Good afternoon! I'm AVA, your analytical assistant.<br>
+                Good afternoon! I'm AVA.<br>
                 Current time is 14:30.
               </div>
             </div>
@@ -363,10 +408,12 @@ Current time is ${time_of_day}.</code></pre>
               <span>Variable Rules</span>
             </div>
             <ul>
-              <li>Variable names must be valid Python identifiers</li>
-              <li>Use <code>${variable_name}</code> syntax in content templates</li>
-              <li>Variables are converted to strings automatically</li>
+              <li>Variables are created with standard Python assignment (e.g., <code>greeting = "Hello"</code>)</li>
+              <li>Variable names must be valid Python identifiers (letters, numbers, underscores)</li>
+              <li>Reference variables in templates using <code>${variable_name}</code> syntax</li>
+              <li>Values are automatically converted to strings when substituted</li>
               <li>Undefined variables remain as <code>${variable_name}</code> in output</li>
+              <li>Variables are scoped to the current module execution only</li>
             </ul>
           </div>
         </div>
@@ -384,6 +431,7 @@ Current time is ${time_of_day}.</code></pre>
                   <pre><code>current_hour = int(ctx.get_current_time("%H"))
 message_count = ctx.get_message_count()
 
+# Determine greeting based on time
 if current_hour < 12:
     time_greeting = "Good morning"
 elif current_hour < 17:
@@ -391,6 +439,7 @@ elif current_hour < 17:
 else:
     time_greeting = "Good evening"
 
+# Determine context based on conversation length
 if message_count == 0:
     context = "It's great to meet you!"
 elif message_count < 10:
@@ -409,57 +458,65 @@ else:
           </div>
 
           <div class="example-container">
-            <h3>2. Conditional Memory Module</h3>
+            <h3>2. Conversation Context Module</h3>
             <div class="example-grid">
               <div class="example-script">
                 <h4>Script:</h4>
                 <div class="code-example">
-                  <pre><code>total_messages = ctx.get_message_count()
-recent = ctx.get_recent_messages(3)
+                  <pre><code>count = ctx.get_message_count()
+recent = ctx.get_recent_messages(5)
 
-if total_messages > 20:
-    memory_status = "I remember our extensive discussions"
-elif total_messages > 5:
-    memory_status = "I recall our recent conversation"
+# Determine conversation status
+if count > 20:
+    status = "We've had an extensive discussion"
+elif count > 5:
+    status = "We've been chatting for a bit"
 else:
-    memory_status = "I'm getting to know you"
+    status = "We're just getting started"
 
-# Generate context summary
-if len(recent) > 0:
-    context_hint = f"We were just talking about: {recent[0]['preview']}"
-else:
-    context_hint = "Ready for a new conversation"</code></pre>
+# Format recent history
+history_text = "\n".join([
+    f"- {msg['role']}: {msg['content'][:50]}..."
+    for msg in recent
+])</code></pre>
                 </div>
               </div>
               <div class="example-content">
                 <h4>Content:</h4>
                 <div class="code-example">
-                  <pre><code>${memory_status}. ${context_hint}</code></pre>
+                  <pre><code>${status}
+
+Recent context:
+${history_text}</code></pre>
                 </div>
               </div>
             </div>
           </div>
 
           <div class="example-container">
-            <h3>3. Random Personality Module</h3>
+            <h3>3. AI Self-Reflection Module</h3>
             <div class="example-grid">
               <div class="example-script">
                 <h4>Script:</h4>
                 <div class="code-example">
-                  <pre><code>moods = ["curious", "analytical", "creative", "helpful"]
-approaches = ["methodical", "intuitive", "systematic", "adaptive"]
-
-current_mood = ctx.get_random_choice(moods)
-current_approach = ctx.get_random_choice(approaches)
-
-personality = f"{current_mood} and {current_approach}"</code></pre>
+                  <pre><code># Use AI to analyze conversation
+analysis = ctx.reflect(
+    "Analyze the conversation tone and user intent "
+    "in 1-2 sentences"
+)</code></pre>
                 </div>
               </div>
               <div class="example-content">
                 <h4>Content:</h4>
                 <div class="code-example">
-                  <pre><code>I'm feeling ${personality} today.</code></pre>
+                  <pre><code>Conversation analysis:
+${analysis}</code></pre>
                 </div>
+                <h4>Note:</h4>
+                <p style="font-size: 0.9em; opacity: 0.8; margin-top: 8px;">
+                  This module requires AI inference and will execute in Stage 2 (pre-response AI).
+                  The <code>ctx.reflect()</code> function uses the current resolved system prompt.
+                </p>
               </div>
             </div>
           </div>
@@ -507,10 +564,11 @@ personality = f"{current_mood} and {current_approach}"</code></pre>
               <span>Execution Limits</span>
             </div>
             <ul>
-              <li><strong>Timeout:</strong> Scripts must complete within 5 seconds</li>
-              <li><strong>Memory:</strong> Limited memory allocation for script execution</li>
-              <li><strong>Loops:</strong> Infinite loops will be terminated</li>
-              <li><strong>Recursion:</strong> Maximum recursion depth enforced</li>
+              <li><strong>Timeout:</strong> Scripts must complete within 30 seconds (configurable per module)</li>
+              <li><strong>AI Operations:</strong> <code>ctx.reflect()</code> and <code>ctx.generate()</code> can use up to 60 seconds</li>
+              <li><strong>Memory:</strong> Limited memory allocation enforced by RestrictedPython</li>
+              <li><strong>Recursion:</strong> Maximum depth enforced by Python runtime</li>
+              <li><strong>Reflection Depth:</strong> Maximum 3 levels of nested <code>ctx.reflect()</code> calls to prevent infinite loops</li>
             </ul>
           </div>
 

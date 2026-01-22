@@ -1,13 +1,13 @@
 # Docker Deployment Guide
 
-Complete guide for deploying Project 2501 using Docker Compose.
+Complete guide for deploying MDCS (Modular Dynamic Context System) using Docker Compose.
 
 ## Quick Start
 
 ```bash
 # Clone and setup
-git clone https://github.com/IdentityOverflow/project2501.git
-cd project2501
+git clone https://github.com/IdentityOverflow/mdcs.git
+cd mdcs
 
 # Configure environment
 cp .env.docker .env
@@ -26,25 +26,25 @@ docker compose up -d
 ### Services
 
 **Database (PostgreSQL 14)**
-- Container: `project2501-db`
+- Container: `mdcs-db`
 - Internal port: 5432 (not exposed to host)
 - Volume: `postgres_data` for persistence
 - Initialization: Automatic schema creation via `init_db.sql`
 
 **Backend (FastAPI)**
-- Container: `project2501-backend`
+- Container: `mdcs-backend`
 - Port: `8000:8000`
 - Volume: `./backend/static` for uploads
 - Features: Health checks, host Ollama connectivity
 
 **Frontend (Vue + Nginx)**
-- Container: `project2501-frontend`
+- Container: `mdcs-frontend`
 - Port: `5173:80`
 - Features: API proxy to backend, gzip compression
 
 ### Network
 
-- Bridge network: `project2501_network`
+- Bridge network: `mdcs_network`
 - Service DNS: Containers communicate via service names
 - Host access: Backend can reach `host.docker.internal` for Ollama
 
@@ -64,8 +64,8 @@ Edit `.env` file:
 
 ```bash
 # Database credentials
-DB_NAME=project2501
-DB_USER=project2501
+DB_NAME=mdcs
+DB_USER=mdcs
 DB_PASSWORD=your_strong_password_here  # CHANGE THIS!
 ```
 
@@ -86,17 +86,17 @@ Add to `docker-compose.yml`:
 services:
   ollama:
     image: ollama/ollama:latest
-    container_name: project2501-ollama
+    container_name: mdcs-ollama
     volumes:
       - ollama_data:/root/.ollama
     ports:
       - "11434:11434"
     networks:
-      - project2501_network
+      - mdcs_network
 
 volumes:
   ollama_data:
-    name: project2501_ollama_data
+    name: mdcs_ollama_data
 ```
 
 Then configure both backend and frontend to use: `http://ollama:11434`
@@ -160,13 +160,13 @@ docker compose up -d --force-recreate
 
 ```bash
 # Access PostgreSQL shell
-docker compose exec db psql -U project2501 -d project2501
+docker compose exec db psql -U mdcs -d mdcs
 
 # Backup database
-docker compose exec db pg_dump -U project2501 project2501 > backup.sql
+docker compose exec db pg_dump -U mdcs mdcs > backup.sql
 
 # Restore database
-cat backup.sql | docker compose exec -T db psql -U project2501 -d project2501
+cat backup.sql | docker compose exec -T db psql -U mdcs -d mdcs
 
 # Reinitialize database (WARNING: destroys data)
 docker compose down -v
@@ -218,14 +218,14 @@ docker ps
 docker compose logs db
 
 # Verify schema initialization
-docker compose exec db psql -U project2501 -d project2501 -c "\dt"
+docker compose exec db psql -U mdcs -d mdcs -c "\dt"
 
 # Manually run initialization
-docker compose exec db psql -U project2501 -d project2501 -f /docker-entrypoint-initdb.d/init_db.sql
+docker compose exec db psql -U mdcs -d mdcs -f /docker-entrypoint-initdb.d/init_db.sql
 
 # Reset database (WARNING: destroys all data)
 docker compose down
-docker volume rm project2501_postgres_data
+docker volume rm mdcs_postgres_data
 docker compose up -d
 ```
 
@@ -233,7 +233,7 @@ docker compose up -d
 
 ```bash
 # Test database connectivity from backend
-docker compose exec backend pg_isready -h db -p 5432 -U project2501
+docker compose exec backend pg_isready -h db -p 5432 -U mdcs
 
 # Check environment variables
 docker compose exec backend env | grep DB_
@@ -328,7 +328,7 @@ BACKUP_DIR="./backups"
 mkdir -p $BACKUP_DIR
 
 # Backup database
-docker compose exec -T db pg_dump -U project2501 project2501 > "$BACKUP_DIR/db_$DATE.sql"
+docker compose exec -T db pg_dump -U mdcs mdcs > "$BACKUP_DIR/db_$DATE.sql"
 
 # Backup static files
 tar -czf "$BACKUP_DIR/static_$DATE.tar.gz" backend/static
@@ -364,7 +364,7 @@ docker compose -f docker-compose.yml -f docker-compose.dev.yml up
 docker compose up db -d
 cd backend
 source ~/miniforge3/etc/profile.d/conda.sh
-conda activate project2501
+conda activate mdcs
 python -m uvicorn app.main:app --reload
 ```
 
