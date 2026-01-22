@@ -161,8 +161,8 @@ Modules have access to plugin functions via the `ctx` object:
 **Steps:**
 ```bash
 # Clone repository
-git clone https://github.com/IdentityOverflow/project2501.git
-cd project2501
+git clone https://github.com/IdentityOverflow/MDCS.git
+cd MDCS
 
 # Configure environment
 cp .env.docker .env
@@ -231,7 +231,7 @@ npm run dev
 ### Set connection to AI provider
 
 1. Navigate to **Settings** → **Ollama connection** or **OpenAI connection**
-2. Ensure the connection fields are available and set correctly, primarily **BASE URL** and **API KEY** (this can be random in case of local providers like LM Studio)
+2. Ensure the connection enpoint is available and set correctly, primarily **BASE URL** and **API KEY** (this can be a random string in case of local providers like LM Studio)
 
 ### Creating a Persona
 
