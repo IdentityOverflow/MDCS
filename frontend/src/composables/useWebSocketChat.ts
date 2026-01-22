@@ -247,7 +247,7 @@ export function useWebSocketChat(
     }
 
     if (data.thinking) {
-      currentStreamingThinking.value = data.thinking
+      currentStreamingThinking.value += data.thinking  // Accumulate thinking tokens
     }
 
     if (data.done) {
