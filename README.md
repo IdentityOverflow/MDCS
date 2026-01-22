@@ -1,5 +1,4 @@
-# Modular Dynamic Context System (MDCS)
-
+# Modular Dynamic Context System
 A full-stack web application for managing AI conversations with dynamic, modular system prompts. The system allows system prompts to be composed from reusable modules that can execute Python scripts, call AI models, and maintain state across conversations.
 
 ## Overview
