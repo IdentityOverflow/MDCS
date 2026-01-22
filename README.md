@@ -19,15 +19,12 @@ The system uses a 5-stage execution pipeline to control when modules run relativ
 ![Chat Interface](screenshots/Screenshot%20from%202026-01-22%2012-50-00.png)
 *Main chat interface with markdown rendering, persona selection, and expandable thinking process from reasoning models*
 
-### Module Editor
 ![Module Editor](screenshots/Screenshot%20from%202026-01-22%2012-45-39.png)
 *Advanced module editor with Python scripting, trigger patterns, and test functionality*
 
-### Persona Editor
 ![Persona Editor](screenshots/Screenshot%20from%202026-01-22%2012-48-13.png)
 *Persona configuration with template system and module references*
 
-### Modules Overview
 ![Modules Overview](screenshots/Screenshot%20from%202026-01-22%2012-56-21.png)
 *Module management with execution context indicators and chat controls*
 
