@@ -141,10 +141,10 @@ class OpenAIStreamParser:
     def parse_chunk(self, chunk_line: str) -> Optional[StreamingChatResponse]:
         """
         Parse a single streaming chunk from OpenAI-API.
-        
+
         Args:
             chunk_line: Single line from the streaming response
-            
+
         Returns:
             StreamingChatResponse or None if chunk should be skipped
         """
@@ -152,15 +152,16 @@ class OpenAIStreamParser:
         line = chunk_line.strip()
         if line.startswith('data: '):
             line = line[6:]  # Remove "data: " prefix
-        
+
         # Skip control messages
         if line in ['[DONE]', '']:
             return None
-        
+
         try:
             chunk_data = json.loads(line)
         except json.JSONDecodeError as e:
-            logger.warning(f"Failed to parse OpenAI-API chunk as JSON: {e}")
+            # Log the actual line content to debug buffering issues
+            logger.warning(f"Failed to parse OpenAI-API chunk as JSON: {e}. Line content: '{line[:100]}'")
             return None
         
         try:

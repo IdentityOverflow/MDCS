@@ -159,6 +159,10 @@ class BaseProviderService(AIProvider):
         if not self._stream_processor:
             self._init_stream_processor(self._parse_stream_chunk)
 
+        # Ensure stream=True is set in chat_controls for streaming requests
+        # This is critical for OpenAI-compatible APIs to actually stream responses
+        request.chat_controls["stream"] = True
+
         # Build request components using provider-specific logic
         url = self._build_url(request.provider_settings)
         headers = self._build_headers(request.provider_settings)
