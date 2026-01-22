@@ -350,16 +350,16 @@ psql -U mdcs -d mdcs -f backend/app/database/migrations/NNN_migration.sql
 3. Function auto-loads on startup
 4. Available as `ctx.my_function()` in module scripts
 
-## Limitations
+## Limitations/Future work
 
-- No user authentication system (single-user)
-- No rate limiting
-- Vector database / semantic search not yet implemented
-- Autonomous mode is experimental and not fully implemented
 - Memory compression is functional but still experimental and higly dependatnt on the model
-- Tool/function calling not implemented
-- No multi-modal support yet
-- Tools/MCP not impemented
+- Autonomous mode is not fully implemented
+- Vector database / semantic search planned but not yet implemented
+- No multi-modal support yet (images, audio, video)
+- Tool use/MCP support not fully impemented
+- Chat rooms not implemented
+- No rate limiting
+- No user authentication system (single-user)
 
 ## Docker Commands
 
