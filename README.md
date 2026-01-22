@@ -350,7 +350,7 @@ psql -U mdcs -d mdcs -f backend/app/database/migrations/NNN_migration.sql
 3. Function auto-loads on startup
 4. Available as `ctx.my_function()` in module scripts
 
-## Limitations/Future work
+## Limitations/Ongoing work
 
 - Memory compression is functional but still experimental and higly dependatnt on the model
 - Autonomous mode is not fully implemented
