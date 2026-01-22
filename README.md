@@ -13,9 +13,8 @@ MDCS addresses the problem of system prompts becoming lost or diluted in long co
 
 The system uses a 5-stage execution pipeline to control when modules run relative to the main AI response, enabling pre-processing, post-processing, and background analysis.
 
-## Screenshots
+## Web Interface Screenshots 
 
-### Chat Interface
 ![Chat Interface](screenshots/Screenshot%20from%202026-01-22%2012-50-00.png)
 *Main chat interface with markdown rendering, persona selection, and expandable thinking process from reasoning models*
 
