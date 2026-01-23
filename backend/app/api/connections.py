@@ -24,20 +24,14 @@ router = APIRouter(prefix="/api/connections", tags=["connections"])
 class OllamaConnectionTestRequest(BaseModel):
     """Request model for testing Ollama connections."""
     host: str = Field(..., description="Ollama server host URL")
-    model: str = Field(..., description="Model name to test")
+    model: str = Field(default="", description="Model name (optional, not used for connection test)")
     route: str = Field(default="/api/chat", description="API route path")
     timeout_ms: int = Field(default=30000, description="Timeout in milliseconds")
-    
+
     @field_validator('host')
     def validate_host(cls, v):
         if not v or not v.strip():
             raise ValueError("Host cannot be empty")
-        return v.strip()
-    
-    @field_validator('model')
-    def validate_model(cls, v):
-        if not v or not v.strip():
-            raise ValueError("Model cannot be empty")
         return v.strip()
 
 
@@ -45,27 +39,21 @@ class OpenAIConnectionTestRequest(BaseModel):
     """Request model for testing OpenAI connections."""
     base_url: str = Field(..., description="OpenAI API base URL")
     api_key: str = Field(..., description="API key for authentication")
-    default_model: str = Field(..., description="Default model to test")
+    default_model: str = Field(default="", description="Default model (optional, not used for connection test)")
     organization: str = Field(default="", description="Organization ID (optional)")
     project: str = Field(default="", description="Project ID (optional)")
     timeout_ms: int = Field(default=60000, description="Timeout in milliseconds")
-    
+
     @field_validator('base_url')
     def validate_base_url(cls, v):
         if not v or not v.strip():
             raise ValueError("Base URL cannot be empty")
         return v.strip()
-    
+
     @field_validator('api_key')
     def validate_api_key(cls, v):
         if not v or not v.strip():
             raise ValueError("API key cannot be empty")
-        return v.strip()
-    
-    @field_validator('default_model')
-    def validate_default_model(cls, v):
-        if not v or not v.strip():
-            raise ValueError("Default model cannot be empty")
         return v.strip()
 
 
@@ -112,7 +100,7 @@ async def test_ollama_connection(request: OllamaConnectionTestRequest) -> Connec
         # Create service instance and test connection
         ollama_service = OllamaService()
         is_connected = await ollama_service.test_connection(settings)
-        
+
         if is_connected:
             return ConnectionTestResponse(
                 status="connected",
@@ -121,12 +109,12 @@ async def test_ollama_connection(request: OllamaConnectionTestRequest) -> Connec
                 version=""
             )
         else:
-            return ConnectionTestResponse(
-                status="failed",
-                message="Connection failed",
-                model=request.model,
-                version=""
+            # Return HTTP error for failed connections
+            error = ConnectionTestError(
+                message="Connection failed - could not reach Ollama server or list models",
+                error_type="connection_error"
             )
+            raise HTTPException(status_code=500, detail=error.model_dump())
         
     except ProviderConnectionError as e:
         logger.error(f"Ollama connection test failed: {e}")
@@ -279,7 +267,7 @@ async def test_openai_connection(request: OpenAIConnectionTestRequest) -> Connec
         # Create service instance and test connection
         openai_service = OpenAIService()
         is_connected = await openai_service.test_connection(settings)
-        
+
         if is_connected:
             return ConnectionTestResponse(
                 status="connected",
@@ -288,12 +276,12 @@ async def test_openai_connection(request: OpenAIConnectionTestRequest) -> Connec
                 organization=request.organization
             )
         else:
-            return ConnectionTestResponse(
-                status="failed",
-                message="Connection failed",
-                model=request.default_model,
-                organization=request.organization
+            # Return HTTP error for failed connections
+            error = ConnectionTestError(
+                message="Connection failed - could not reach OpenAI API or list models",
+                error_type="connection_error"
             )
+            raise HTTPException(status_code=500, detail=error.model_dump())
         
     except ProviderAuthenticationError as e:
         logger.error(f"OpenAI authentication failed: {e}")

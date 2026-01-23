@@ -35,8 +35,8 @@ function goBack() {
         </button>
         
         <button class="cyberpunk-btn" @click="showConnectionForm('database')">
-          <i class="fa-solid fa-database"></i>
-          <span>Database</span>
+          <i class="fa-solid fa-plug"></i>
+          <span>Backend API</span>
         </button>
         
         <button class="cyberpunk-btn" disabled>
@@ -65,7 +65,7 @@ function goBack() {
         </button>
         <h1 class="form-title" v-if="currentView === 'ollama'">Ollama Connection</h1>
         <h1 class="form-title" v-if="currentView === 'openai'">OpenAI API Connection</h1>
-        <h1 class="form-title" v-if="currentView === 'database'">Database Connection</h1>
+        <h1 class="form-title" v-if="currentView === 'database'">Backend API & Database</h1>
       </div>
       
       <div class="form-content-area">

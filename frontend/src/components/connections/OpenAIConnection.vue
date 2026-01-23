@@ -47,11 +47,6 @@ function saveConnection() {
     notification.showError('API Key is required')
     return
   }
-  
-  if (!openaiConnection.value.default_model.trim()) {
-    notification.showError('Default Model is required')
-    return
-  }
 
   const success = saveToStorage()
   if (success) {
@@ -63,26 +58,21 @@ function saveConnection() {
 
 async function testConnection() {
   if (isTestingConnection.value) return
-  
+
   if (!openaiConnection.value.api_key.trim()) {
     notification.showError('API Key is required')
     return
   }
-  
-  if (!openaiConnection.value.default_model.trim()) {
-    notification.showError('Default Model is required')
-    return
-  }
-  
+
   isTestingConnection.value = true
-  
+
   try {
     const response = await apiRequest('/api/connections/openai/test', {
       method: 'POST',
       body: JSON.stringify({
         base_url: openaiConnection.value.base_url.trim(),
         api_key: openaiConnection.value.api_key.trim(),
-        default_model: openaiConnection.value.default_model.trim(),
+        default_model: openaiConnection.value.default_model?.trim() || '',
         organization: openaiConnection.value.organization || '',
         project: openaiConnection.value.project || '',
         timeout_ms: openaiConnection.value.timeout_ms || 60000
@@ -135,16 +125,15 @@ async function testConnection() {
       </div>
 
       <div class="form-group">
-        <label for="openai-model">Default Model *</label>
-        <input 
+        <label for="openai-model">Default Model</label>
+        <input
           id="openai-model"
-          v-model="openaiConnection.default_model" 
-          type="text" 
+          v-model="openaiConnection.default_model"
+          type="text"
           class="form-input"
           placeholder="gpt-4o"
-          required
         />
-        <small class="form-hint">Model ID (e.g., gpt-4.1, gpt-4o, etc.) or Azure deployment name</small>
+        <small class="form-hint">Optional model ID (e.g., gpt-4.1, gpt-4o, etc.) or Azure deployment name</small>
       </div>
 
       <div class="form-group">

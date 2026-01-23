@@ -53,11 +53,6 @@ onMounted(() => {
 })
 
 function saveConnection() {
-  if (!ollamaConnection.value.default_model.trim()) {
-    notification.showError('Default Model is required')
-    return
-  }
-
   const success = saveToStorage()
   if (success) {
     notification.showSuccess('Ollama connection saved successfully')
@@ -68,25 +63,20 @@ function saveConnection() {
 
 async function testConnection() {
   if (isTestingConnection.value) return
-  
+
   if (!ollamaConnection.value.host.trim()) {
     notification.showError('Host URL is required')
     return
   }
-  
-  if (!ollamaConnection.value.default_model.trim()) {
-    notification.showError('Default Model name is required')
-    return
-  }
-  
+
   isTestingConnection.value = true
-  
+
   try {
     const response = await apiRequest('/api/connections/ollama/test', {
       method: 'POST',
       body: JSON.stringify({
         host: ollamaConnection.value.host.trim(),
-        model: ollamaConnection.value.default_model.trim(),
+        model: ollamaConnection.value.default_model?.trim() || '',
         route: ollamaConnection.value.route || '/api/chat'
       })
     })
@@ -133,16 +123,15 @@ async function testConnection() {
       </div>
 
       <div class="form-group">
-        <label for="ollama-model">Default Model *</label>
-        <input 
+        <label for="ollama-model">Default Model</label>
+        <input
           id="ollama-model"
-          v-model="ollamaConnection.default_model" 
-          type="text" 
+          v-model="ollamaConnection.default_model"
+          type="text"
           class="form-input"
           placeholder="llama3:8b"
-          required
         />
-        <small class="form-hint">Default model for testing connection, e.g. llama3:8b or mistral:7b</small>
+        <small class="form-hint">Optional default model, e.g. llama3:8b or mistral:7b</small>
       </div>
 
       <div class="form-group">

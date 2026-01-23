@@ -162,16 +162,22 @@ class OpenAIService(BaseProviderService):
     async def test_connection(self, settings: Dict[str, Any]) -> bool:
         """
         Test connection to OpenAI-API compatible service.
-        
+
         Args:
             settings: Provider settings to test
-            
+
         Returns:
             True if connection successful, False otherwise
+
+        Raises:
+            ProviderAuthenticationError: If authentication fails (401/403)
+            ProviderConnectionError: If connection fails
         """
         try:
             models = await self.list_models(settings)
             return len(models) > 0
+        except (ProviderAuthenticationError, ProviderConnectionError):
+            raise  # Re-raise auth and connection errors for proper handling
         except Exception as e:
             logger.warning(f"OpenAI-API connection test failed: {e}")
             return False

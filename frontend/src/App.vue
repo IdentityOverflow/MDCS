@@ -1,5 +1,39 @@
 <script setup lang="ts">
+import { onMounted } from 'vue'
 import { RouterView } from 'vue-router'
+
+// Initialize default connection settings on app startup
+onMounted(() => {
+  // Initialize Ollama defaults if not already configured
+  if (!localStorage.getItem('ollama-connection')) {
+    const defaultOllamaConnection = {
+      host: 'http://host.docker.internal:11434',
+      route: '/api/chat',
+      default_model: '',
+      keep_alive: '5m',
+      format: null,
+      options: {
+        temperature: 0.8,
+        top_p: 0.9,
+        top_k: 40,
+        min_p: 0.0,
+        num_predict: 128,
+        num_ctx: 2048,
+        seed: 0,
+        repeat_penalty: 1.1,
+        repeat_last_n: 64,
+        tfs_z: 1.0,
+        mirostat: 0,
+        mirostat_tau: 5.0,
+        mirostat_eta: 0.1,
+        stop: []
+      }
+    }
+    localStorage.setItem('ollama-connection', JSON.stringify(defaultOllamaConnection))
+  }
+
+  // Note: OpenAI connection requires user configuration (API key), so no defaults are set
+})
 </script>
 
 <template>

@@ -158,16 +158,21 @@ class OllamaService(BaseProviderService):
     async def test_connection(self, settings: Dict[str, Any]) -> bool:
         """
         Test connection to Ollama server.
-        
+
         Args:
             settings: Provider settings to test
-            
+
         Returns:
             True if connection successful, False otherwise
+
+        Raises:
+            ProviderConnectionError: If connection fails
         """
         try:
             models = await self.list_models(settings)
             return len(models) > 0
+        except ProviderConnectionError:
+            raise  # Re-raise connection errors for proper handling
         except Exception as e:
             logger.warning(f"Ollama connection test failed: {e}")
             return False
