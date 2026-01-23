@@ -5,7 +5,7 @@ import { useApiConfig } from '@/composables/apiConfig'
 
 // Default Ollama connection settings
 const defaultOllamaConnection = {
-  host: 'http://localhost:11434',
+  host: 'http://host.docker.internal:11434',
   route: '/api/chat',
   default_model: '',
   // stream setting removed - now in Chat Controls
@@ -118,7 +118,7 @@ async function testConnection() {
           v-model="ollamaConnection.host" 
           type="text" 
           class="form-input"
-          placeholder="http://localhost:11434"
+          placeholder="http://host.docker.internal:11434"
         />
         <small class="form-hint">Ollama server base URL</small>
       </div>

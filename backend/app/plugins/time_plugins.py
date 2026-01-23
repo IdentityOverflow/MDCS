@@ -9,20 +9,28 @@ from app.core.script_plugins import plugin_registry
 
 
 @plugin_registry.register("get_current_time")
-def get_current_time(format: str = "%Y-%m-%d %H:%M") -> str:
+def get_current_time(format: str = "%Y-%m-%d %H:%M", timezone: str | None = None) -> str:
     """
-    Get current time in specified format.
-    
+    Get current time in specified format and timezone.
+
     Args:
         format: strftime format string (default: "%Y-%m-%d %H:%M")
-        
+        timezone: Timezone name (e.g., "Europe/Athens", "US/Eastern").
+                 If None, uses UTC (default: None)
+
     Returns:
         Current time as formatted string
-        
+
     Example:
-        get_current_time() -> "2025-08-23 14:30"
-        get_current_time("%H:%M") -> "14:30"
+        get_current_time() -> "2025-08-23 14:30" (UTC)
+        get_current_time("%H:%M") -> "14:30" (UTC)
+        get_current_time("%H:%M", "Europe/Athens") -> "16:30"
     """
+    from zoneinfo import ZoneInfo
+
+    if timezone:
+        tz = ZoneInfo(timezone)
+        return datetime.now(tz).strftime(format)
     return datetime.now().strftime(format)
 
 

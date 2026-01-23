@@ -179,9 +179,35 @@ docker compose logs -f
 - Backend API: http://localhost:8000
 - API Docs: http://localhost:8000/docs
 
-**Using Ollama on Host:**
-- Backend connection: `http://host.docker.internal:11434`
-- Frontend connection: `http://localhost:11434`
+**Using Ollama on Host (Linux):**
+
+For the Docker backend to connect to Ollama running on your host machine, you need to configure Ollama to listen on all network interfaces:
+
+1. Edit the Ollama systemd service:
+   ```bash
+   sudo systemctl edit ollama.service
+   ```
+
+2. Add the following configuration:
+   ```ini
+   [Service]
+   Environment="OLLAMA_HOST=0.0.0.0:11434"
+   ```
+
+3. Reload and restart Ollama:
+   ```bash
+   sudo systemctl daemon-reload
+   sudo systemctl restart ollama
+   ```
+
+4. Verify Ollama is listening on all interfaces:
+   ```bash
+   ss -tlnp | grep 11434
+   # Should show: 0.0.0.0:11434
+   ```
+
+Once configured, you can use this connection URL in the settings for accessing Ollama:
+`http://host.docker.internal:11434`
 
 ### Manual Installation
 
