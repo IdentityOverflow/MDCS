@@ -24,7 +24,7 @@ The system uses a 5-stage execution pipeline to control when modules run relativ
 *Same alternate display, currently showing persona configuration with template system and available modules suggest box*
 
 ![Modules Overview](screenshots/Screenshot%20from%202026-01-22%2012-56-21.png)
-*Module management (on the right), chat controls, and expandable thinking process from reasoning models*
+*Module management (on the right), chat controls, and expandable thinking process from reasoning models (on the left)*
 
 ## Architecture
 
