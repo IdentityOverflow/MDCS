@@ -18,7 +18,7 @@ The system uses a 5-stage execution pipeline to control when modules run relativ
 *Golden ration layout with 4 areas, the main chat interface with markdown rendering, a navigation/management area connected to the control panel area, and an additional smaller information display area*
 
 ![Module Editor](screenshots/Screenshot%20from%202026-01-22%2012-45-39.png)
-*Alternate expanded display for navigation/management + control panele areas, currently showing the advanced module editor with Python scripting, trigger patterns, and test functionality*
+*Alternate expanded display for navigation/management + control panel areas, currently showing the advanced module editor with Python scripting, trigger patterns, and test functionality*
 
 ![Persona Editor](screenshots/Screenshot%20from%202026-01-22%2012-48-13.png)
 *Same alternate display, currently showing persona configuration with template system and available modules suggest box*
