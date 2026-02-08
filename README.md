@@ -1,3 +1,8 @@
+> NOTE: The progress on this project has been halted. All the goals I had in mind for this system has already been achieved by [OpenClaw](https://github.com/openclaw/openclaw), so I've moved on to other projects.
+Check out my other recent work: 
+> - [Recursive Observer Framework](https://github.com/IdentityOverflow/idea_drawer/blob/main/ro_framework/ro_framework.md)
+> - [Organic Cognitive Architecture (OCA)](https://github.com/IdentityOverflow/idea_drawer/blob/main/organic_cognitive_architecture_oca.md)
+
 # Modular Dynamic Context System
 A full-stack web application for managing AI conversations with dynamic, modular system prompts. The system allows system prompts to be composed from reusable modules that can execute Python scripts, call AI models, and maintain state across conversations.
 
